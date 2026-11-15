@@ -181,6 +181,7 @@ describe('work queue', () => {
     expect(queue.stalled[0]!.assetName).toBe('asset1.mp4')
     expect(queue.remaining).toBe(1)
     expect(queue.pipelines[1]!.stalled).toBe(1)
+    expect(queue.pipelines[1]!.running).toBe(0)
     expect(queue.pipelines[1]!.etaSeconds).toBeNull()
     expect(queue.etaSeconds).toBeNull()
   })

@@ -282,7 +282,7 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
     )
     return {
       pipeline: lane.pipeline,
-      running: lane.running,
+      running: Math.max(0, lane.running - lane.stalled),
       queued: lane.queued,
       stalled: lane.stalled,
       etaSeconds: lane.stalled > 0 ? null : etaSeconds,

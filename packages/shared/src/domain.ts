@@ -128,6 +128,7 @@ export interface WorkItemDTO {
 
 export interface WorkPipelineDTO {
   pipeline: WorkPipeline
+  /** Active rows with a live lease. Stalled rows are counted in `stalled` instead. */
   running: number
   queued: number
   stalled: number
