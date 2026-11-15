@@ -101,6 +101,7 @@ curl -s 'http://127.0.0.1:8787/api/assets/<assetId>/subtitle-tracks' -b 'mv_sess
 | `translation model ... is missing` | 모델 init을 건너뜀 | 2절의 모델 다운로드를 먼저 실행한다. |
 | llama-server가 곧바로 종료됨 | VRAM 부족, 잘못된 모델 경로, CUDA 라이브러리 불일치 | worker 로그의 마지막 stderr를 읽고 `LLAMA_GPU_LAYERS`와 `LLAMA_CTX`를 낮춘다. |
 | 번역이 계속 `queued` | worker가 실행 중이 아님, 토큰 불일치 | `TRANSLATION_WORKER_TOKEN`이 API와 worker에서 같은지 확인한다. |
+| 번역은 완료로 보이는데 자막이 안 나옴 | API와 worker의 결과 디렉터리가 다름. status는 성공하고 메뉴에도 한국어가 뜨지만 `subtitles.vtt?lang=ko`만 404다 | 브라우저 네트워크 패널에서 그 404를 확인하고, API의 `TRANSLATION_RESULT_DIR`과 worker의 `RESULT_DIR`이 같은 호스트 경로를 가리키는지 맞춘다. |
 
 ## 7. 되돌리기
 
@@ -120,10 +121,12 @@ sqlite3 data/mediavault.db "DELETE FROM translations WHERE asset_id = '<assetId>
 
 확인함:
 
-- DB v4 마이그레이션과 번역 job, 번역 결과, GPU lease 동작
-- API의 `lang` 선택, 원문 URL 호환, cue 불일치 거부
-- worker가 원문 cue와 같은 수, 같은 시각으로 결과를 쓰는지 (fake llama-server)
+- DB v4 마이그레이션과 번역 job, 번역 결과, GPU lease 동작. ASR worker도 같은 lease를 잡고 놓는 것을 테스트로 고정했다.
+- API의 `lang` 선택, 원문 URL 호환, cue 불일치 거부, ASR 완료 시 번역 enqueue
+- worker가 원문 cue와 같은 수, 같은 시각으로 결과를 쓰는지 (fake llama-server). worker가 쓴 VTT를 API가 `?lang=ko`로 그대로 서빙하는 것까지 확인했다.
 - 자막 VTT가 다음 cue 시작까지 이전 줄을 유지하는지
+- 모델 다운로더가 실제 HTTP로 내려받고 검증하며, 두 번째 실행에서는 건너뛰는지
+- 플레이어와 자막 패널: 번역이 있으면 한국어가 기본, 원문 전환, 자막 끄기, 한국어 원문 영상은 원문만, 언어별 탭·검색·다운로드
 
 확인하지 못함:
 
@@ -131,5 +134,6 @@ sqlite3 data/mediavault.db "DELETE FROM translations WHERE asset_id = '<assetId>
 - RTX 5060 Ti 8GB에서의 VRAM 사용량과 처리 속도
 - macOS M5 Metal에서의 처리 속도
 - CUDA 이미지 빌드와 실제 컨테이너 기동
+- 실제 GPU에서 ASR과 번역이 lease로 직렬화되는지 (테스트는 가짜 HTTP 서버까지다)
 
-이 항목은 실기기에서 7절과 8절의 로그를 남긴 뒤 판단한다.
+이 항목은 실기기에서 5절의 검증 명령과 6절의 로그를 남긴 뒤 판단한다.
