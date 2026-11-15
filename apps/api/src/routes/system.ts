@@ -27,6 +27,6 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   })
 
   app.get('/api/queue', async (_request, reply) => {
-    reply.send(toWorkQueueDTO(workQueue(ctx.db, Date.now(), ctx.config.translation.gpuResource)))
+    reply.send(toWorkQueueDTO(workQueue(ctx.db, Date.now(), ctx.config.gpu.resourceId)))
   })
 }

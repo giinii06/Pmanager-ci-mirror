@@ -21,7 +21,11 @@ export interface TranslationConfig {
   promptVersion: string
   pipelineVersion: string
   targetLanguage: string
-  gpuResource: string
+}
+
+/** The card every GPU consumer leases, named once so the leases collide. */
+export interface GpuConfig {
+  resourceId: string
 }
 
 export interface ApiConfig {
@@ -34,6 +38,7 @@ export interface ApiConfig {
   accel: boolean
   hwaccel: 'nvenc' | null
   secureCookies: boolean
+  gpu: GpuConfig
   asr: AsrConfig
   translation: TranslationConfig
 }
@@ -93,7 +98,6 @@ function resolveTranslation(
     promptVersion: env.TRANSLATION_PROMPT_VERSION?.trim() || '1',
     pipelineVersion: env.TRANSLATION_PIPELINE_VERSION?.trim() || '1',
     targetLanguage: env.TRANSLATION_TARGET_DEFAULT?.trim() || 'ko',
-    gpuResource: env.TRANSLATION_GPU_RESOURCE?.trim() || 'gpu:0',
   }
 }
 
@@ -122,6 +126,7 @@ export async function loadConfig(
     accel: env.MEDIA_ACCEL === 'nginx',
     hwaccel: env.HWACCEL === 'nvenc' ? 'nvenc' : null,
     secureCookies: env.COOKIE_SECURE === '1',
+    gpu: { resourceId: env.GPU_RESOURCE?.trim() || 'gpu:0' },
     asr,
     translation,
   }

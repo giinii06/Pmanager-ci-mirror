@@ -8,6 +8,9 @@ export interface WorkerConfig {
   hwaccel: 'nvenc' | null
   pollMs: number
   once: boolean
+  /** The card ASR and translation workers also lease, so an encode collides with them. */
+  gpuResource: string
+  workerId: string
 }
 
 export async function loadWorkerConfig(
@@ -26,5 +29,7 @@ export async function loadWorkerConfig(
     hwaccel: env.HWACCEL === 'nvenc' ? 'nvenc' : null,
     pollMs: Number(env.WORKER_POLL_MS ?? 500),
     once: env.WORKER_ONCE === '1',
+    gpuResource: env.GPU_RESOURCE?.trim() || 'gpu:0',
+    workerId: env.WORKER_ID?.trim() || `worker-${process.pid}`,
   }
 }

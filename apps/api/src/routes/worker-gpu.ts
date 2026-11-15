@@ -55,7 +55,7 @@ export function registerWorkerGpuRoutes(app: FastifyInstance, ctx: AppContext): 
       const body = parseInput(acquireBody, request.body ?? {}, reply)
       if (!body) return
 
-      const resourceId = ctx.config.translation.gpuResource
+      const resourceId = ctx.config.gpu.resourceId
       const acquired = acquireGpuLease(
         ctx.db,
         {
@@ -76,7 +76,7 @@ export function registerWorkerGpuRoutes(app: FastifyInstance, ctx: AppContext): 
       const body = parseInput(heartbeatBody, request.body ?? {}, reply)
       if (!body) return
 
-      const resourceId = ctx.config.translation.gpuResource
+      const resourceId = ctx.config.gpu.resourceId
       if (!heartbeatGpuLease(ctx.db, resourceId, body.owner, LEASE_MS, Date.now())) {
         reply.code(409).send(leaseLost())
         return
@@ -88,7 +88,7 @@ export function registerWorkerGpuRoutes(app: FastifyInstance, ctx: AppContext): 
       const body = parseInput(heartbeatBody, request.body ?? {}, reply)
       if (!body) return
 
-      releaseGpuLease(ctx.db, ctx.config.translation.gpuResource, body.owner)
+      releaseGpuLease(ctx.db, ctx.config.gpu.resourceId, body.owner)
       reply.code(204).send()
     })
   })

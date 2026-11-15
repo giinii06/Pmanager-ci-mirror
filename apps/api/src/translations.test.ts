@@ -143,6 +143,7 @@ async function harness(language = 'ja'): Promise<Harness> {
     accel: false,
     hwaccel: null,
     secureCookies: false,
+    gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: true,
       workerToken: ASR_TOKEN,
@@ -161,7 +162,6 @@ async function harness(language = 'ja'): Promise<Harness> {
       promptVersion: PROMPT,
       pipelineVersion: TR_PIPELINE,
       targetLanguage: 'ko',
-      gpuResource: 'gpu:0',
     },
   }
 
