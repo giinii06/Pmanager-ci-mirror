@@ -72,6 +72,21 @@ describe('buildGalleryEntries', () => {
     }
   })
 
+  test('can pack rows without month headers for folder views', () => {
+    const items = [
+      item('a', '2026-10-02T00:00:00Z'),
+      item('b', '2026-09-02T00:00:00Z'),
+      item('c', '2026-08-02T00:00:00Z'),
+    ]
+    const entries = buildGalleryEntries(items, 1_000, {
+      gap: GAP,
+      targetHeight: TARGET,
+      groupByMonth: false,
+    })
+    expect(entries.every((entry) => entry.kind === 'row')).toBe(true)
+    expect(entries.flatMap((entry) => (entry.kind === 'row' ? entry.items : []))).toHaveLength(3)
+  })
+
   test('returns nothing for an unmeasured container', () => {
     expect(buildGalleryEntries([item('a', '2026-10-02T00:00:00Z')], 0)).toEqual([])
   })

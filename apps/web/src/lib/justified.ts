@@ -23,6 +23,7 @@ export interface LayoutOptions {
   gap?: number
   targetHeight?: number
   headerHeight?: number
+  groupByMonth?: boolean
 }
 
 function monthKey(iso: string): string {
@@ -102,16 +103,18 @@ export function buildGalleryEntries<T extends GalleryItem>(
   for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
     const item = items[itemIndex]
     if (!item) continue
-    const key = monthKey(item.takenAt)
-    if (key !== month) {
-      flush(false)
-      month = key
-      entries.push({
-        kind: 'header',
-        key: `header-${key}`,
-        label: monthLabel(item.takenAt),
-        height: headerHeight,
-      })
+    if (options.groupByMonth !== false) {
+      const key = monthKey(item.takenAt)
+      if (key !== month) {
+        flush(false)
+        month = key
+        entries.push({
+          kind: 'header',
+          key: `header-${key}`,
+          label: monthLabel(item.takenAt),
+          height: headerHeight,
+        })
+      }
     }
 
     if (row.length === 0) rowStart = itemIndex

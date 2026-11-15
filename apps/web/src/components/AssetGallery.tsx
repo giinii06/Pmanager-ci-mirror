@@ -21,6 +21,7 @@ interface AssetGalleryProps {
   emptyAction?: ReactNode
   emptyIcon?: ReactNode
   hideEmpty?: boolean
+  groupByMonth?: boolean
 }
 
 export function AssetGallery({
@@ -35,6 +36,7 @@ export function AssetGallery({
   emptyAction,
   emptyIcon,
   hideEmpty,
+  groupByMonth,
 }: AssetGalleryProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -98,6 +100,7 @@ export function AssetGallery({
           isFetchingNextPage={query.isFetchingNextPage}
           fetchNextPage={() => query.fetchNextPage()}
           onOpen={(index) => useViewer.getState().open(items, index)}
+          groupByMonth={groupByMonth}
           empty={
             hideEmpty ? null : (
               <EmptyState

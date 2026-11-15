@@ -111,7 +111,7 @@ export function FolderPage() {
     <AssetGallery
       title={folder.name}
       filters={{ folderId: folder.id }}
-      meta={`${formatCount(folder.assetCount)}개`}
+      groupByMonth={false}
       breadcrumb={<Breadcrumbs trail={breadcrumb} />}
       subheader={
         children.length > 0 ? (

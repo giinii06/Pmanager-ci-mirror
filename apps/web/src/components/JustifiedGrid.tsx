@@ -17,6 +17,7 @@ interface JustifiedGridProps {
   fetchNextPage: () => void
   onOpen: (index: number) => void
   empty: ReactNode
+  groupByMonth?: boolean
 }
 
 const GAP = 4
@@ -31,6 +32,7 @@ export function JustifiedGrid({
   fetchNextPage,
   onOpen,
   empty,
+  groupByMonth,
 }: JustifiedGridProps) {
   const [widthRef, width] = useElementWidth<HTMLDivElement>()
   const headerRef = useRef<HTMLDivElement>(null)
@@ -47,7 +49,10 @@ export function JustifiedGrid({
     return () => observer.disconnect()
   }, [header])
 
-  const entries = useMemo(() => buildGalleryEntries(items, width, { gap: GAP }), [items, width])
+  const entries = useMemo(
+    () => buildGalleryEntries(items, width, { gap: GAP, groupByMonth }),
+    [items, width, groupByMonth],
+  )
   const scrollMargin = headerHeight
 
   const virtualizer = useVirtualizer({
