@@ -61,7 +61,9 @@ docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 ```
 
 `HWACCEL=nvenc`로 H.264 인코딩을 시도하고, 실패하면 자동으로 `libx264`로
-폴백한다. GPU가 없어도 모든 기능은 동작한다(느릴 뿐).
+폴백한다. GPU가 없어도 모든 기능은 동작한다(느릴 뿐). 인코딩 도중에 ASR이나
+번역이 카드를 가져가면 그 인코딩은 중단되고 작업이 다시 큐에 들어간다. 그때
+카드가 계속 바쁘면 재시도가 `libx264`로 처리한다.
 
 ### AI 자막 (선택)
 

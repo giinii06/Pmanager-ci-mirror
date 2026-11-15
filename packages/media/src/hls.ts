@@ -10,6 +10,7 @@ const run = promisify(execFile)
 export interface HlsOptions {
   hwaccel: 'nvenc' | null
   width: number | null
+  signal?: AbortSignal
 }
 
 function scaleFilter(width: number | null): string {
@@ -61,7 +62,9 @@ function ffmpegArgs(
 
 /**
  * Transcodes to H.264/AAC HLS. NVENC is attempted first when requested and
- * falls back to libx264 so a missing GPU never blocks playback.
+ * falls back to libx264 so a missing GPU never blocks playback. An aborted
+ * signal kills the ffmpeg in flight, and the fallback sees the same signal, so
+ * losing the card stops the job instead of moving it to the CPU.
  */
 export async function generateHls(
   src: string,
@@ -80,6 +83,7 @@ export async function generateHls(
   const encode = async (encoder: 'libx264' | 'nvenc') => {
     await run('ffmpeg', ffmpegArgs(src, tmpDir, options, encoder), {
       maxBuffer: 16 * 1024 * 1024,
+      signal: options.signal,
     })
   }
 

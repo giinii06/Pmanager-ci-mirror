@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { acquireGpuLease, getGpuLease, openDatabase, type Db } from '@mediavault/database'
+import {
+  acquireGpuLease,
+  getGpuLease,
+  openDatabase,
+  releaseGpuLease,
+  type Db,
+} from '@mediavault/database'
 import { withGpuLease } from './gpu'
 
 const RESOURCE = 'gpu:0'
@@ -80,5 +86,46 @@ describe('withGpuLease', () => {
       expect(lease?.owner).toBe('media-worker')
       expect(lease?.leaseExpiresAt).toBeGreaterThan(Date.now())
     })
+  })
+
+  test('a held lease hands the encode a signal that stays quiet', async () => {
+    const db = open()
+    const states: boolean[] = []
+
+    await withGpuLease(db, options(0, 60), async (_granted, signal) => {
+      await Bun.sleep(150)
+      states.push(signal.aborted)
+    })
+
+    expect(states).toEqual([false])
+  })
+
+  test('a lease lost mid-encode aborts the signal so ffmpeg stops', async () => {
+    const db = open()
+    const states: boolean[] = []
+
+    await withGpuLease(db, options(0, 60), async (_granted, signal) => {
+      // Another consumer taking the card deletes or replaces this row, which is
+      // what a failed heartbeat reports.
+      releaseGpuLease(db, RESOURCE, 'media-worker')
+      await Bun.sleep(150)
+      states.push(signal.aborted)
+    })
+
+    expect(states).toEqual([true])
+  })
+
+  test('an encode stopped by the lost lease says why', async () => {
+    const db = open()
+
+    await expect(
+      withGpuLease(db, options(0, 60), async (_granted, signal) => {
+        releaseGpuLease(db, RESOURCE, 'media-worker')
+        await new Promise((resolve) => signal.addEventListener('abort', resolve))
+        throw new Error('The operation was aborted')
+      }),
+    ).rejects.toThrow('the gpu:0 lease was lost, so the work was stopped')
+
+    expect(getGpuLease(db, RESOURCE)).toBeNull()
   })
 })

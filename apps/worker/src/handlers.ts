@@ -76,10 +76,11 @@ export async function executeJob(db: Db, config: WorkerConfig, job: JobRecord): 
   }
 
   if (job.kind === 'hls') {
-    const encode = (hwaccel: 'nvenc' | null) =>
+    const encode = (hwaccel: 'nvenc' | null, signal?: AbortSignal) =>
       generateHls(source, config.cacheDir, info.id, info.fileVersion, {
         hwaccel,
         width: info.width,
+        signal,
       })
 
     if (config.hwaccel !== 'nvenc') {
@@ -97,7 +98,7 @@ export async function executeJob(db: Db, config: WorkerConfig, job: JobRecord): 
         waitMs: HLS_LEASE_WAIT_MS,
         leaseMs: HLS_LEASE_MS,
       },
-      (held) => encode(held ? 'nvenc' : null),
+      (held, signal) => encode(held ? 'nvenc' : null, signal),
     )
     return
   }

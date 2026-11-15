@@ -52,26 +52,32 @@ async function waitForLease(db: Db, options: GpuLeaseOptions): Promise<GpuLease 
 /**
  * Runs `run` with the card held when the lease is free, and with `held` false
  * when another consumer keeps it past `waitMs`, so the caller can take a slower
- * path instead of blocking.
+ * path instead of blocking. `signal` aborts when the lease is lost, which is how
+ * a long encode learns the card now belongs to another consumer.
  */
 export async function withGpuLease<T>(
   db: Db,
   options: GpuLeaseOptions,
-  run: (held: boolean) => Promise<T>,
+  run: (held: boolean, signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  const controller = new AbortController()
   const lease = await waitForLease(db, options)
-  if (!lease) return run(false)
+  if (!lease) return run(false, controller.signal)
 
   const timer = setInterval(() => {
     if (lease.heartbeat()) return
-    // The encode has no kill handle, so a lost lease only stops the renewal.
-    // Killing ffmpeg mid-write would leave a half-written playlist behind.
     console.warn(`[gpu] lost the ${options.resourceId} lease for ${options.owner}`)
     clearInterval(timer)
+    controller.abort()
   }, Math.max(1, Math.floor(options.leaseMs / 3)))
 
   try {
-    return await run(true)
+    return await run(true, controller.signal)
+  } catch (error) {
+    if (!controller.signal.aborted) throw error
+    throw new Error(`the ${options.resourceId} lease was lost, so the work was stopped`, {
+      cause: error,
+    })
   } finally {
     clearInterval(timer)
     lease.release()
