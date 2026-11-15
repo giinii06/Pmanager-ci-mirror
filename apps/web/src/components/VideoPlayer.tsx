@@ -16,6 +16,7 @@ export function VideoPlayer({
   language,
   onSelectLanguage,
   videoRef: externalRef,
+  fill = false,
 }: {
   asset: AssetDTO
   subtitleUrl?: string | null
@@ -23,6 +24,8 @@ export function VideoPlayer({
   language: string | null
   onSelectLanguage: (language: string | null) => void
   videoRef?: RefObject<HTMLVideoElement | null>
+  /** Fills a caller-provided frame instead of sizing itself against the viewport. */
+  fill?: boolean
 }) {
   const localRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -285,7 +288,12 @@ export function VideoPlayer({
 
   if (failure) {
     return (
-      <div className="flex max-w-sm flex-col items-center gap-3 text-center text-[13px] text-muted">
+      <div
+        className={cn(
+          'flex flex-col items-center gap-3 text-center text-[13px] text-muted',
+          fill ? 'h-full w-full justify-center px-6' : 'max-w-sm',
+        )}
+      >
         <p className="text-ink">{failure}</p>
         <a
           href={`${asset.streamUrl}&download=1`}
@@ -304,7 +312,8 @@ export function VideoPlayer({
     <div
       ref={containerRef}
       className={cn(
-        'relative flex max-h-full max-w-full items-center justify-center',
+        'relative flex items-center justify-center',
+        fill ? 'h-full w-full' : 'max-h-full max-w-full',
         fullscreen && 'h-screen w-screen bg-black',
       )}
     >
@@ -316,7 +325,7 @@ export function VideoPlayer({
         poster={asset.thumbnails.medium}
         className={cn(
           'bg-black',
-          fullscreen
+          fullscreen || fill
             ? 'h-full w-full object-contain'
             : 'max-h-[calc(100vh-170px)] max-w-[calc(100vw-140px)] rounded-lg shadow-2xl',
         )}
