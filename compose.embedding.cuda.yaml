@@ -1,0 +1,34 @@
+# WSL2 / Linux: run the embedding worker on the NVIDIA GPU.
+#
+#   docker compose -f compose.yaml -f compose.embedding.models.yaml \
+#     -f compose.embedding.cuda.yaml up -d --build
+#
+# The worker starts llama-server for a job and stops it afterwards, so ASR,
+# translation and embedding never hold the card at the same time. The API hands
+# out one GPU lease per card, and an embedding job waits until the running worker
+# releases it.
+#
+# Vectors go to the API over HTTP, so this service mounts no result directory.
+services:
+  api:
+    env_file:
+      - .env.embedding
+
+  embedding-worker:
+    build:
+      context: .
+      dockerfile: apps/embedding-worker/Dockerfile.cuda
+    restart: unless-stopped
+    gpus: all
+    env_file:
+      - .env.embedding
+    environment:
+      API_BASE_URL: http://api:8787
+      EMBEDDING_MODEL_PATH: /models/embedding/Qwen3-Embedding-4B-Q4_K_M.gguf
+    volumes:
+      - ./models:/models:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      embedding-model-init:
+        condition: service_completed_successfully

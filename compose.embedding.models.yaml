@@ -1,0 +1,21 @@
+# One-shot download of the Qwen3-Embedding-4B GGUF file. Weights live on the
+# host in ./models so image rebuilds and container replacements never re-download
+# 2.5 GB.
+#
+#   cp .env.embedding.example .env.embedding   # fill in the revision SHA
+#   docker compose -f compose.yaml -f compose.embedding.models.yaml \
+#     run --rm embedding-model-init
+#
+# A second run verifies the file already on disk and exits without downloading.
+services:
+  embedding-model-init:
+    build:
+      context: .
+      dockerfile: apps/embedding-model-init/Dockerfile
+    restart: "no"
+    env_file:
+      - .env.embedding
+    environment:
+      MODELS_DIR: /models
+    volumes:
+      - ./models:/models

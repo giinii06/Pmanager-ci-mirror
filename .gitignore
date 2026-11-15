@@ -3,6 +3,7 @@ dist/
 .env
 .env.asr
 .env.translation
+.env.embedding
 .DS_Store
 
 data/

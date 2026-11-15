@@ -1,4 +1,4 @@
-"""Behaviour tests for the translation model downloader.
+"""Behaviour tests for the shared model downloader.
 
 The transfer is injected, so nothing here reaches the network or the Hub.
 """
@@ -19,6 +19,7 @@ import download_model as dm
 REVISION = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b"
 REPO = "IndexTeam/Index-Translate-9B-GGUF"
 FILENAME = "Index-Translate-9B.Q4_K_M.gguf"
+PREFIX = "TRANSLATION_MODEL"
 
 MODEL_BYTES = b"GGUF" + b"\x03\x00\x00\x00" + bytes(range(64))
 MODEL_SHA = hashlib.sha256(MODEL_BYTES).hexdigest()
@@ -38,13 +39,15 @@ def make_settings(tmp_path: Path, **overrides) -> dm.Settings:
         "sha256": MODEL_SHA,
         "quantization": "Q4_K_M",
         "models_dir": tmp_path / "models",
+        "dir_name": "translation",
+        "label": "translation",
     }
     values.update(overrides)
     return dm.Settings(**values)
 
 
 def final_path(settings: dm.Settings) -> Path:
-    return settings.models_dir / "translation" / settings.filename
+    return dm.Paths.of(settings).final
 
 
 def fake_download(payload: bytes = MODEL_BYTES, calls: list | None = None):
@@ -80,7 +83,7 @@ def test_untrusted_existing_file_is_replaced_and_archived(tmp_path):
     dm.ensure_model(settings, download=fake_download())
 
     assert final_path(settings).read_bytes() == MODEL_BYTES
-    archived = list((settings.models_dir / "translation" / ".archive").iterdir())
+    archived = list((dm.Paths.of(settings).archive).iterdir())
     assert len(archived) == 1
     assert archived[0].read_bytes() == b"GGUF" + b"an older build"
 
@@ -104,7 +107,7 @@ def test_download_failure_is_reported_and_leaves_nothing_behind(tmp_path):
     with pytest.raises(dm.InitError, match="HF_TOKEN"):
         dm.ensure_model(settings, download=gated)
 
-    staging = settings.models_dir / "translation" / ".staging"
+    staging = dm.Paths.of(settings).staging
     assert not list(staging.iterdir())
     assert not final_path(settings).exists()
 
@@ -114,7 +117,7 @@ def test_staging_directory_is_removed_after_a_successful_download(tmp_path):
 
     dm.ensure_model(settings, download=fake_download())
 
-    staging = settings.models_dir / "translation" / ".staging"
+    staging = dm.Paths.of(settings).staging
     assert not list(staging.iterdir())
 
 
@@ -123,7 +126,7 @@ def test_manifest_records_the_verified_artifact(tmp_path):
 
     dm.ensure_model(settings, download=fake_download())
 
-    manifest = json.loads((settings.models_dir / "translation" / "model-manifest.json").read_text())
+    manifest = json.loads((dm.Paths.of(settings).root / "model-manifest.json").read_text())
     assert manifest["repo"] == REPO
     assert manifest["revision"] == REVISION
     assert manifest["filename"] == FILENAME
@@ -164,33 +167,48 @@ def test_low_disk_space_is_refused_before_downloading(tmp_path, monkeypatch):
 
 def test_missing_sha_is_refused():
     with pytest.raises(dm.InitError, match="TRANSLATION_MODEL_SHA256"):
-        dm.settings_from_env({"TRANSLATION_MODEL_REVISION": REVISION})
+        dm.settings_from_env(
+            {
+                "MODEL_ENV_PREFIX": PREFIX,
+                "TRANSLATION_MODEL_ID": REPO,
+                "TRANSLATION_MODEL_FILENAME": FILENAME,
+                "TRANSLATION_MODEL_REVISION": REVISION,
+            }
+        )
 
 
 def test_blank_revision_is_refused():
     with pytest.raises(dm.InitError, match="TRANSLATION_MODEL_REVISION is empty"):
-        dm.settings_from_env({"TRANSLATION_MODEL_SHA256": MODEL_SHA})
+        dm.settings_from_env(
+            {
+                "MODEL_ENV_PREFIX": PREFIX,
+                "TRANSLATION_MODEL_ID": REPO,
+                "TRANSLATION_MODEL_FILENAME": FILENAME,
+                "TRANSLATION_MODEL_SHA256": MODEL_SHA,
+            }
+        )
 
 
 def test_floating_revision_needs_the_escape_hatch():
-    with pytest.raises(dm.InitError, match="not a 40-character commit SHA"):
-        dm.settings_from_env(
-            {"TRANSLATION_MODEL_REVISION": "main", "TRANSLATION_MODEL_SHA256": MODEL_SHA}
-        )
+    base = {
+        "MODEL_ENV_PREFIX": PREFIX,
+        "TRANSLATION_MODEL_ID": REPO,
+        "TRANSLATION_MODEL_FILENAME": FILENAME,
+        "TRANSLATION_MODEL_SHA256": MODEL_SHA,
+        "TRANSLATION_MODEL_REVISION": "main",
+    }
 
-    allowed = dm.settings_from_env(
-        {
-            "TRANSLATION_MODEL_REVISION": "main",
-            "TRANSLATION_MODEL_SHA256": MODEL_SHA,
-            "ALLOW_FLOATING_REVISION": "1",
-        }
-    )
+    with pytest.raises(dm.InitError, match="not a 40-character commit SHA"):
+        dm.settings_from_env(base)
+
+    allowed = dm.settings_from_env({**base, "ALLOW_FLOATING_REVISION": "1"})
     assert allowed.revision == "main"
 
 
 def test_settings_come_from_the_documented_environment():
     settings = dm.settings_from_env(
         {
+            "MODEL_ENV_PREFIX": PREFIX,
             "TRANSLATION_MODEL_ID": "someone/else-GGUF",
             "TRANSLATION_MODEL_FILENAME": "Other.F16.gguf",
             "TRANSLATION_MODEL_REVISION": REVISION,
@@ -207,8 +225,39 @@ def test_settings_come_from_the_documented_environment():
     assert settings.token == "hf_example"
 
 
+def test_the_prefix_moves_every_variable_and_the_directory():
+    settings = dm.settings_from_env(
+        {
+            "MODEL_ENV_PREFIX": "EMBEDDING_MODEL",
+            "EMBEDDING_MODEL_ID": "Qwen/Qwen3-Embedding-4B-GGUF",
+            "EMBEDDING_MODEL_FILENAME": "Qwen3-Embedding-4B.Q4_K_M.gguf",
+            "EMBEDDING_MODEL_REVISION": REVISION,
+            "EMBEDDING_MODEL_SHA256": MODEL_SHA,
+        }
+    )
+
+    assert settings.repo_id == "Qwen/Qwen3-Embedding-4B-GGUF"
+    assert settings.quantization == "Q4_K_M"
+    assert settings.dir_name == "embedding"
+    assert settings.label == "embedding"
+    assert dm.Paths.of(settings).final == Path("/models/embedding/Qwen3-Embedding-4B.Q4_K_M.gguf")
+
+
+def test_an_unset_prefix_is_refused():
+    with pytest.raises(dm.InitError, match="MODEL_ENV_PREFIX is empty"):
+        dm.settings_from_env({"TRANSLATION_MODEL_REVISION": REVISION})
+
+
 def test_main_exits_non_zero_with_a_readable_error(capsys):
-    code = dm.main({"TRANSLATION_MODEL_REVISION": "main", "TRANSLATION_MODEL_SHA256": MODEL_SHA})
+    code = dm.main(
+        {
+            "MODEL_ENV_PREFIX": PREFIX,
+            "TRANSLATION_MODEL_ID": REPO,
+            "TRANSLATION_MODEL_FILENAME": FILENAME,
+            "TRANSLATION_MODEL_REVISION": "main",
+            "TRANSLATION_MODEL_SHA256": MODEL_SHA,
+        }
+    )
 
     assert code == 1
     assert "ERROR" in capsys.readouterr().err

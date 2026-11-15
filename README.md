@@ -96,6 +96,23 @@ cp .env.translation.example .env.translation   # 토큰, 모델 커밋 SHA 채�
 docker compose -f compose.yaml -f compose.translation.models.yaml run --rm translation-model-init
 ```
 
+### 의미 기반 관련 영상 (선택)
+
+`/api/assets/:id/related`가 같은 폴더가 아니라 내용이 비슷한 영상을 먼저 보여주려면
+Qwen3-Embedding-4B로 만든 벡터가 필요하다. 파일명과 전사 텍스트를 임베딩하며,
+ASR이 끝난 영상은 자동으로 큐에 들어간다. 모델은 `embedding-model-init`이
+`./models/embedding`으로 내려받는다. 설치·운영 방법은
+[docs/EMBEDDING-OPERATIONS.md](docs/EMBEDDING-OPERATIONS.md)를 따른다.
+
+```bash
+cp .env.embedding.example .env.embedding   # 토큰, 모델 커밋 SHA 채우기
+docker compose -f compose.yaml -f compose.embedding.models.yaml run --rm embedding-model-init
+bun run scripts/backfill-embeddings.ts     # 이미 들어와 있던 영상 채우기
+```
+
+벡터가 없는 영상은 예전처럼 폴더 기준으로 관련 영상을 보여준다. 임베딩을 끄면
+(`EMBEDDING_ENABLED=0`) 순위는 폴더 기준으로 돌아간다.
+
 ## 빠른 시작 — 로컬 개발 (Bun)
 
 Bun 1.4+ 만 있으면 된다. Node, npm, better-sqlite3는 쓰지 않는다.

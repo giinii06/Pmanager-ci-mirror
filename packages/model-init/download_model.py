@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Download the Index-Translate-9B GGUF file into a host-mounted model directory.
+"""Download one GGUF file into a host-mounted model directory.
 
-The image never contains weights. This script runs before the translation worker
-starts, is idempotent, and publishes a file only after the SHA256 and the GGUF
-magic match, so a failed or partial download never replaces a working model.
+Shared by the translation and embedding model-init services. The image never
+contains weights. This script runs before its worker starts, is idempotent, and
+publishes a file only after the SHA256 and the GGUF magic match, so a failed or
+partial download never replaces a working model.
+
+MODEL_ENV_PREFIX names the model. With TRANSLATION_MODEL the script reads
+TRANSLATION_MODEL_ID, _FILENAME, _REVISION, _SHA256 and _QUANTIZATION, writes to
+models/translation, and labels its log lines with that name. MODEL_DIR_NAME and
+MODEL_LABEL override the derived directory and label.
 
 Transfers go through huggingface_hub, which uses the hf_xet backend for these
 repositories. Xet downloads the file as concurrent chunks and assembles them,
@@ -25,11 +31,8 @@ from typing import Callable, Mapping
 
 from huggingface_hub import hf_hub_download
 
-PREFIX = "[translation-model-init]"
 MANIFEST_NAME = "model-manifest.json"
 GGUF_MAGIC = b"GGUF"
-DEFAULT_MODEL_ID = "IndexTeam/Index-Translate-9B-GGUF"
-DEFAULT_FILENAME = "Index-Translate-9B.Q4_K_M.gguf"
 CHUNK_BYTES = 4 * 1024 * 1024
 REQUIRED_FREE_GB = 12.0
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
@@ -41,8 +44,8 @@ class InitError(Exception):
     """Something the operator has to fix. The entrypoint turns it into exit 1."""
 
 
-def log(message: str) -> None:
-    print(f"{PREFIX} {message}", flush=True)
+def log(message: str, label: str) -> None:
+    print(f"[{label}-model-init] {message}", flush=True)
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,8 @@ class Settings:
     sha256: str
     quantization: str
     models_dir: Path
+    dir_name: str
+    label: str
     token: str | None = None
 
 
@@ -65,7 +70,7 @@ class Paths:
 
     @classmethod
     def of(cls, settings: Settings) -> "Paths":
-        root = settings.models_dir / "translation"
+        root = settings.models_dir / settings.dir_name
         return cls(
             root=root,
             final=root / settings.filename,
@@ -82,36 +87,53 @@ def quantization_from(filename: str) -> str:
 def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
     source = os.environ if env is None else env
 
-    revision = source.get("TRANSLATION_MODEL_REVISION", "").strip()
-    sha256 = source.get("TRANSLATION_MODEL_SHA256", "").strip().lower()
-    filename = source.get("TRANSLATION_MODEL_FILENAME", "").strip() or DEFAULT_FILENAME
-    quantization = source.get("TRANSLATION_MODEL_QUANTIZATION", "").strip()
-    models_dir = source.get("MODELS_DIR", "").strip() or "/models"
-
-    if not revision:
+    prefix = source.get("MODEL_ENV_PREFIX", "").strip()
+    if not prefix:
         raise InitError(
-            "TRANSLATION_MODEL_REVISION is empty. Paste the 40-character commit SHA."
+            "MODEL_ENV_PREFIX is empty. Set it to the variable prefix of this model, "
+            "TRANSLATION_MODEL or EMBEDDING_MODEL, and the rest follows."
         )
+
+    def read(name: str) -> str:
+        return source.get(f"{prefix}_{name}", "").strip()
+
+    repo_id = read("ID")
+    revision = read("REVISION")
+    sha256 = read("SHA256").lower()
+    filename = read("FILENAME")
+    quantization = read("QUANTIZATION")
+    models_dir = source.get("MODELS_DIR", "").strip() or "/models"
+    dir_name = source.get("MODEL_DIR_NAME", "").strip() or prefix.removesuffix("_MODEL").lower()
+    label = source.get("MODEL_LABEL", "").strip() or dir_name
+
+    if not repo_id:
+        raise InitError(f"{prefix}_ID is empty. Set it to the Hugging Face repository id.")
+    if not filename:
+        raise InitError(f"{prefix}_FILENAME is empty. Set it to the .gguf file inside the repo.")
+    if not revision:
+        raise InitError(f"{prefix}_REVISION is empty. Paste the 40-character commit SHA.")
     if not COMMIT_PATTERN.fullmatch(revision) and source.get("ALLOW_FLOATING_REVISION", "") != "1":
         raise InitError(
-            f"TRANSLATION_MODEL_REVISION={revision!r} is not a 40-character commit SHA. "
+            f"{prefix}_REVISION={revision!r} is not a 40-character commit SHA. "
             "A branch or tag can move under the same name, which makes the recorded "
             "revision a lie. Pin the commit, or set ALLOW_FLOATING_REVISION=1 for a "
             "throwaway check."
         )
     if not SHA256_PATTERN.fullmatch(sha256):
         raise InitError(
-            "TRANSLATION_MODEL_SHA256 must be the 64-character hex digest of the file. "
+            f"{prefix}_SHA256 must be the 64-character hex digest of the file. "
             "Without it a truncated or swapped download cannot be detected."
         )
 
     return Settings(
-        repo_id=source.get("TRANSLATION_MODEL_ID", "").strip() or DEFAULT_MODEL_ID,
+        repo_id=repo_id,
         filename=filename,
         revision=revision,
         sha256=sha256,
         quantization=quantization or quantization_from(filename),
         models_dir=Path(models_dir),
+        dir_name=dir_name,
+        label=label,
         token=source.get("HF_TOKEN", "").strip() or None,
     )
 
@@ -219,19 +241,20 @@ def ensure_model(
     settings: Settings,
     *,
     download: Callable[..., str] | None = None,
-    log_fn: Callable[[str], None] = log,
+    log_fn: Callable[[str], None] | None = None,
 ) -> Path:
     paths = Paths.of(settings)
     size = expected_size(paths, settings)
+    emit = log_fn or (lambda message: log(message, settings.label))
 
     if paths.final.is_file():
         problems = verify_file(paths.final, settings.sha256, size)
         if not problems:
-            log_fn(f"{settings.filename} already verified at {paths.final}; nothing to download")
+            emit(f"{settings.filename} already verified at {paths.final}; nothing to download")
             if read_manifest(paths) is None:
                 write_manifest(paths, build_manifest(settings, paths.final.stat().st_size))
             return paths.final
-        log_fn(f"existing file failed verification ({'; '.join(problems)}); downloading again")
+        emit(f"existing file failed verification ({'; '.join(problems)}); downloading again")
 
     free_gb = disk_free_gb(settings.models_dir)
     if free_gb < REQUIRED_FREE_GB:
@@ -242,7 +265,7 @@ def ensure_model(
 
     staging_root = paths.staging / str(os.getpid())
     staging_root.mkdir(parents=True, exist_ok=True)
-    log_fn(f"downloading {settings.repo_id}@{settings.revision} through hf_xet")
+    emit(f"downloading {settings.repo_id}@{settings.revision} through hf_xet")
     fetch = download or hf_hub_download
     try:
         staged = Path(
@@ -270,19 +293,20 @@ def ensure_model(
     archived = publish(staged, paths)
     shutil.rmtree(staging_root, ignore_errors=True)
     if archived:
-        log_fn(f"previous file kept at {archived}")
+        emit(f"previous file kept at {archived}")
     write_manifest(paths, build_manifest(settings, written))
-    log_fn(f"ready: {paths.final} ({written / 1e9:.2f} GB)")
+    emit(f"ready: {paths.final} ({written / 1e9:.2f} GB)")
     return paths.final
 
 
 def main(env: Mapping[str, str] | None = None) -> int:
     try:
-        ensure_model(settings_from_env(env))
+        settings = settings_from_env(env)
+        ensure_model(settings)
     except InitError as error:
-        print(f"{PREFIX} ERROR: {error}", file=sys.stderr, flush=True)
+        print(f"[model-init] ERROR: {error}", file=sys.stderr, flush=True)
         return 1
-    log("translation model verified")
+    log(f"{settings.label} model verified", settings.label)
     return 0
 
 
