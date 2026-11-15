@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import base64
 import struct
+import threading
+import time
+import urllib.error
 
 import pytest
 
@@ -62,7 +65,7 @@ class FakeClient:
         self.completed: list[dict] | None = None
         self.failed: str | None = None
 
-    def heartbeat(self, job_id: str, owner: str) -> None:
+    def heartbeat(self, job_id: str, owner: str, *, timeout: float | None = None) -> None:
         self.events.append(("heartbeat", job_id))
 
     def progress(self, job_id: str, owner: str, state: str, stage: str, progress: float) -> None:
@@ -82,7 +85,7 @@ class FakeClient:
         self.events.append(("acquire", task_kind))
         return self.acquire_results.pop(0) if self.acquire_results else False
 
-    def gpu_heartbeat(self, owner: str) -> None:
+    def gpu_heartbeat(self, owner: str, *, timeout: float | None = None) -> None:
         self.events.append(("gpu_heartbeat", owner))
 
     def gpu_release(self, owner: str) -> None:
@@ -224,3 +227,107 @@ def test_a_video_without_a_transcript_embeds_its_title_alone(tmp_path) -> None:
 
     assert len(client.completed) == 1
     assert client.completed[0]["kind"] == "title"
+
+
+class UnreachableClient(FakeClient):
+    """Every renewal fails the way a paused API fails."""
+
+    def heartbeat(self, job_id: str, owner: str, *, timeout: float | None = None) -> None:
+        self.events.append(("heartbeat", timeout))
+        raise urllib.error.URLError("API paused")
+
+
+class SlowClient(FakeClient):
+    """A renewal that outlives its own timeout, which is what a hung socket looks like."""
+
+    def __init__(self, lease: float):
+        super().__init__()
+        self.lease = lease
+        self.calls: list[tuple[float | None, float]] = []
+
+    def heartbeat(self, job_id: str, owner: str, *, timeout: float | None = None) -> None:
+        self.calls.append((timeout, time.monotonic()))
+        time.sleep(4 * self.lease)
+        raise TimeoutError("the renewal outlived its own timeout")
+
+
+def test_an_unreachable_api_loses_the_lease_instead_of_retrying_forever() -> None:
+    """A renewal that cannot be confirmed before the lease ends means the card is gone."""
+    client = UnreachableClient()
+    heartbeat = Heartbeat(client, "job-1", "worker-1", lease_ms=300, interval=0.05)
+    stopped = threading.Event()
+    heartbeat.attach(stopped.set)
+
+    heartbeat.start()
+    try:
+        assert heartbeat.lost.wait(timeout=1.0) is True
+    finally:
+        heartbeat.stop()
+
+    assert stopped.is_set()
+
+
+def test_a_slow_renewal_is_never_given_a_timeout_past_the_lease() -> None:
+    lease = 0.3
+    client = SlowClient(lease)
+    heartbeat = Heartbeat(client, "job-1", "worker-1", lease_ms=int(lease * 1000), interval=0.05)
+    heartbeat.start()
+    # Read the deadline after the grant, so this bound can only be looser than the
+    # thread's own; the 10 ms covers clock reads landing either side of it.
+    granted_until = time.monotonic() + lease
+    try:
+        assert heartbeat.lost.wait(timeout=4.0) is True
+    finally:
+        heartbeat.stop()
+
+    assert client.calls, "the heartbeat never tried to renew"
+    for timeout, called_at in client.calls:
+        assert timeout is not None
+        assert timeout <= max(0.1, granted_until - called_at) + 0.01
+    assert client.calls[0][0] < heartbeat.call_timeout
+
+
+class LoadingServer:
+    """A server whose model load only ends when the test lets it."""
+
+    def __init__(self):
+        self.started = threading.Event()
+        self.terminated = threading.Event()
+        self._release = threading.Event()
+
+    def start(self) -> None:
+        self.started.set()
+        self._release.wait(5.0)
+        if self.terminated.is_set():
+            raise JobFailure("llama-server exited with code -15 before it was ready")
+
+    def terminate(self) -> None:
+        self.terminated.set()
+        self._release.set()
+
+    def stop(self) -> None:
+        self.terminate()
+
+
+def test_a_lease_lost_during_the_model_load_stops_the_server(tmp_path) -> None:
+    """The load is the longest stretch on the card, and start() is where the model
+    takes it, so a lease lost inside the load has to end the load."""
+    client = FakeClient()
+    heartbeat = Heartbeat(client, "job-1", "worker-1", lease_ms=300, interval=0.05)
+    server = LoadingServer()
+    pipeline = Pipeline(make_config(tmp_path), client, server_factory=lambda: server)
+
+    def lose_once_loading() -> None:
+        assert server.started.wait(2.0)
+        heartbeat.abort()
+
+    threading.Thread(target=lose_once_loading, daemon=True).start()
+    started = time.monotonic()
+    with pytest.raises(LeaseLost):
+        pipeline.process(make_claim(), heartbeat)
+    elapsed = time.monotonic() - started
+
+    # LoadingServer.start() waits five seconds unless something releases it, so a
+    # short run is the difference between ending the load and outlasting it.
+    assert elapsed < 1.0
+    assert server.terminated.is_set()

@@ -41,7 +41,16 @@ class WorkerClient:
         self.timeout = timeout
         self.attempts = attempts
 
-    def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    def _post(
+        self,
+        path: str,
+        body: dict[str, Any],
+        *,
+        timeout: float | None = None,
+        attempts: int | None = None,
+    ) -> dict[str, Any]:
+        timeout = self.timeout if timeout is None else timeout
+        attempts = self.attempts if attempts is None else attempts
         data = json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
             f"{self.base_url}{path}",
@@ -54,9 +63,9 @@ class WorkerClient:
         )
 
         last_error: Exception | None = None
-        for attempt in range(self.attempts):
+        for attempt in range(attempts):
             try:
-                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
                     raw = response.read()
                     return json.loads(raw) if raw else {}
             except urllib.error.HTTPError as error:
@@ -72,7 +81,7 @@ class WorkerClient:
             except (urllib.error.URLError, TimeoutError, OSError) as error:
                 last_error = error
 
-            if attempt + 1 == self.attempts:
+            if attempt + 1 == attempts:
                 break
             delay = min(8.0, 0.5 * (2**attempt))
             log.warning("POST %s failed (%s), retrying in %.1fs", path, last_error, delay)
@@ -84,8 +93,14 @@ class WorkerClient:
         payload = self._post(f"{TRANSLATION}/claim", {"owner": owner, "leaseMs": lease_ms})
         return payload if payload.get("job") else None
 
-    def heartbeat(self, job_id: str, owner: str) -> None:
-        self._post(f"{TRANSLATION}/jobs/{job_id}/heartbeat", {"owner": owner})
+    def heartbeat(self, job_id: str, owner: str, *, timeout: float | None = None) -> None:
+        """One attempt on the caller's deadline: a retry can outlive the lease."""
+        self._post(
+            f"{TRANSLATION}/jobs/{job_id}/heartbeat",
+            {"owner": owner},
+            timeout=timeout,
+            attempts=1,
+        )
 
     def progress(self, job_id: str, owner: str, state: str, stage: str, progress: float) -> None:
         self._post(
@@ -140,8 +155,9 @@ class WorkerClient:
         )
         return bool(payload.get("acquired"))
 
-    def gpu_heartbeat(self, owner: str) -> None:
-        self._post(f"{GPU}/heartbeat", {"owner": owner})
+    def gpu_heartbeat(self, owner: str, *, timeout: float | None = None) -> None:
+        """One attempt on the caller's deadline: a retry can outlive the lease."""
+        self._post(f"{GPU}/heartbeat", {"owner": owner}, timeout=timeout, attempts=1)
 
     def gpu_release(self, owner: str) -> None:
         self._post(f"{GPU}/release", {"owner": owner})
