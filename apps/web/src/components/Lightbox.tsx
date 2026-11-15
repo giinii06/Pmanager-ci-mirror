@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
+import type { SubtitleTrackDTO } from '@mediavault/shared'
 import {
   Captions,
   ChevronLeft,
@@ -21,6 +22,8 @@ import { useViewer } from '../store/viewer'
 import { TranscriptPanel } from './TranscriptPanel'
 import { VideoPlayer } from './VideoPlayer'
 import { Spinner } from './ui/Spinner'
+
+const NO_TRACKS: SubtitleTrackDTO[] = []
 
 function IconButton({
   label,
@@ -71,16 +74,31 @@ export function Lightbox() {
   const libraryName = libraries.data?.find((library) => library.id === asset?.libraryId)?.name
   const open = Boolean(asset)
 
-  const transcription = useQuery({
-    queryKey: ['transcription', asset?.id],
-    queryFn: () => api.transcriptionStatus(asset!.id),
+  const subtitleTracks = useQuery({
+    queryKey: ['subtitle-tracks', asset?.id],
+    queryFn: () => api.subtitleTracks(asset!.id),
     enabled: open && asset?.kind === 'video',
     staleTime: 30_000,
   })
+  const tracks = subtitleTracks.data?.tracks ?? NO_TRACKS
+  const sourceTrack = tracks.find((track) => track.source === 'asr')
+  const defaultLanguage =
+    subtitleTracks.data?.defaultLanguage === 'original'
+      ? (sourceTrack?.language ?? null)
+      : (subtitleTracks.data?.defaultLanguage ?? null)
+
+  // A choice outlives refetches of the tracks, so a translation turning ready
+  // never pulls the viewer off the language they picked for this asset.
+  const [subtitleChoice, setSubtitleChoice] = useState<{
+    assetId: string
+    language: string | null
+  } | null>(null)
+  const language =
+    subtitleChoice && subtitleChoice.assetId === asset?.id
+      ? subtitleChoice.language
+      : defaultLanguage
   const subtitleUrl =
-    asset?.kind === 'video' && transcription.data?.transcript
-      ? api.vttUrl(asset.id, asset.fileVersion)
-      : null
+    asset?.kind === 'video' && language ? api.vttUrl(asset.id, asset.fileVersion, language) : null
 
   useEffect(() => {
     setShowInfo(false)
@@ -232,7 +250,17 @@ export function Lightbox() {
             ) : null}
 
             {asset.kind === 'video' ? (
-              <VideoPlayer key={asset.id} asset={asset} subtitleUrl={subtitleUrl} videoRef={videoRef} />
+              <VideoPlayer
+                key={asset.id}
+                asset={asset}
+                subtitleUrl={subtitleUrl}
+                tracks={tracks}
+                language={language}
+                onSelectLanguage={(next) =>
+                  setSubtitleChoice({ assetId: asset.id, language: next })
+                }
+                videoRef={videoRef}
+              />
             ) : (
               <div className="relative flex h-full w-full items-center justify-center">
                 <img
@@ -340,6 +368,8 @@ export function Lightbox() {
                 >
                   <TranscriptPanel
                     asset={asset}
+                    tracks={tracks}
+                    language={language}
                     videoRef={videoRef}
                     onClose={() => setShowTranscript(false)}
                   />

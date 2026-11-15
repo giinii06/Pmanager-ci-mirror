@@ -1,10 +1,17 @@
-import { useEffect, useMemo, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, Search, Sparkles, X } from 'lucide-react'
-import type { AssetDTO, AsrStage, TranscriptSegmentDTO } from '@mediavault/shared'
+import type {
+  AssetDTO,
+  AsrStage,
+  SubtitleTrackDTO,
+  TranscriptSegmentDTO,
+  TranslationStage,
+} from '@mediavault/shared'
 import { api, ApiError } from '../lib/api'
 import { cn } from '../lib/cn'
 import { Spinner } from './ui/Spinner'
+import { languageName } from './SubtitleMenu'
 
 const STAGE_LABEL: Record<AsrStage, string> = {
   queued: '대기 중',
@@ -12,6 +19,14 @@ const STAGE_LABEL: Record<AsrStage, string> = {
   chunking: '음성 구간 분석 중',
   transcribing: '음성 인식 중',
   aligning: '시간 정렬 중',
+  writing: '자막 저장 중',
+  completed: '완료',
+}
+
+const TRANSLATION_STAGE_LABEL: Record<TranslationStage, string> = {
+  queued: '대기 중',
+  starting: '번역 준비 중',
+  translating: '번역 중',
   writing: '자막 저장 중',
   completed: '완료',
 }
@@ -27,18 +42,54 @@ function isActive(state: string | undefined): boolean {
   return state === 'queued' || state === 'transcribing' || state === 'aligning' || state === 'writing'
 }
 
+function isTranslationActive(state: string | undefined): boolean {
+  return state === 'queued' || state === 'translating' || state === 'writing'
+}
+
+function JobProgress({
+  label,
+  progress,
+  note,
+}: {
+  label: string
+  progress: number
+  note: string
+}) {
+  return (
+    <div className="px-4 py-5">
+      <div className="flex items-center gap-2 text-[12.5px] text-ink">
+        <Spinner className="text-accent" />
+        <span>{label}</span>
+        <span className="ml-auto tabular-nums text-muted">{progress}%</span>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div
+          className="h-full rounded-full bg-accent transition-[width] duration-500"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <p className="mt-3 text-[11.5px] leading-relaxed text-faint">{note}</p>
+    </div>
+  )
+}
+
 export function TranscriptPanel({
   asset,
+  tracks,
+  language,
   videoRef,
   onClose,
 }: {
   asset: AssetDTO
+  tracks: SubtitleTrackDTO[]
+  language: string | null
   videoRef: RefObject<HTMLVideoElement | null>
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
+  const [tab, setTab] = useState<string | null>(language)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query.trim()), 250)
@@ -57,17 +108,53 @@ export function TranscriptPanel({
       isActive(result.state.data?.job?.state) ? 2000 : false,
   })
 
+  const ready = Boolean(status.data?.transcript)
+
   const transcript = useQuery({
     queryKey: ['transcript', asset.id],
     queryFn: () => api.transcript(asset.id),
-    enabled: Boolean(status.data?.transcript),
+    enabled: ready,
+    staleTime: 60_000,
+  })
+
+  const sourceLanguage =
+    transcript.data?.language ?? tracks.find((track) => track.source === 'asr')?.language ?? null
+  const target = tracks.find((track) => track.source === 'translation')?.language ?? null
+
+  const tabs = useMemo(() => {
+    const list: string[] = []
+    if (sourceLanguage) list.push(sourceLanguage)
+    if (target && target !== sourceLanguage) list.push(target)
+    return list
+  }, [sourceLanguage, target])
+
+  const activeTab = tab && tabs.includes(tab) ? tab : (sourceLanguage ?? target)
+  const onTranslationTab = Boolean(target) && activeTab === target
+
+  const translationStatus = useQuery({
+    queryKey: ['translation-status', asset.id, target],
+    queryFn: () => api.translationStatus(asset.id, target!),
+    enabled: ready && Boolean(target),
+    refetchInterval: (result) =>
+      isTranslationActive(result.state.data?.job?.state) ? 2000 : false,
+  })
+
+  const translationReady = Boolean(translationStatus.data?.translation)
+
+  const translation = useQuery({
+    queryKey: ['translation', asset.id, target],
+    queryFn: () => api.translation(asset.id, target!),
+    enabled: translationReady,
     staleTime: 60_000,
   })
 
   const search = useQuery({
-    queryKey: ['transcript-search', asset.id, debounced],
-    queryFn: () => api.searchTranscript(asset.id, debounced),
-    enabled: debounced.length > 0 && Boolean(status.data?.transcript),
+    queryKey: ['transcript-search', asset.id, activeTab, debounced],
+    queryFn: () => api.searchTranscript(asset.id, debounced, activeTab ?? undefined),
+    enabled:
+      debounced.length > 0 &&
+      Boolean(activeTab) &&
+      (onTranslationTab ? translationReady : ready),
   })
 
   const create = useMutation({
@@ -78,10 +165,37 @@ export function TranscriptPanel({
     },
   })
 
+  const createTranslation = useMutation({
+    mutationFn: (force: boolean) => api.createTranslation(asset.id, target ?? undefined, force),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['translation-status', asset.id, target] })
+    },
+  })
+
+  // The player reads subtitle-tracks, so a transcript or translation that lands
+  // while this panel is open has to push the new track list to it.
+  const announced = useRef<{ transcript: boolean | null; translation: boolean | null }>({
+    transcript: null,
+    translation: null,
+  })
+  useEffect(() => {
+    const previous = announced.current
+    const transcriptLanded = previous.transcript === false && ready
+    const translationLanded = previous.translation === false && translationReady
+    announced.current = { transcript: ready, translation: translationReady }
+    if (transcriptLanded || translationLanded) {
+      void queryClient.invalidateQueries({ queryKey: ['subtitle-tracks', asset.id] })
+    }
+    if (translationLanded) {
+      void queryClient.invalidateQueries({ queryKey: ['translation', asset.id, target] })
+    }
+  }, [asset.id, queryClient, ready, target, translationReady])
+
   const segments: TranscriptSegmentDTO[] = useMemo(() => {
     if (debounced.length > 0 && search.data) return search.data.hits
+    if (onTranslationTab) return translation.data?.segments ?? []
     return transcript.data?.segments ?? []
-  }, [debounced, search.data, transcript.data])
+  }, [debounced, search.data, transcript.data, translation.data, onTranslationTab])
 
   const seek = (startMs: number) => {
     const video = videoRef.current
@@ -93,7 +207,10 @@ export function TranscriptPanel({
   const job = status.data?.job
   const running = isActive(job?.state)
   const failed = job?.state === 'failed'
-  const ready = Boolean(status.data?.transcript)
+  const translationJob = translationStatus.data?.job
+  const translationRunning = isTranslationActive(translationJob?.state)
+  const translationFailed = translationJob?.state === 'failed'
+  const targetName = target ? languageName(target) : '번역'
 
   return (
     <aside className="flex h-full w-full flex-col border-l border-white/10 bg-[#0b0c0f]/97">
@@ -118,22 +235,11 @@ export function TranscriptPanel({
             이 서버에는 자막 생성기가 설정되어 있지 않습니다. 운영 문서의 ASR 설정을 먼저 적용하세요.
           </p>
         ) : running ? (
-          <div className="px-4 py-5">
-            <div className="flex items-center gap-2 text-[12.5px] text-ink">
-              <Spinner className="text-accent" />
-              <span>{STAGE_LABEL[job?.stage ?? 'queued']}</span>
-              <span className="ml-auto tabular-nums text-muted">{job?.progress ?? 0}%</span>
-            </div>
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-accent transition-[width] duration-500"
-                style={{ width: `${job?.progress ?? 0}%` }}
-              />
-            </div>
-            <p className="mt-3 text-[11.5px] leading-relaxed text-faint">
-              음성 인식과 시간 정렬은 한 번에 하나씩 실행됩니다. 창을 닫아도 작업은 계속됩니다.
-            </p>
-          </div>
+          <JobProgress
+            label={STAGE_LABEL[job?.stage ?? 'queued']}
+            progress={job?.progress ?? 0}
+            note="음성 인식과 시간 정렬은 한 번에 하나씩 실행됩니다. 창을 닫아도 작업은 계속됩니다."
+          />
         ) : failed ? (
           <div className="px-4 py-5">
             <p className="text-[12.5px] text-ink">자막을 만들지 못했습니다.</p>
@@ -174,73 +280,152 @@ export function TranscriptPanel({
           </div>
         ) : (
           <>
-            <div className="border-b border-white/10 px-4 py-2.5">
-              <label className="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-1.5">
-                <Search size={13} className="shrink-0 text-faint" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="자막에서 찾기"
-                  className="min-w-0 flex-1 bg-transparent text-[12px] text-ink outline-none placeholder:text-faint"
-                />
-                {search.isFetching ? <Spinner className="text-faint" /> : null}
-              </label>
-              <div className="mt-2 flex items-center gap-2 text-[11.5px] text-faint">
-                <span className="tabular-nums">
-                  {debounced ? `${segments.length}개 일치` : `${segments.length}문장`}
-                </span>
-                <span className="ml-auto flex items-center gap-2">
-                  <a
-                    href={api.vttUrl(asset.id, asset.fileVersion)}
-                    className="inline-flex items-center gap-1 transition-colors hover:text-ink"
-                  >
-                    <Download size={11} /> VTT
-                  </a>
-                  <a
-                    href={api.srtUrl(asset.id, asset.fileVersion)}
-                    className="inline-flex items-center gap-1 transition-colors hover:text-ink"
-                  >
-                    <Download size={11} /> SRT
-                  </a>
-                </span>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-              {segments.length === 0 ? (
-                <p className="px-2 py-4 text-[12px] text-muted">
-                  {debounced ? '일치하는 문장이 없습니다.' : '자막 문장이 없습니다.'}
-                </p>
-              ) : (
-                segments.map((segment) => (
+            {tabs.length > 1 ? (
+              <div className="flex items-center gap-1 border-b border-white/10 px-3 py-2">
+                {tabs.map((tag) => (
                   <button
-                    key={`${segment.seq}-${segment.startMs}`}
+                    key={tag}
                     type="button"
-                    onClick={() => seek(segment.startMs)}
+                    aria-pressed={tag === activeTab}
+                    onClick={() => setTab(tag)}
                     className={cn(
-                      'flex w-full gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
-                      'hover:bg-white/8 focus-visible:bg-white/8 focus-visible:outline-none',
+                      'rounded-md px-2.5 py-1 text-[12px] transition-colors',
+                      tag === activeTab
+                        ? 'bg-white/10 text-ink'
+                        : 'text-muted hover:bg-white/5 hover:text-ink',
                     )}
                   >
-                    <span className="mt-0.5 shrink-0 tabular-nums text-[11px] text-faint">
-                      {clock(segment.startMs)}
-                    </span>
-                    <span className="text-[12.5px] leading-relaxed text-ink">{segment.text}</span>
+                    {languageName(tag)}
                   </button>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            ) : null}
 
-            <div className="border-t border-white/10 px-4 py-2.5">
-              <button
-                type="button"
-                onClick={() => create.mutate(true)}
-                disabled={create.isPending}
-                className="text-[11.5px] text-faint transition-colors hover:text-ink disabled:opacity-50"
-              >
-                자막 다시 만들기
-              </button>
-            </div>
+            {onTranslationTab && !translationReady ? (
+              translationRunning ? (
+                <JobProgress
+                  label={TRANSLATION_STAGE_LABEL[translationJob?.stage ?? 'queued']}
+                  progress={translationJob?.progress ?? 0}
+                  note="번역은 자막 문장 단위로 진행됩니다. 창을 닫아도 작업은 계속됩니다."
+                />
+              ) : translationFailed ? (
+                <div className="px-4 py-5">
+                  <p className="text-[12.5px] text-ink">{targetName} 번역을 만들지 못했습니다.</p>
+                  <p className="mt-1.5 break-words text-[11.5px] leading-relaxed text-muted">
+                    {translationJob?.errorMessage ?? '알 수 없는 오류입니다.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => createTranslation.mutate(true)}
+                    disabled={createTranslation.isPending}
+                    className="mt-3 rounded-lg border border-line-strong px-3 py-1.5 text-[12px] text-ink transition-colors hover:bg-raised disabled:opacity-50"
+                  >
+                    다시 시도
+                  </button>
+                </div>
+              ) : (
+                <div className="px-4 py-5">
+                  <p className="text-[12.5px] leading-relaxed text-muted">
+                    원본 자막을 {targetName}로 번역해 시간 정보가 있는 자막을 만듭니다. 원본 자막은
+                    그대로 남습니다.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => createTranslation.mutate(false)}
+                    disabled={createTranslation.isPending}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {createTranslation.isPending ? (
+                      <Spinner className="text-black" />
+                    ) : (
+                      <Sparkles size={13} />
+                    )}
+                    {targetName} 번역
+                  </button>
+                  {createTranslation.error ? (
+                    <p className="mt-2 text-[11.5px] text-muted">
+                      {createTranslation.error instanceof ApiError
+                        ? createTranslation.error.message
+                        : '요청을 보내지 못했습니다.'}
+                    </p>
+                  ) : null}
+                </div>
+              )
+            ) : (
+              <>
+                <div className="border-b border-white/10 px-4 py-2.5">
+                  <label className="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-1.5">
+                    <Search size={13} className="shrink-0 text-faint" />
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="자막에서 찾기"
+                      className="min-w-0 flex-1 bg-transparent text-[12px] text-ink outline-none placeholder:text-faint"
+                    />
+                    {search.isFetching ? <Spinner className="text-faint" /> : null}
+                  </label>
+                  <div className="mt-2 flex items-center gap-2 text-[11.5px] text-faint">
+                    <span className="tabular-nums">
+                      {debounced ? `${segments.length}개 일치` : `${segments.length}문장`}
+                    </span>
+                    <span className="ml-auto flex items-center gap-2">
+                      <a
+                        href={api.vttUrl(asset.id, asset.fileVersion, activeTab ?? undefined)}
+                        className="inline-flex items-center gap-1 transition-colors hover:text-ink"
+                      >
+                        <Download size={11} /> VTT
+                      </a>
+                      <a
+                        href={api.srtUrl(asset.id, asset.fileVersion, activeTab ?? undefined)}
+                        className="inline-flex items-center gap-1 transition-colors hover:text-ink"
+                      >
+                        <Download size={11} /> SRT
+                      </a>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+                  {segments.length === 0 ? (
+                    <p className="px-2 py-4 text-[12px] text-muted">
+                      {debounced ? '일치하는 문장이 없습니다.' : '자막 문장이 없습니다.'}
+                    </p>
+                  ) : (
+                    segments.map((segment) => (
+                      <button
+                        key={`${segment.seq}-${segment.startMs}`}
+                        type="button"
+                        onClick={() => seek(segment.startMs)}
+                        className={cn(
+                          'flex w-full gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
+                          'hover:bg-white/8 focus-visible:bg-white/8 focus-visible:outline-none',
+                        )}
+                      >
+                        <span className="mt-0.5 shrink-0 tabular-nums text-[11px] text-faint">
+                          {clock(segment.startMs)}
+                        </span>
+                        <span className="text-[12.5px] leading-relaxed text-ink">
+                          {segment.text}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {!onTranslationTab ? (
+                  <div className="border-t border-white/10 px-4 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => create.mutate(true)}
+                      disabled={create.isPending}
+                      className="text-[11.5px] text-faint transition-colors hover:text-ink disabled:opacity-50"
+                    >
+                      자막 다시 만들기
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            )}
           </>
         )}
       </div>

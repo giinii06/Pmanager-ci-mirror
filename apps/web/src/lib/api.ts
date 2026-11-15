@@ -8,9 +8,14 @@ import type {
   Page,
   PlaybackProgressDTO,
   StatsDTO,
+  SubtitleTracksDTO,
   TranscriptDTO,
   TranscriptSearchDTO,
   TranscriptionStatusDTO,
+  TranslationDTO,
+  TranslationJobDTO,
+  TranslationStatusDTO,
+  TranslationSummaryDTO,
   UserDTO,
 } from '@mediavault/shared'
 
@@ -60,6 +65,12 @@ function queryString(query: AssetQuery): string {
   if (query.limit) params.set('limit', String(query.limit))
   const text = params.toString()
   return text ? `?${text}` : ''
+}
+
+/** A missing `lang` and `original` both resolve to the source transcript. */
+function withLang(path: string, lang: string | undefined): string {
+  if (!lang) return path
+  return `${path}${path.includes('?') ? '&' : '?'}lang=${encodeURIComponent(lang)}`
 }
 
 export interface FolderDetail {
@@ -117,10 +128,28 @@ export const api = {
       body: JSON.stringify({ force }),
     }),
   transcript: (id: string) => request<TranscriptDTO>(`/api/assets/${id}/transcription`),
-  searchTranscript: (id: string, q: string) =>
+  searchTranscript: (id: string, q: string, lang?: string) =>
     request<TranscriptSearchDTO>(
-      `/api/assets/${id}/transcript/search?q=${encodeURIComponent(q)}`,
+      withLang(`/api/assets/${id}/transcript/search?q=${encodeURIComponent(q)}`, lang),
     ),
-  vttUrl: (id: string, version: number) => `/api/assets/${id}/subtitles.vtt?v=${version}`,
-  srtUrl: (id: string, version: number) => `/api/assets/${id}/subtitles.srt?v=${version}`,
+  subtitleTracks: (id: string) => request<SubtitleTracksDTO>(`/api/assets/${id}/subtitle-tracks`),
+  translationStatus: (id: string, lang?: string) =>
+    request<TranslationStatusDTO>(withLang(`/api/assets/${id}/translations/status`, lang)),
+  createTranslation: (id: string, target?: string, force = false) =>
+    request<{ job: TranslationJobDTO | null; translation: TranslationSummaryDTO | null }>(
+      `/api/assets/${id}/translations`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          ...(target ? { targetLanguage: target } : {}),
+          ...(force ? { force } : {}),
+        }),
+      },
+    ),
+  translation: (id: string, lang?: string) =>
+    request<TranslationDTO>(withLang(`/api/assets/${id}/translation`, lang)),
+  vttUrl: (id: string, version: number, lang?: string) =>
+    withLang(`/api/assets/${id}/subtitles.vtt?v=${version}`, lang),
+  srtUrl: (id: string, version: number, lang?: string) =>
+    withLang(`/api/assets/${id}/subtitles.srt?v=${version}`, lang),
 }

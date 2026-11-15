@@ -1,18 +1,25 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import Hls from 'hls.js'
-import type { AssetDTO } from '@mediavault/shared'
+import type { AssetDTO, SubtitleTrackDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { Spinner } from './ui/Spinner'
+import { SubtitleMenu, languageName, trackLabel } from './SubtitleMenu'
 
 type HlsState = 'idle' | 'preparing' | 'ready' | 'error'
 
 export function VideoPlayer({
   asset,
   subtitleUrl,
+  tracks,
+  language,
+  onSelectLanguage,
   videoRef: externalRef,
 }: {
   asset: AssetDTO
   subtitleUrl?: string | null
+  tracks: SubtitleTrackDTO[]
+  language: string | null
+  onSelectLanguage: (language: string | null) => void
   videoRef?: RefObject<HTMLVideoElement | null>
 }) {
   const localRef = useRef<HTMLVideoElement>(null)
@@ -268,6 +275,9 @@ export function VideoPlayer({
     )
   }
 
+  const activeTrack = language ? tracks.find((track) => track.language === language) : undefined
+  const preparing = useHls && hlsState !== 'ready'
+
   return (
     <div className="relative flex max-h-full max-w-full items-center justify-center">
       <video
@@ -277,16 +287,19 @@ export function VideoPlayer({
         poster={asset.thumbnails.medium}
         className="max-h-[calc(100vh-170px)] max-w-[calc(100vw-140px)] rounded-lg bg-black shadow-2xl"
       >
-        {subtitleUrl ? (
+        {subtitleUrl && language ? (
           <track
             key={subtitleUrl}
             kind="subtitles"
             src={subtitleUrl}
-            srcLang="ko"
-            label="한국어 (AI)"
+            srcLang={language}
+            label={activeTrack ? trackLabel(activeTrack) : languageName(language)}
           />
         ) : null}
       </video>
+      {!preparing ? (
+        <SubtitleMenu tracks={tracks} language={language} onSelect={onSelectLanguage} />
+      ) : null}
       {/*
         Native fullscreen promotes the video into the top layer, where this sibling overlay
         is not painted, so the track renderer draws the captions there instead.
@@ -304,7 +317,7 @@ export function VideoPlayer({
           </span>
         </div>
       ) : null}
-      {useHls && hlsState !== 'ready' ? (
+      {preparing ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/70 text-center">
           <Spinner className="text-accent" />
           <div>
