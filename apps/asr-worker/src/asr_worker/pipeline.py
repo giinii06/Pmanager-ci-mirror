@@ -17,6 +17,7 @@ from . import audio
 from .client import FatalError, LeaseLost, WorkerClient
 from .config import Config
 from .jsonio import write_json_atomic
+from .stage_pid import reap_stale_stage, stage_pid_file
 from .subtitles import build_segments, to_srt, to_txt, to_vtt
 
 log = logging.getLogger(__name__)
@@ -316,9 +317,22 @@ class Pipeline:
         log_path = Path(log_name)
         process: subprocess.Popen[str] | None = None
         try:
+            stage_pid = stage_pid_file(self.config.temp_dir)
+            if not reap_stale_stage(stage_pid):
+                raise RuntimeError(
+                    f"a stage from a dead worker (pid in {stage_pid}) still holds the card, so no "
+                    "second model was loaded onto it"
+                )
             with log_path.open("w", encoding="utf-8") as log_stream:
                 process = subprocess.Popen(
-                    [sys.executable, "-m", "asr_worker.stage", *args],
+                    [
+                        sys.executable,
+                        "-m",
+                        "asr_worker.stage",
+                        *args,
+                        "--pid-file",
+                        str(stage_pid),
+                    ],
                     stdout=subprocess.PIPE,
                     stderr=log_stream,
                     text=True,

@@ -6,7 +6,7 @@ import warnings
 import sys
 from pathlib import Path
 
-from . import align, transcribe
+from .stage_pid import clear_self, record_self
 
 
 def _progress(fraction: float) -> None:
@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     asr.add_argument("--model-dir", required=True)
     asr.add_argument("--device", required=True)
     asr.add_argument("--language", default="ko")
+    asr.add_argument("--pid-file", required=True)
 
     forced = sub.add_parser("align", help="align an ASR checkpoint")
     forced.add_argument("--input", required=True)
@@ -30,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     forced.add_argument("--aligner-dir", required=True)
     forced.add_argument("--device", required=True)
     forced.add_argument("--language", default="ko")
+    forced.add_argument("--pid-file", required=True)
     return parser
 
 
@@ -42,24 +44,34 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = build_parser().parse_args(argv)
 
-    if args.command == "transcribe":
-        transcribe.run(
-            Path(args.input),
-            args.model_dir,
-            args.device,
-            args.language,
-            Path(args.output),
-            _progress,
-        )
-    else:
-        align.run(
-            Path(args.input),
-            args.aligner_dir,
-            args.device,
-            args.language,
-            Path(args.output),
-            _progress,
-        )
+    # Both stage modules import `device`, which imports torch at module scope, so the
+    # record has to land before the branch that could allocate on the card.
+    record_self(Path(args.pid_file))
+    try:
+        if args.command == "transcribe":
+            from . import transcribe
+
+            transcribe.run(
+                Path(args.input),
+                args.model_dir,
+                args.device,
+                args.language,
+                Path(args.output),
+                _progress,
+            )
+        else:
+            from . import align
+
+            align.run(
+                Path(args.input),
+                args.aligner_dir,
+                args.device,
+                args.language,
+                Path(args.output),
+                _progress,
+            )
+    finally:
+        clear_self(Path(args.pid_file))
     return 0
 
 

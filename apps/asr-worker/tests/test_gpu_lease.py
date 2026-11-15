@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import time
 import types
 import urllib.error
+from pathlib import Path
 
+import pytest
+
+from asr_worker import pipeline as pipeline_module
 from asr_worker.client import FatalError
 from asr_worker.pipeline import Heartbeat, Pipeline
+from asr_worker.stage_pid import stage_pid_file
 
 
 class RecordingClient:
@@ -49,16 +55,29 @@ class FakeProcess:
         pass
 
 
-def make_pipeline(client: RecordingClient) -> Pipeline:
+def make_pipeline(client: RecordingClient, tmp_path) -> Pipeline:
     config = types.SimpleNamespace(
         worker_id="asr-test",
         lease_ms=120_000,
         gpu_wait_seconds=1.0,
+        temp_dir=str(tmp_path),
     )
     return Pipeline(config, client)  # type: ignore[arg-type]
 
 
-def test_stage_holds_the_gpu_lease_for_the_process(monkeypatch):
+def patch_popen(monkeypatch, popen) -> None:
+    """Shim the module's `subprocess`, not the real one: `_start_of` shells out through
+    `subprocess.run`, which builds its own Popen from the real module."""
+    monkeypatch.setattr(
+        pipeline_module,
+        "subprocess",
+        types.SimpleNamespace(
+            Popen=popen, PIPE=subprocess.PIPE, TimeoutExpired=subprocess.TimeoutExpired
+        ),
+    )
+
+
+def test_stage_holds_the_gpu_lease_for_the_process(monkeypatch, tmp_path):
     client = RecordingClient()
     events = client.events
 
@@ -66,8 +85,8 @@ def test_stage_holds_the_gpu_lease_for_the_process(monkeypatch):
         events.append("start")
         return FakeProcess()
 
-    monkeypatch.setattr(subprocess, "Popen", popen)
-    pipeline = make_pipeline(client)
+    patch_popen(monkeypatch, popen)
+    pipeline = make_pipeline(client, tmp_path)
     heartbeat = Heartbeat(client, "job1", "asr-test", 120_000)  # type: ignore[arg-type]
 
     pipeline._run_stage(
@@ -83,7 +102,7 @@ def test_stage_holds_the_gpu_lease_for_the_process(monkeypatch):
     assert events == ["acquire:asr", "start", "release"]
 
 
-def test_a_busy_gpu_starts_no_process(monkeypatch):
+def test_a_busy_gpu_starts_no_process(monkeypatch, tmp_path):
     client = RecordingClient(acquired=False)
     started = []
 
@@ -91,8 +110,8 @@ def test_a_busy_gpu_starts_no_process(monkeypatch):
         started.append(True)
         return FakeProcess()
 
-    monkeypatch.setattr(subprocess, "Popen", popen)
-    pipeline = make_pipeline(client)
+    patch_popen(monkeypatch, popen)
+    pipeline = make_pipeline(client, tmp_path)
     heartbeat = Heartbeat(client, "job1", "asr-test", 120_000)  # type: ignore[arg-type]
 
     try:
@@ -112,6 +131,79 @@ def test_a_busy_gpu_starts_no_process(monkeypatch):
 
     assert started == []
     assert "release" not in client.events
+
+
+def test_the_stage_is_reaped_before_it_is_spawned(monkeypatch, tmp_path):
+    client = RecordingClient()
+    events = client.events
+    reaped: list[Path] = []
+    commands: list[list[str]] = []
+
+    def reap(path):
+        reaped.append(path)
+        events.append("reap")
+        return True
+
+    def popen(command, **kwargs):
+        commands.append(command)
+        events.append("start")
+        return FakeProcess()
+
+    patch_popen(monkeypatch, popen)
+    monkeypatch.setattr(pipeline_module, "reap_stale_stage", reap)
+    pipeline = make_pipeline(client, tmp_path)
+    heartbeat = Heartbeat(client, "job1", "asr-test", 120_000)  # type: ignore[arg-type]
+
+    pipeline._run_stage(
+        ["transcribe"],
+        heartbeat,
+        "job1",
+        state="transcribing",
+        stage="transcribing",
+        low=0,
+        high=100,
+    )
+
+    assert events == ["acquire:asr", "reap", "start", "release"]
+    assert reaped == [stage_pid_file(str(tmp_path))]
+    assert commands == [
+        [
+            sys.executable,
+            "-m",
+            "asr_worker.stage",
+            "transcribe",
+            "--pid-file",
+            str(stage_pid_file(str(tmp_path))),
+        ]
+    ]
+
+
+def test_a_stage_that_still_holds_the_card_starts_no_second_model(monkeypatch, tmp_path):
+    client = RecordingClient()
+    started: list[list[str]] = []
+
+    def popen(command, **kwargs):
+        started.append(command)
+        return FakeProcess()
+
+    patch_popen(monkeypatch, popen)
+    monkeypatch.setattr(pipeline_module, "reap_stale_stage", lambda path: False)
+    pipeline = make_pipeline(client, tmp_path)
+    heartbeat = Heartbeat(client, "job1", "asr-test", 120_000)  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="still holds the card"):
+        pipeline._run_stage(
+            ["transcribe"],
+            heartbeat,
+            "job1",
+            state="transcribing",
+            stage="transcribing",
+            low=0,
+            high=100,
+        )
+
+    assert started == []
+    assert "release" in client.events
 
 
 class RunningProcess:
