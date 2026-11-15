@@ -150,9 +150,9 @@ export function VideoPlayer({
     if (!video || !subtitleUrl) return
     const track = video.textTracks[0]
     if (!track) return
-    track.mode = nativeFullscreen ? 'showing' : 'hidden'
 
     const sync = () => {
+      track.mode = nativeFullscreen ? 'showing' : 'hidden'
       const cues = track.activeCues ? Array.from(track.activeCues) : []
       const lines = cues
         .map((cue) => (cue instanceof VTTCue ? cue.text : ''))
@@ -177,7 +177,7 @@ export function VideoPlayer({
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? 0
       if (width === 0) return
-      setCaptionFontSize(Math.min(32, Math.max(13, width * 0.028)))
+      setCaptionFontSize(Math.min(64, Math.max(26, width * 0.056)))
     })
     observer.observe(video)
     return () => observer.disconnect()
@@ -207,9 +207,17 @@ export function VideoPlayer({
       timer = null
     }
 
+    const hideNow = () => {
+      if (video.paused || video.seeking) return
+      setControlsVisible(false)
+      if (timer !== null) window.clearTimeout(timer)
+      timer = null
+    }
+
     window.addEventListener('keydown', show)
     video.addEventListener('pointermove', show)
     video.addEventListener('pointerdown', show)
+    video.addEventListener('pointerleave', hideNow)
     video.addEventListener('play', show)
     video.addEventListener('seeking', show)
     video.addEventListener('pause', hold)
@@ -217,6 +225,7 @@ export function VideoPlayer({
       window.removeEventListener('keydown', show)
       video.removeEventListener('pointermove', show)
       video.removeEventListener('pointerdown', show)
+      video.removeEventListener('pointerleave', hideNow)
       video.removeEventListener('play', show)
       video.removeEventListener('seeking', show)
       video.removeEventListener('pause', hold)
@@ -275,7 +284,6 @@ export function VideoPlayer({
             src={subtitleUrl}
             srcLang="ko"
             label="한국어 (AI)"
-            default
           />
         ) : null}
       </video>
@@ -285,7 +293,7 @@ export function VideoPlayer({
       */}
       {!nativeFullscreen && caption ? (
         <div
-          className="pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3 transition-[bottom] duration-150 ease-out"
+          className="pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3"
           style={{ bottom: controlsVisible ? 64 : 24 }}
         >
           <span
