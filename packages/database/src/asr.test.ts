@@ -7,6 +7,7 @@ import {
   createLibrary,
   failAsrJob,
   getTranscript,
+  heartbeatAsrJob,
   insertAsset,
   latestAsrJob,
   openDatabase,
@@ -104,7 +105,7 @@ describe('asr queue', () => {
         db,
         'job1',
         'worker-b',
-        { state: 'transcribing', stage: 'transcribing', progress: 40, leaseMs: 30_000 },
+        { state: 'transcribing', stage: 'transcribing', progress: 40 },
         1_200,
       ),
     ).toBe(false)
@@ -113,11 +114,42 @@ describe('asr queue', () => {
         db,
         'job1',
         'worker-a',
-        { state: 'transcribing', stage: 'transcribing', progress: 40, leaseMs: 30_000 },
+        { state: 'transcribing', stage: 'transcribing', progress: 40 },
         1_200,
       ),
     ).toBe(true)
     expect(claimAsrJob(db, 'worker-b', 30_000, 1_300)).toBeNull()
+    db.close()
+  })
+
+  test('a renewal keeps the term the claim asked for', () => {
+    const db = seed()
+    createAsrJob(db, jobInput(), 1_000)
+    claimAsrJob(db, 'worker-a', 600_000, 1_100)
+
+    expect(heartbeatAsrJob(db, 'job1', 'worker-a', 2_000)).toBe(true)
+    expect(latestAsrJob(db, 'asset1', 1)?.leaseExpiresAt).toBe(602_000)
+
+    expect(
+      updateAsrProgress(
+        db,
+        'job1',
+        'worker-a',
+        { state: 'transcribing', stage: 'transcribing', progress: 40 },
+        3_000,
+      ),
+    ).toBe(true)
+    expect(latestAsrJob(db, 'asset1', 1)?.leaseExpiresAt).toBe(603_000)
+    db.close()
+  })
+
+  test('a renewal after the expiry is refused and leaves the lease dead', () => {
+    const db = seed()
+    createAsrJob(db, jobInput(), 1_000)
+    claimAsrJob(db, 'worker-a', 600_000, 1_100)
+
+    expect(heartbeatAsrJob(db, 'job1', 'worker-a', 601_101)).toBe(false)
+    expect(latestAsrJob(db, 'asset1', 1)?.leaseExpiresAt).toBe(601_100)
     db.close()
   })
 

@@ -3,6 +3,7 @@ import type { EmbeddingJobState, EmbeddingStage } from '@mediavault/shared'
 import { newId } from '@mediavault/shared'
 import { assetsByIds } from './assets'
 import type { Db } from './db'
+import { LEASE_IS_LIVE, RENEW_LEASE } from './leases'
 import type {
   AssetRecord,
   EmbeddingFingerprint,
@@ -237,21 +238,15 @@ export function claimEmbeddingJob(
   )
 }
 
-export function heartbeatEmbeddingJob(
-  db: Db,
-  id: string,
-  owner: string,
-  leaseMs: number,
-  now: number,
-): boolean {
+export function heartbeatEmbeddingJob(db: Db, id: string, owner: string, now: number): boolean {
   return (
     db
       .query<null, Params>(
-        `UPDATE embedding_jobs SET lease_expires_at = ?, updated_at = ?
+        `UPDATE embedding_jobs SET ${RENEW_LEASE}
          WHERE id = ? AND lease_owner = ? AND state IN ${ACTIVE_STATES}
-           AND lease_expires_at >= ?`,
+           AND ${LEASE_IS_LIVE}`,
       )
-      .run(now + leaseMs, now, id, owner, now).changes > 0
+      .run(now, now, id, owner, now).changes > 0
   )
 }
 
@@ -262,23 +257,25 @@ export function updateEmbeddingProgress(
   db: Db,
   id: string,
   owner: string,
-  update: { state: EmbeddingJobState; stage: EmbeddingStage; progress: number; leaseMs: number },
+  update: { state: EmbeddingJobState; stage: EmbeddingStage; progress: number },
   now: number,
 ): boolean {
   return (
     db
       .query<null, Params>(
-        `UPDATE embedding_jobs SET state = ?, stage = ?, progress = ?, lease_expires_at = ?, updated_at = ?
-         WHERE id = ? AND lease_owner = ? AND state IN ${ACTIVE_STATES}`,
+        `UPDATE embedding_jobs SET state = ?, stage = ?, progress = ?, ${RENEW_LEASE}
+         WHERE id = ? AND lease_owner = ? AND state IN ${ACTIVE_STATES}
+           AND ${LEASE_IS_LIVE}`,
       )
       .run(
         update.state,
         update.stage,
         Math.max(0, Math.min(100, Math.round(update.progress))),
-        now + update.leaseMs,
+        now,
         now,
         id,
         owner,
+        now,
       ).changes > 0
   )
 }

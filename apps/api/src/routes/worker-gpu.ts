@@ -80,7 +80,7 @@ export function registerWorkerGpuRoutes(app: FastifyInstance, ctx: AppContext): 
       if (!body) return
 
       const resourceId = ctx.config.gpu.resourceId
-      if (!heartbeatGpuLease(ctx.db, resourceId, body.owner, LEASE_MS, Date.now())) {
+      if (!heartbeatGpuLease(ctx.db, resourceId, body.owner, Date.now())) {
         reply.code(409).send(leaseLost())
         return
       }

@@ -1,5 +1,6 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
 import type { Db } from './db'
+import { LEASE_IS_LIVE, RENEW_LEASE } from './leases'
 import type { GpuLeaseRecord } from './types'
 
 type Params = SQLQueryBindings[]
@@ -49,20 +50,14 @@ export function acquireGpuLease(db: Db, input: AcquireGpuLeaseInput, now: number
  * Returns false once the lease expired, so the owner can stop its process
  * instead of writing into a card another job may already hold.
  */
-export function heartbeatGpuLease(
-  db: Db,
-  resourceId: string,
-  owner: string,
-  leaseMs: number,
-  now: number,
-): boolean {
+export function heartbeatGpuLease(db: Db, resourceId: string, owner: string, now: number): boolean {
   return (
     db
       .query<null, Params>(
-        `UPDATE gpu_leases SET lease_expires_at = ?, updated_at = ?
-         WHERE resource_id = ? AND owner = ? AND lease_expires_at >= ?`,
+        `UPDATE gpu_leases SET ${RENEW_LEASE}
+         WHERE resource_id = ? AND owner = ? AND ${LEASE_IS_LIVE}`,
       )
-      .run(now + leaseMs, now, resourceId, owner, now).changes > 0
+      .run(now, now, resourceId, owner, now).changes > 0
   )
 }
 

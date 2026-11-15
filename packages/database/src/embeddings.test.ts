@@ -201,7 +201,7 @@ describe('embedding queue', () => {
       db,
       first.id,
       'worker-a',
-      { state: 'embedding', stage: 'embedding', progress: 40, leaseMs: 120_000 },
+      { state: 'embedding', stage: 'embedding', progress: 40 },
       3_200,
     )
 
@@ -222,7 +222,7 @@ describe('embedding queue', () => {
       db,
       first.id,
       'worker-a',
-      { state: 'embedding', stage: 'embedding', progress: 40, leaseMs: 120_000 },
+      { state: 'embedding', stage: 'embedding', progress: 40 },
       3_200,
     )
 
@@ -262,8 +262,39 @@ describe('embedding queue', () => {
     const job = createEmbeddingJob(db, jobInput(), 3_000)
     claimEmbeddingJob(db, 'worker-a', 1_000, 3_100)
 
-    expect(heartbeatEmbeddingJob(db, job.id, 'worker-a', 1_000, 3_500)).toBe(true)
-    expect(heartbeatEmbeddingJob(db, job.id, 'worker-a', 1_000, 4_600)).toBe(false)
+    expect(heartbeatEmbeddingJob(db, job.id, 'worker-a', 3_500)).toBe(true)
+    expect(heartbeatEmbeddingJob(db, job.id, 'worker-a', 4_600)).toBe(false)
+    db.close()
+  })
+
+  test('a renewal keeps the term the claim asked for', () => {
+    const db = seed()
+    const job = createEmbeddingJob(db, jobInput(), 3_000)
+    claimEmbeddingJob(db, 'worker-a', 600_000, 3_100)
+
+    expect(heartbeatEmbeddingJob(db, job.id, 'worker-a', 4_000)).toBe(true)
+    expect(getEmbeddingJob(db, job.id)?.leaseExpiresAt).toBe(604_000)
+
+    expect(
+      updateEmbeddingProgress(
+        db,
+        job.id,
+        'worker-a',
+        { state: 'embedding', stage: 'embedding', progress: 40 },
+        5_000,
+      ),
+    ).toBe(true)
+    expect(getEmbeddingJob(db, job.id)?.leaseExpiresAt).toBe(605_000)
+    db.close()
+  })
+
+  test('a renewal after the expiry is refused and leaves the lease dead', () => {
+    const db = seed()
+    const job = createEmbeddingJob(db, jobInput(), 3_000)
+    claimEmbeddingJob(db, 'worker-a', 600_000, 3_100)
+
+    expect(heartbeatEmbeddingJob(db, job.id, 'worker-a', 603_101)).toBe(false)
+    expect(getEmbeddingJob(db, job.id)?.leaseExpiresAt).toBe(603_100)
     db.close()
   })
 

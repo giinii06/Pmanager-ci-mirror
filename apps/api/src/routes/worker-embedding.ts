@@ -165,7 +165,7 @@ export function registerWorkerEmbeddingRoutes(app: FastifyInstance, ctx: AppCont
       const body = parseInput(heartbeatBody, request.body ?? {}, reply)
       if (!body) return
 
-      if (!heartbeatEmbeddingJob(ctx.db, params.id, body.owner, LEASE_MS, Date.now())) {
+      if (!heartbeatEmbeddingJob(ctx.db, params.id, body.owner, Date.now())) {
         reply.code(409).send(leaseLost())
         return
       }
@@ -186,7 +186,6 @@ export function registerWorkerEmbeddingRoutes(app: FastifyInstance, ctx: AppCont
           state: body.state,
           stage: body.stage,
           progress: body.progress,
-          leaseMs: LEASE_MS,
         },
         Date.now(),
       )

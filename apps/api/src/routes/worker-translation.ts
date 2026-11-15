@@ -131,7 +131,7 @@ export function registerWorkerTranslationRoutes(app: FastifyInstance, ctx: AppCo
       const body = parseInput(heartbeatBody, request.body ?? {}, reply)
       if (!body) return
 
-      if (!heartbeatTranslationJob(ctx.db, params.id, body.owner, LEASE_MS, Date.now())) {
+      if (!heartbeatTranslationJob(ctx.db, params.id, body.owner, Date.now())) {
         reply.code(409).send(leaseLost())
         return
       }
@@ -152,7 +152,6 @@ export function registerWorkerTranslationRoutes(app: FastifyInstance, ctx: AppCo
           state: body.state,
           stage: body.stage,
           progress: body.progress,
-          leaseMs: LEASE_MS,
         },
         Date.now(),
       )

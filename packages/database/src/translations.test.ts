@@ -176,14 +176,14 @@ describe('translation queue', () => {
     createTranslationJob(db, jobInput(), 3_000)
     claimTranslationJob(db, 'worker-a', 30_000, 3_100)
 
-    expect(heartbeatTranslationJob(db, 'tr1', 'worker-b', 30_000, 3_200)).toBe(false)
-    expect(heartbeatTranslationJob(db, 'tr1', 'worker-a', 30_000, 3_200)).toBe(true)
+    expect(heartbeatTranslationJob(db, 'tr1', 'worker-b', 3_200)).toBe(false)
+    expect(heartbeatTranslationJob(db, 'tr1', 'worker-a', 3_200)).toBe(true)
     expect(
       updateTranslationProgress(
         db,
         'tr1',
         'worker-b',
-        { state: 'translating', stage: 'translating', progress: 40, leaseMs: 30_000 },
+        { state: 'translating', stage: 'translating', progress: 40 },
         3_300,
       ),
     ).toBe(false)
@@ -192,10 +192,41 @@ describe('translation queue', () => {
         db,
         'tr1',
         'worker-a',
-        { state: 'translating', stage: 'translating', progress: 40, leaseMs: 30_000 },
+        { state: 'translating', stage: 'translating', progress: 40 },
         3_300,
       ),
     ).toBe(true)
+    db.close()
+  })
+
+  test('a renewal keeps the term the claim asked for', () => {
+    const db = seed()
+    createTranslationJob(db, jobInput(), 3_000)
+    claimTranslationJob(db, 'worker-a', 600_000, 3_100)
+
+    expect(heartbeatTranslationJob(db, 'tr1', 'worker-a', 4_000)).toBe(true)
+    expect(getTranslationJob(db, 'tr1')?.leaseExpiresAt).toBe(604_000)
+
+    expect(
+      updateTranslationProgress(
+        db,
+        'tr1',
+        'worker-a',
+        { state: 'translating', stage: 'translating', progress: 40 },
+        5_000,
+      ),
+    ).toBe(true)
+    expect(getTranslationJob(db, 'tr1')?.leaseExpiresAt).toBe(605_000)
+    db.close()
+  })
+
+  test('a renewal after the expiry is refused and leaves the lease dead', () => {
+    const db = seed()
+    createTranslationJob(db, jobInput(), 3_000)
+    claimTranslationJob(db, 'worker-a', 600_000, 3_100)
+
+    expect(heartbeatTranslationJob(db, 'tr1', 'worker-a', 603_101)).toBe(false)
+    expect(getTranslationJob(db, 'tr1')?.leaseExpiresAt).toBe(603_100)
     db.close()
   })
 
@@ -324,11 +355,37 @@ describe('gpu leases', () => {
     const db = openDatabase(':memory:')
     acquireGpuLease(db, { resourceId: 'mac:metal', owner: 'worker-a', taskKind: 'translation', leaseMs: 30_000 }, 1_000)
 
-    expect(heartbeatGpuLease(db, 'mac:metal', 'worker-b', 30_000, 1_100)).toBe(false)
-    expect(heartbeatGpuLease(db, 'mac:metal', 'worker-a', 30_000, 1_100)).toBe(true)
+    expect(heartbeatGpuLease(db, 'mac:metal', 'worker-b', 1_100)).toBe(false)
+    expect(heartbeatGpuLease(db, 'mac:metal', 'worker-a', 1_100)).toBe(true)
     expect(releaseGpuLease(db, 'mac:metal', 'worker-b')).toBe(false)
     expect(releaseGpuLease(db, 'mac:metal', 'worker-a')).toBe(true)
     expect(getGpuLease(db, 'mac:metal')).toBeNull()
+    db.close()
+  })
+
+  test('a renewal keeps the term the lease was acquired with', () => {
+    const db = openDatabase(':memory:')
+    acquireGpuLease(
+      db,
+      { resourceId: 'nvidia:0', owner: 'worker-a', taskKind: 'embedding', leaseMs: 600_000 },
+      1_000,
+    )
+
+    expect(heartbeatGpuLease(db, 'nvidia:0', 'worker-a', 40_000)).toBe(true)
+    expect(getGpuLease(db, 'nvidia:0')?.leaseExpiresAt).toBe(640_000)
+    db.close()
+  })
+
+  test('a renewal after the expiry is refused and leaves the lease dead', () => {
+    const db = openDatabase(':memory:')
+    acquireGpuLease(
+      db,
+      { resourceId: 'nvidia:0', owner: 'worker-a', taskKind: 'embedding', leaseMs: 600_000 },
+      1_000,
+    )
+
+    expect(heartbeatGpuLease(db, 'nvidia:0', 'worker-a', 601_001)).toBe(false)
+    expect(getGpuLease(db, 'nvidia:0')?.leaseExpiresAt).toBe(601_000)
     db.close()
   })
 
@@ -336,7 +393,7 @@ describe('gpu leases', () => {
     const db = openDatabase(':memory:')
     acquireGpuLease(db, { resourceId: 'nvidia:0', owner: 'worker-a', taskKind: 'translation', leaseMs: 10_000 }, 1_000)
 
-    expect(heartbeatGpuLease(db, 'nvidia:0', 'worker-a', 10_000, 20_000)).toBe(false)
+    expect(heartbeatGpuLease(db, 'nvidia:0', 'worker-a', 20_000)).toBe(false)
     expect(
       acquireGpuLease(db, { resourceId: 'nvidia:0', owner: 'worker-b', taskKind: 'asr', leaseMs: 10_000 }, 20_100),
     ).toBe(true)

@@ -128,7 +128,7 @@ export function registerWorkerAsrRoutes(app: FastifyInstance, ctx: AppContext): 
       const body = parseInput(heartbeatBody, request.body ?? {}, reply)
       if (!body) return
 
-      if (!heartbeatAsrJob(ctx.db, params.id, body.owner, LEASE_MS, Date.now())) {
+      if (!heartbeatAsrJob(ctx.db, params.id, body.owner, Date.now())) {
         reply.code(409).send({ error: 'lease_lost', message: 'This worker no longer owns the job.' })
         return
       }
@@ -149,7 +149,6 @@ export function registerWorkerAsrRoutes(app: FastifyInstance, ctx: AppContext): 
           state: body.state,
           stage: body.stage,
           progress: body.progress,
-          leaseMs: LEASE_MS,
         },
         Date.now(),
       )

@@ -1,6 +1,7 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
 import type { AsrJobState, AsrStage } from '@mediavault/shared'
 import type { Db } from './db'
+import { LEASE_IS_LIVE, RENEW_LEASE } from './leases'
 import type {
   AsrJobRecord,
   TranscriptRecord,
@@ -135,20 +136,15 @@ export function claimAsrJob(
   )
 }
 
-export function heartbeatAsrJob(
-  db: Db,
-  id: string,
-  owner: string,
-  leaseMs: number,
-  now: number,
-): boolean {
+export function heartbeatAsrJob(db: Db, id: string, owner: string, now: number): boolean {
   return (
     db
       .query<null, Params>(
-        `UPDATE asr_jobs SET lease_expires_at = ?, updated_at = ?
-         WHERE id = ? AND lease_owner = ? AND state IN ${ACTIVE_STATES}`,
+        `UPDATE asr_jobs SET ${RENEW_LEASE}
+         WHERE id = ? AND lease_owner = ? AND state IN ${ACTIVE_STATES}
+           AND ${LEASE_IS_LIVE}`,
       )
-      .run(now + leaseMs, now, id, owner).changes > 0
+      .run(now, now, id, owner, now).changes > 0
   )
 }
 
@@ -159,23 +155,25 @@ export function updateAsrProgress(
   db: Db,
   id: string,
   owner: string,
-  update: { state: AsrJobState; stage: AsrStage; progress: number; leaseMs: number },
+  update: { state: AsrJobState; stage: AsrStage; progress: number },
   now: number,
 ): boolean {
   return (
     db
       .query<null, Params>(
-        `UPDATE asr_jobs SET state = ?, stage = ?, progress = ?, lease_expires_at = ?, updated_at = ?
-         WHERE id = ? AND lease_owner = ? AND state IN ${ACTIVE_STATES}`,
+        `UPDATE asr_jobs SET state = ?, stage = ?, progress = ?, ${RENEW_LEASE}
+         WHERE id = ? AND lease_owner = ? AND state IN ${ACTIVE_STATES}
+           AND ${LEASE_IS_LIVE}`,
       )
       .run(
         update.state,
         update.stage,
         Math.max(0, Math.min(100, Math.round(update.progress))),
-        now + update.leaseMs,
+        now,
         now,
         id,
         owner,
+        now,
       ).changes > 0
   )
 }
