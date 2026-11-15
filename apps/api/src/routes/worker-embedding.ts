@@ -80,14 +80,20 @@ function leaseLost(): { error: string; message: string } {
 /**
  * Decodes one base64 payload of little-endian float32. The length check comes
  * first because base64 decoding is lenient: a truncated string yields a short
- * buffer instead of an error.
+ * buffer instead of an error. The norm is checked here so a bad vector is a 422
+ * on this route, not a throw from the store that leaves the job in `writing`.
  */
 function decodeVector(encoded: string, dimensions: number): Float32Array | null {
   const bytes = Buffer.from(encoded, 'base64')
   if (bytes.length !== dimensions * 4) return null
 
   const vector = new Float32Array(new Uint8Array(bytes).buffer)
-  for (const value of vector) if (!Number.isFinite(value)) return null
+  let sum = 0
+  for (const value of vector) {
+    if (!Number.isFinite(value)) return null
+    sum += value * value
+  }
+  if (Math.abs(Math.sqrt(sum) - 1) > 1e-3) return null
   return vector
 }
 
@@ -212,7 +218,7 @@ export function registerWorkerEmbeddingRoutes(app: FastifyInstance, ctx: AppCont
           if (!vector) {
             reply.code(422).send({
               error: 'invalid_vector',
-              message: `Each vector must be ${job.dimensions} finite float32 values, base64 encoded.`,
+              message: `Each vector must be ${job.dimensions} finite float32 values of unit length, base64 encoded.`,
             })
             return
           }
