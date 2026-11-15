@@ -39,6 +39,7 @@ class Config:
     max_chunk_ms: int
     poll_seconds: float
     lease_ms: int
+    gpu_wait_seconds: float
     offline: bool
     keep_workdir: bool
 
@@ -69,6 +70,7 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         max_chunk_ms=_int(source, "ASR_MAX_CHUNK_MS", 30_000),
         poll_seconds=_float(source, "ASR_POLL_SECONDS", 3.0),
         lease_ms=_int(source, "ASR_LEASE_MS", 120_000),
+        gpu_wait_seconds=_float(source, "GPU_WAIT_SECONDS", 600.0),
         offline=source.get("HF_HUB_OFFLINE", "") == "1",
         keep_workdir=source.get("ASR_KEEP_WORKDIR", "") == "1",
     )

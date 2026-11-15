@@ -85,3 +85,16 @@ class WorkerClient:
 
     def fail(self, job_id: str, owner: str, message: str) -> dict[str, Any]:
         return self._post(f"/worker/asr/jobs/{job_id}/fail", {"owner": owner, "message": message})
+
+    def gpu_acquire(self, owner: str, task_kind: str, lease_ms: int) -> bool:
+        payload = self._post(
+            "/worker/gpu/acquire",
+            {"owner": owner, "taskKind": task_kind, "leaseMs": lease_ms},
+        )
+        return bool(payload.get("acquired"))
+
+    def gpu_heartbeat(self, owner: str) -> None:
+        self._post("/worker/gpu/heartbeat", {"owner": owner})
+
+    def gpu_release(self, owner: str) -> None:
+        self._post("/worker/gpu/release", {"owner": owner})

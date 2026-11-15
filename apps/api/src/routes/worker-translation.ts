@@ -3,17 +3,13 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import {
-  acquireGpuLease,
   claimTranslationJob,
   completeTranslationJob,
   failTranslationJob,
-  getGpuLease,
   getTranscriptById,
   getTranslationJob,
-  heartbeatGpuLease,
   heartbeatTranslationJob,
   recoverExpiredTranslationJobs,
-  releaseGpuLease,
   updateTranslationProgress,
 } from '@mediavault/database'
 import type { AppContext } from '../context'
@@ -59,12 +55,6 @@ const completeBody = z.object({
 })
 
 const failBody = z.object({ owner, message: z.string().min(1).max(2_000) })
-
-const gpuAcquireBody = z.object({
-  owner,
-  taskKind: z.string().min(1).max(32),
-  leaseMs: z.number().int().min(10_000).max(MAX_LEASE_MS).optional(),
-})
 
 function tokenMatches(given: string, expected: string): boolean {
   const a = createHash('sha256').update(given).digest()
@@ -252,48 +242,6 @@ export function registerWorkerTranslationRoutes(app: FastifyInstance, ctx: AppCo
 
       const state = failTranslationJob(ctx.db, job.id, body.message, Date.now())
       reply.send({ state })
-    })
-
-    scope.post('/worker/gpu/acquire', async (request, reply) => {
-      const body = parseInput(gpuAcquireBody, request.body ?? {}, reply)
-      if (!body) return
-
-      const now = Date.now()
-      const resourceId = ctx.config.translation.gpuResource
-      const acquired = acquireGpuLease(
-        ctx.db,
-        {
-          resourceId,
-          owner: body.owner,
-          taskKind: body.taskKind,
-          leaseMs: body.leaseMs ?? LEASE_MS,
-        },
-        now,
-      )
-      reply.send({
-        acquired,
-        lease: acquired ? getGpuLease(ctx.db, resourceId) : null,
-      })
-    })
-
-    scope.post('/worker/gpu/heartbeat', async (request, reply) => {
-      const body = parseInput(heartbeatBody, request.body ?? {}, reply)
-      if (!body) return
-
-      const resourceId = ctx.config.translation.gpuResource
-      if (!heartbeatGpuLease(ctx.db, resourceId, body.owner, LEASE_MS, Date.now())) {
-        reply.code(409).send(leaseLost())
-        return
-      }
-      reply.code(204).send()
-    })
-
-    scope.post('/worker/gpu/release', async (request, reply) => {
-      const body = parseInput(heartbeatBody, request.body ?? {}, reply)
-      if (!body) return
-
-      releaseGpuLease(ctx.db, ctx.config.translation.gpuResource, body.owner)
-      reply.code(204).send()
     })
   })
 }

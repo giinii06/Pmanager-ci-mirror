@@ -507,4 +507,32 @@ describe('translation routes', () => {
     expect(third.json().acquired).toBe(true)
     await h.app.close()
   })
+
+  test('the ASR worker takes the same lease with its own token', async () => {
+    const h = await harness('ja')
+    const asr = await h.app.inject({
+      method: 'POST',
+      url: '/worker/gpu/acquire',
+      headers: { 'x-worker-token': ASR_TOKEN },
+      payload: { owner: 'asr-worker', taskKind: 'asr' },
+    })
+    expect(asr.json().acquired).toBe(true)
+
+    const translation = await h.app.inject({
+      method: 'POST',
+      url: '/worker/gpu/acquire',
+      headers: worker(),
+      payload: { owner: 'translation-worker', taskKind: 'translation' },
+    })
+    expect(translation.json().acquired).toBe(false)
+
+    const released = await h.app.inject({
+      method: 'POST',
+      url: '/worker/gpu/release',
+      headers: { 'x-worker-token': ASR_TOKEN },
+      payload: { owner: 'asr-worker' },
+    })
+    expect(released.statusCode).toBe(204)
+    await h.app.close()
+  })
 })

@@ -38,6 +38,7 @@ class Heartbeat:
         self.owner = owner
         self.interval = max(5.0, lease_ms / 3000)
         self.lost = threading.Event()
+        self.gpu = threading.Event()
         self._process: subprocess.Popen[str] | None = None
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, name="asr-heartbeat", daemon=True)
@@ -55,10 +56,18 @@ class Heartbeat:
     def detach(self) -> None:
         self._process = None
 
+    def hold_gpu(self) -> None:
+        self.gpu.set()
+
+    def drop_gpu(self) -> None:
+        self.gpu.clear()
+
     def _loop(self) -> None:
         while not self._stop.wait(self.interval):
             try:
                 self.client.heartbeat(self.job_id, self.owner)
+                if self.gpu.is_set():
+                    self.client.gpu_heartbeat(self.owner)
             except LeaseLost:
                 log.warning("lease lost for %s, stopping the pipeline", self.job_id)
                 self.lost.set()
@@ -212,6 +221,18 @@ class Pipeline:
     def _report(self, job_id: str, state: str, stage: str, progress: float) -> None:
         self.client.progress(job_id, self.owner, state, stage, progress)
 
+    def _acquire_gpu(self, heartbeat: Heartbeat) -> bool:
+        deadline = time.monotonic() + self.config.gpu_wait_seconds
+        while not heartbeat.lost.is_set():
+            if self.client.gpu_acquire(self.owner, "asr", self.config.lease_ms):
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            log.info("GPU is busy, retrying in %.0fs", min(5.0, remaining))
+            heartbeat.lost.wait(min(5.0, remaining))
+        raise LeaseLost("lease lost while waiting for the GPU")
+
     def _run_stage(
         self,
         args: list[str],
@@ -226,9 +247,17 @@ class Pipeline:
         if heartbeat.lost.is_set():
             raise LeaseLost("lease lost before the stage started")
 
+        # The stage process loads a model onto the card, so it holds the shared
+        # GPU lease for as long as the process lives. Releasing before the
+        # process exits would let a translation start on the same card.
+        if not self._acquire_gpu(heartbeat):
+            raise RuntimeError("GPU is busy with another job.")
+        heartbeat.hold_gpu()
+
         log_handle, log_name = tempfile.mkstemp(prefix="asr-stage-", suffix=".log")
         os.close(log_handle)
         log_path = Path(log_name)
+        process: subprocess.Popen[str] | None = None
         try:
             with log_path.open("w", encoding="utf-8") as log_stream:
                 process = subprocess.Popen(
@@ -266,6 +295,18 @@ class Pipeline:
                     tail = _tail(log_path)
                     raise RuntimeError(f"{args[0]} stage failed: {tail}")
         finally:
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=30)
+            heartbeat.drop_gpu()
+            try:
+                self.client.gpu_release(self.owner)
+            except Exception as error:  # noqa: BLE001 - the lease expires on its own
+                log.warning("could not release the GPU lease: %s", error)
             log_path.unlink(missing_ok=True)
 
     def _write_results(
