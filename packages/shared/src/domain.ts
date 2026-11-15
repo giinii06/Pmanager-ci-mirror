@@ -162,6 +162,80 @@ export interface TranscriptSearchDTO {
   hits: TranscriptSegmentDTO[]
 }
 
+export type TranslationJobState =
+  | 'queued'
+  | 'translating'
+  | 'writing'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+
+export type TranslationStage = 'queued' | 'starting' | 'translating' | 'writing' | 'completed'
+
+export interface TranslationJobDTO {
+  id: string
+  assetId: string
+  fileVersion: number
+  sourceLanguage: string
+  targetLanguage: string
+  state: TranslationJobState
+  stage: TranslationStage
+  progress: number
+  attempts: number
+  maxAttempts: number
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TranslationSegmentDTO {
+  seq: number
+  startMs: number
+  endMs: number
+  text: string
+}
+
+export interface TranslationDTO {
+  id: string
+  assetId: string
+  fileVersion: number
+  sourceLanguage: string
+  targetLanguage: string
+  plainText: string
+  segments: TranslationSegmentDTO[]
+  createdAt: string
+}
+
+export interface TranslationSummaryDTO {
+  id: string
+  sourceLanguage: string
+  targetLanguage: string
+  segmentCount: number
+  createdAt: string
+}
+
+export interface TranslationStatusDTO {
+  /** False when the server has no translation worker configured. */
+  available: boolean
+  job: TranslationJobDTO | null
+  translation: TranslationSummaryDTO | null
+}
+
+/**
+ * `language` is the tag the client asks for. `original` resolves to whatever
+ * the ASR produced, so a Korean source needs no translation job at all.
+ */
+export interface SubtitleTrackDTO {
+  language: string
+  source: 'asr' | 'translation'
+  ready: boolean
+}
+
+export interface SubtitleTracksDTO {
+  tracks: SubtitleTrackDTO[]
+  defaultLanguage: string | null
+}
+
 export interface StatsDTO {
   assets: number
   images: number

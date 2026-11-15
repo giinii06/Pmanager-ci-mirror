@@ -15,6 +15,7 @@ import {
 } from '@mediavault/database'
 import type { AppContext } from '../context'
 import { toAsrJobDTO } from '../dto'
+import { enqueueTranslation } from '../translation-trigger'
 import { parseInput } from '../validate'
 
 const WORKER_PREFIX = '/worker/asr'
@@ -196,6 +197,15 @@ export function registerWorkerAsrRoutes(app: FastifyInstance, ctx: AppContext): 
         reply.code(404).send({ error: 'not_found', message: 'Job not found.' })
         return
       }
+
+      // The transcript is already committed, so a translation that cannot be
+      // queued must not turn a successful ASR run into a failed request.
+      try {
+        enqueueTranslation(ctx, stored, Date.now())
+      } catch (error) {
+        request.log.error({ err: error, transcriptId: stored.id }, 'translation enqueue failed')
+      }
+
       reply.send({ transcriptId: stored.id })
     })
 

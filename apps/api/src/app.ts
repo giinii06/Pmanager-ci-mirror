@@ -8,7 +8,9 @@ import { registerLibraryRoutes } from './routes/libraries'
 import { registerMediaRoutes } from './routes/media'
 import { registerSystemRoutes } from './routes/system'
 import { registerTranscriptionRoutes } from './routes/transcriptions'
+import { registerTranslationRoutes } from './routes/translations'
 import { registerWorkerAsrRoutes } from './routes/worker-asr'
+import { registerWorkerTranslationRoutes } from './routes/worker-translation'
 
 const PUBLIC_ROUTES = new Set([
   '/api/health',
@@ -58,7 +60,9 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerAssetRoutes(app, ctx)
   registerMediaRoutes(app, ctx)
   registerTranscriptionRoutes(app, ctx)
+  registerTranslationRoutes(app, ctx)
   registerWorkerAsrRoutes(app, ctx)
+  registerWorkerTranslationRoutes(app, ctx)
   registerSystemRoutes(app, ctx)
 
   return app

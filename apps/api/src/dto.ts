@@ -7,6 +7,9 @@ import type {
   PlaybackProgressDTO,
   TranscriptDTO,
   TranscriptSummaryDTO,
+  TranslationDTO,
+  TranslationJobDTO,
+  TranslationSummaryDTO,
   UserDTO,
 } from '@mediavault/shared'
 import { playbackModeFor } from '@mediavault/shared'
@@ -19,6 +22,9 @@ import type {
   PlaybackRecord,
   TranscriptRecord,
   TranscriptWithSegments,
+  TranslationJobRecord,
+  TranslationRecord,
+  TranslationWithSegments,
   UserRecord,
 } from '@mediavault/database'
 
@@ -161,5 +167,55 @@ export function toTranscriptDTO(stored: TranscriptWithSegments): TranscriptDTO {
       text: segment.text,
     })),
     createdAt: new Date(transcript.createdAt).toISOString(),
+  }
+}
+
+export function toTranslationJobDTO(job: TranslationJobRecord): TranslationJobDTO {
+  return {
+    id: job.id,
+    assetId: job.assetId,
+    fileVersion: job.fileVersion,
+    sourceLanguage: job.sourceLanguage,
+    targetLanguage: job.targetLanguage,
+    state: job.state,
+    stage: job.stage,
+    progress: job.progress,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    errorMessage: job.errorMessage,
+    createdAt: new Date(job.createdAt).toISOString(),
+    updatedAt: new Date(job.updatedAt).toISOString(),
+  }
+}
+
+export function toTranslationSummaryDTO(
+  translation: TranslationRecord,
+  segmentCount: number,
+): TranslationSummaryDTO {
+  return {
+    id: translation.id,
+    sourceLanguage: translation.sourceLanguage,
+    targetLanguage: translation.targetLanguage,
+    segmentCount,
+    createdAt: new Date(translation.createdAt).toISOString(),
+  }
+}
+
+export function toTranslationDTO(stored: TranslationWithSegments): TranslationDTO {
+  const { translation, segments } = stored
+  return {
+    id: translation.id,
+    assetId: translation.assetId,
+    fileVersion: translation.fileVersion,
+    sourceLanguage: translation.sourceLanguage,
+    targetLanguage: translation.targetLanguage,
+    plainText: translation.plainText,
+    segments: segments.map((segment) => ({
+      seq: segment.seq,
+      startMs: segment.startMs,
+      endMs: segment.endMs,
+      text: segment.text,
+    })),
+    createdAt: new Date(translation.createdAt).toISOString(),
   }
 }

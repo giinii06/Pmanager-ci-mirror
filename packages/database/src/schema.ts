@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -149,8 +149,81 @@ CREATE TABLE IF NOT EXISTS transcript_segments (
 );
 `
 
+export const TRANSLATION_SQL = `
+CREATE TABLE IF NOT EXISTS translation_jobs (
+  id TEXT PRIMARY KEY,
+  source_transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  source_language TEXT NOT NULL,
+  target_language TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('queued','translating','writing','completed','failed','canceled')),
+  stage TEXT NOT NULL DEFAULT 'queued' CHECK (stage IN ('queued','starting','translating','writing','completed')),
+  progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  lease_owner TEXT,
+  lease_expires_at INTEGER,
+  run_after INTEGER NOT NULL DEFAULT 0,
+  model_id TEXT NOT NULL,
+  model_revision TEXT NOT NULL,
+  model_sha256 TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  error_message TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_translation_jobs_active
+  ON translation_jobs(source_transcript_id, target_language)
+  WHERE state IN ('queued','translating','writing');
+CREATE INDEX IF NOT EXISTS idx_translation_jobs_claim
+  ON translation_jobs(state, run_after, created_at);
+CREATE INDEX IF NOT EXISTS idx_translation_jobs_lease
+  ON translation_jobs(state, lease_expires_at);
+
+CREATE TABLE IF NOT EXISTS translations (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL UNIQUE REFERENCES translation_jobs(id) ON DELETE CASCADE,
+  source_transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  source_language TEXT NOT NULL,
+  target_language TEXT NOT NULL,
+  plain_text TEXT NOT NULL,
+  result_dir TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  model_revision TEXT NOT NULL,
+  model_sha256 TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(source_transcript_id, target_language, model_sha256, prompt_version, pipeline_version)
+);
+CREATE INDEX IF NOT EXISTS idx_translations_asset
+  ON translations(asset_id, file_version, target_language, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS translation_segments (
+  translation_id TEXT NOT NULL REFERENCES translations(id) ON DELETE CASCADE,
+  source_seq INTEGER NOT NULL,
+  start_ms INTEGER NOT NULL CHECK (start_ms >= 0),
+  end_ms INTEGER NOT NULL CHECK (end_ms >= start_ms),
+  text TEXT NOT NULL,
+  PRIMARY KEY (translation_id, source_seq)
+);
+
+CREATE TABLE IF NOT EXISTS gpu_leases (
+  resource_id TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  task_kind TEXT NOT NULL,
+  lease_expires_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
   (exec) => exec(ASR_SQL),
+  (exec) => exec(TRANSLATION_SQL),
 ]

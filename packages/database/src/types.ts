@@ -5,6 +5,8 @@ import type {
   JobKind,
   JobState,
   ScanState,
+  TranslationJobState,
+  TranslationStage,
 } from '@mediavault/shared'
 
 export interface LibraryRecord {
@@ -151,4 +153,67 @@ export interface TranscriptSegmentRecord {
 export interface TranscriptWithSegments {
   transcript: TranscriptRecord
   segments: TranscriptSegmentRecord[]
+}
+
+export interface TranslationJobRecord {
+  id: string
+  sourceTranscriptId: string
+  assetId: string
+  fileVersion: number
+  sourceLanguage: string
+  targetLanguage: string
+  state: TranslationJobState
+  stage: TranslationStage
+  progress: number
+  attempts: number
+  maxAttempts: number
+  leaseOwner: string | null
+  leaseExpiresAt: number | null
+  runAfter: number
+  modelId: string
+  modelRevision: string
+  modelSha256: string
+  promptVersion: string
+  pipelineVersion: string
+  errorMessage: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface TranslationRecord {
+  id: string
+  jobId: string
+  sourceTranscriptId: string
+  assetId: string
+  fileVersion: number
+  sourceLanguage: string
+  targetLanguage: string
+  plainText: string
+  resultDir: string
+  modelId: string
+  modelRevision: string
+  modelSha256: string
+  promptVersion: string
+  pipelineVersion: string
+  createdAt: number
+}
+
+export interface TranslationSegmentRecord {
+  seq: number
+  startMs: number
+  endMs: number
+  text: string
+}
+
+export interface TranslationWithSegments {
+  translation: TranslationRecord
+  segments: TranslationSegmentRecord[]
+}
+
+export interface GpuLeaseRecord {
+  resourceId: string
+  owner: string
+  taskKind: string
+  leaseExpiresAt: number
+  updatedAt: number
 }

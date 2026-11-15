@@ -11,6 +11,19 @@ export interface AsrConfig {
   pipelineVersion: string
 }
 
+export interface TranslationConfig {
+  enabled: boolean
+  workerToken: string
+  resultDir: string
+  modelId: string
+  modelRevision: string
+  modelSha256: string
+  promptVersion: string
+  pipelineVersion: string
+  targetLanguage: string
+  gpuResource: string
+}
+
 export interface ApiConfig {
   port: number
   host: string
@@ -22,6 +35,7 @@ export interface ApiConfig {
   hwaccel: 'nvenc' | null
   secureCookies: boolean
   asr: AsrConfig
+  translation: TranslationConfig
 }
 
 async function resolveSecret(dataDir: string, fromEnv: string | undefined): Promise<string> {
@@ -57,6 +71,32 @@ function resolveAsr(env: Record<string, string | undefined>): AsrConfig {
   }
 }
 
+function resolveTranslation(
+  env: Record<string, string | undefined>,
+  fallbackResultDir: string,
+): TranslationConfig {
+  const token = env.TRANSLATION_WORKER_TOKEN?.trim() ?? ''
+  const enabled = env.TRANSLATION_ENABLED ? env.TRANSLATION_ENABLED === '1' : token.length > 0
+  if (enabled && token.length < 16) {
+    throw new Error(
+      'TRANSLATION_WORKER_TOKEN must be at least 16 characters when translation is enabled.',
+    )
+  }
+
+  return {
+    enabled,
+    workerToken: token,
+    resultDir: path.resolve(env.TRANSLATION_RESULT_DIR ?? fallbackResultDir),
+    modelId: env.TRANSLATION_MODEL_ID?.trim() || 'IndexTeam/Index-Translate-9B-GGUF',
+    modelRevision: env.TRANSLATION_MODEL_REVISION?.trim() || 'main',
+    modelSha256: env.TRANSLATION_MODEL_SHA256?.trim() || '',
+    promptVersion: env.TRANSLATION_PROMPT_VERSION?.trim() || '1',
+    pipelineVersion: env.TRANSLATION_PIPELINE_VERSION?.trim() || '1',
+    targetLanguage: env.TRANSLATION_TARGET_DEFAULT?.trim() || 'ko',
+    gpuResource: env.TRANSLATION_GPU_RESOURCE?.trim() || 'gpu:0',
+  }
+}
+
 export async function loadConfig(
   env: Record<string, string | undefined> = process.env,
 ): Promise<ApiConfig> {
@@ -69,6 +109,9 @@ export async function loadConfig(
   const asr = resolveAsr(env)
   if (asr.enabled) await mkdir(asr.resultDir, { recursive: true })
 
+  const translation = resolveTranslation(env, env.ASR_RESULT_DIR ?? 'asr-results')
+  if (translation.enabled) await mkdir(translation.resultDir, { recursive: true })
+
   return {
     port: Number(env.PORT ?? 8787),
     host: env.HOST ?? '127.0.0.1',
@@ -80,5 +123,6 @@ export async function loadConfig(
     hwaccel: env.HWACCEL === 'nvenc' ? 'nvenc' : null,
     secureCookies: env.COOKIE_SECURE === '1',
     asr,
+    translation,
   }
 }

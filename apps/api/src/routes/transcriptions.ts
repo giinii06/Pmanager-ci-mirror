@@ -1,23 +1,26 @@
-import path from 'node:path'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import {
   createAsrJob,
   getAssetFileInfo,
-  getTranscript,
   latestAsrJob,
   searchTranscript,
-  type TranscriptRecord,
+  searchTranslation,
 } from '@mediavault/database'
 import { newId } from '@mediavault/shared'
-import { fileExists, resolveInside } from '@mediavault/media'
+import { fileExists } from '@mediavault/media'
 import type { AppContext } from '../context'
 import { toAsrJobDTO, toTranscriptDTO, toTranscriptSummaryDTO } from '../dto'
 import { sendFile } from '../http'
+import { currentTranscript, resolveSubtitleSource, subtitleFile } from '../subtitles'
 import { parseInput } from '../validate'
 
 const idParams = z.object({ id: z.string().min(1).max(64) })
-const searchQuery = z.object({ q: z.string().trim().min(1).max(100) })
+const searchQuery = z.object({
+  q: z.string().trim().min(1).max(100),
+  lang: z.string().min(1).max(16).optional(),
+})
+const subtitleQuery = z.object({ lang: z.string().min(1).max(16).optional() })
 const transcribeBody = z.object({ force: z.boolean().optional() }).optional()
 
 function notFound(reply: FastifyReply): void {
@@ -29,34 +32,6 @@ function unavailable(reply: FastifyReply): void {
     error: 'asr_disabled',
     message: 'Subtitle generation is not configured on this server.',
   })
-}
-
-/**
- * Subtitles belong to the file version that produced them. A replaced file
- * must never inherit the old transcript.
- */
-function currentTranscript(ctx: AppContext, assetId: string, fileVersion: number) {
-  const stored = getTranscript(ctx.db, assetId, fileVersion)
-  if (!stored) return null
-  const { transcript, segments } = stored
-  if (
-    transcript.modelRevision !== ctx.config.asr.modelRevision ||
-    transcript.alignerRevision !== ctx.config.asr.alignerRevision ||
-    transcript.pipelineVersion !== ctx.config.asr.pipelineVersion
-  ) {
-    return null
-  }
-  return stored
-}
-
-function subtitleFile(
-  ctx: AppContext,
-  transcript: TranscriptRecord,
-  name: 'subtitles.vtt' | 'subtitles.srt',
-): string | null {
-  const target = resolveInside(ctx.config.asr.resultDir, path.join(transcript.resultDir, name))
-  if (!target) return null
-  return target
 }
 
 export function registerTranscriptionRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -151,14 +126,18 @@ export function registerTranscriptionRoutes(app: FastifyInstance, ctx: AppContex
       return
     }
 
-    const stored = currentTranscript(ctx, info.id, info.fileVersion)
-    if (!stored) {
+    const source = resolveSubtitleSource(ctx, info, query.lang)
+    if (!source) {
       reply.send({ query: query.q, hits: [] })
       return
     }
+    const hits =
+      source.kind === 'asr'
+        ? searchTranscript(ctx.db, source.transcript.id, query.q)
+        : searchTranslation(ctx.db, source.translation.id, query.q)
     reply.send({
       query: query.q,
-      hits: searchTranscript(ctx.db, stored.transcript.id, query.q).map((segment) => ({
+      hits: hits.map((segment) => ({
         seq: segment.seq,
         startMs: segment.startMs,
         endMs: segment.endMs,
@@ -174,6 +153,8 @@ export function registerTranscriptionRoutes(app: FastifyInstance, ctx: AppContex
     app.get(`/api/assets/:id/${route}`, async (request, reply) => {
       const params = parseInput(idParams, request.params, reply)
       if (!params) return
+      const query = parseInput(subtitleQuery, request.query, reply)
+      if (!query) return
 
       const info = getAssetFileInfo(ctx.db, params.id)
       if (!info || info.deletedAt !== null) {
@@ -181,14 +162,16 @@ export function registerTranscriptionRoutes(app: FastifyInstance, ctx: AppContex
         return
       }
 
-      const stored = currentTranscript(ctx, info.id, info.fileVersion)
-      const target = stored ? subtitleFile(ctx, stored.transcript, name) : null
+      const source = resolveSubtitleSource(ctx, info, query.lang)
+      const target = source ? subtitleFile(ctx, source, name) : null
       if (!target || !(await fileExists(target))) {
         reply.code(404).send({ error: 'not_found', message: 'No subtitles yet.' })
         return
       }
 
-      const download = name === 'subtitles.srt' ? `attachment; filename="${info.id}.srt"` : undefined
+      const suffix = source?.kind === 'translation' ? `.${source.language}` : ''
+      const download =
+        name === 'subtitles.srt' ? `attachment; filename="${info.id}${suffix}.srt"` : undefined
       await sendFile(request, reply, target, contentType, {
         cacheControl: 'private, max-age=60',
         ...(download ? { contentDisposition: download } : {}),
