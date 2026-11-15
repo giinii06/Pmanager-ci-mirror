@@ -11,6 +11,7 @@ import {
   listAssets,
   putProgress,
   relatedAssets,
+  relatedByEmbedding,
   removeFavorite,
   upsertReview,
   type AssetFilter,
@@ -20,7 +21,8 @@ import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PRIORITY, newId } from '@mediavault/s
 import { fileExists, thumbnailPath } from '@mediavault/media'
 import type { AppContext } from '../context'
 import { decodeCursor, encodeCursor } from '../cursor'
-import { toAssetDTO, toPlaybackDTO, toReviewDTO } from '../dto'
+import { toAssetDTO, toEmbeddingJobDTO, toPlaybackDTO, toReviewDTO } from '../dto'
+import { enqueueEmbedding } from '../embedding-trigger'
 import { parseInput } from '../validate'
 
 const idParams = z.object({ id: z.string().min(1).max(64) })
@@ -178,13 +180,57 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     if (!params) return
     const query = parseInput(relatedQuery, request.query, reply)
     if (!query) return
-    if (!getAsset(ctx.db, request.user!.id, params.id)) {
+    const asset = getAsset(ctx.db, request.user!.id, params.id)
+    if (!asset) {
       reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
       return
     }
-    reply.send({
-      items: relatedAssets(ctx.db, request.user!.id, params.id, query.limit ?? 8).map(toAssetDTO),
-    })
+
+    const limit = query.limit ?? 8
+    // Meaning first: stored vectors rank by similarity, and the folder heuristic
+    // stays as the answer until the worker has filled the table.
+    const ranked = ctx.config.embedding.enabled
+      ? relatedByEmbedding(
+          ctx.db,
+          request.user!.id,
+          asset.id,
+          asset.fileVersion,
+          {
+            modelSha256: ctx.config.embedding.modelSha256,
+            pipelineVersion: ctx.config.embedding.pipelineVersion,
+            dimensions: ctx.config.embedding.dimensions,
+          },
+          limit,
+        )
+      : []
+    const items =
+      ranked.length > 0 ? ranked : relatedAssets(ctx.db, request.user!.id, params.id, limit)
+    reply.send({ items: items.map(toAssetDTO) })
+  })
+
+  app.post('/api/assets/:id/embedding', async (request, reply) => {
+    const params = parseInput(idParams, request.params, reply)
+    if (!params) return
+    if (!ctx.config.embedding.enabled) {
+      reply.code(503).send({
+        error: 'embedding_disabled',
+        message: 'Video embeddings are not configured on this server.',
+      })
+      return
+    }
+
+    const info = getAssetFileInfo(ctx.db, params.id)
+    if (!info || info.deletedAt !== null || info.kind !== 'video') {
+      reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
+      return
+    }
+
+    const job = enqueueEmbedding(ctx, info.id, info.fileVersion, Date.now())
+    if (!job) {
+      reply.code(409).send({ error: 'not_queued', message: 'The asset could not be queued.' })
+      return
+    }
+    reply.code(202).send({ job: toEmbeddingJobDTO(job) })
   })
 
   app.get('/api/playback/:id', async (request, reply) => {

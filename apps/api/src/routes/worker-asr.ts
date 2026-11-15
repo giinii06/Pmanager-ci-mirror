@@ -15,6 +15,7 @@ import {
 } from '@mediavault/database'
 import type { AppContext } from '../context'
 import { toAsrJobDTO } from '../dto'
+import { enqueueEmbedding } from '../embedding-trigger'
 import { enqueueTranslation } from '../translation-trigger'
 import { parseInput } from '../validate'
 
@@ -204,6 +205,12 @@ export function registerWorkerAsrRoutes(app: FastifyInstance, ctx: AppContext): 
         enqueueTranslation(ctx, stored, Date.now())
       } catch (error) {
         request.log.error({ err: error, transcriptId: stored.id }, 'translation enqueue failed')
+      }
+
+      try {
+        enqueueEmbedding(ctx, stored.assetId, stored.fileVersion, Date.now())
+      } catch (error) {
+        request.log.error({ err: error, assetId: stored.assetId }, 'embedding enqueue failed')
       }
 
       reply.send({ transcriptId: stored.id })

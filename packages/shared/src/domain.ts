@@ -243,6 +243,20 @@ export type EmbeddingJobState =
 
 export type EmbeddingStage = 'queued' | 'starting' | 'embedding' | 'writing' | 'completed'
 
+export interface EmbeddingJobDTO {
+  id: string
+  assetId: string
+  fileVersion: number
+  state: EmbeddingJobState
+  stage: EmbeddingStage
+  progress: number
+  attempts: number
+  maxAttempts: number
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface TranslationJobDTO {
   id: string
   assetId: string

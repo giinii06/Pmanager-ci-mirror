@@ -1,6 +1,7 @@
 import type {
   AsrJobDTO,
   AssetDTO,
+  EmbeddingJobDTO,
   FolderDTO,
   JobDTO,
   LibraryDTO,
@@ -19,6 +20,7 @@ import { playbackModeFor } from '@mediavault/shared'
 import type {
   AsrJobRecord,
   AssetRecord,
+  EmbeddingJobRecord,
   FolderRecord,
   JobRecord,
   LibraryRecord,
@@ -197,6 +199,22 @@ export function toTranslationJobDTO(job: TranslationJobRecord): TranslationJobDT
     fileVersion: job.fileVersion,
     sourceLanguage: job.sourceLanguage,
     targetLanguage: job.targetLanguage,
+    state: job.state,
+    stage: job.stage,
+    progress: job.progress,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    errorMessage: job.errorMessage,
+    createdAt: new Date(job.createdAt).toISOString(),
+    updatedAt: new Date(job.updatedAt).toISOString(),
+  }
+}
+
+export function toEmbeddingJobDTO(job: EmbeddingJobRecord): EmbeddingJobDTO {
+  return {
+    id: job.id,
+    assetId: job.assetId,
+    fileVersion: job.fileVersion,
     state: job.state,
     stage: job.stage,
     progress: job.progress,

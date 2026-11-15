@@ -33,6 +33,9 @@ const ASR_PIPELINE = 'asr-1'
 const SHA = 'sha-q4'
 const PROMPT = 'prompt-1'
 const TR_PIPELINE = 'tr-1'
+const EMB_TOKEN = 'embedding-token-000000'
+const EMB_SHA = 'sha-embed'
+const EMB_PIPELINE = 'embed-1'
 
 const dirs: string[] = []
 
@@ -162,6 +165,15 @@ async function harness(language = 'ja'): Promise<Harness> {
       promptVersion: PROMPT,
       pipelineVersion: TR_PIPELINE,
       targetLanguage: 'ko',
+    },
+    embedding: {
+      enabled: true,
+      workerToken: EMB_TOKEN,
+      modelId: 'Qwen/Qwen3-Embedding-4B-GGUF',
+      modelRevision: 'commit-sha',
+      modelSha256: EMB_SHA,
+      pipelineVersion: EMB_PIPELINE,
+      dimensions: 2,
     },
   }
 

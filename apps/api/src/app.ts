@@ -10,6 +10,7 @@ import { registerSystemRoutes } from './routes/system'
 import { registerTranscriptionRoutes } from './routes/transcriptions'
 import { registerTranslationRoutes } from './routes/translations'
 import { registerWorkerAsrRoutes } from './routes/worker-asr'
+import { registerWorkerEmbeddingRoutes } from './routes/worker-embedding'
 import { registerWorkerGpuRoutes } from './routes/worker-gpu'
 import { registerWorkerTranslationRoutes } from './routes/worker-translation'
 
@@ -63,6 +64,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerTranscriptionRoutes(app, ctx)
   registerTranslationRoutes(app, ctx)
   registerWorkerAsrRoutes(app, ctx)
+  registerWorkerEmbeddingRoutes(app, ctx)
   registerWorkerGpuRoutes(app, ctx)
   registerWorkerTranslationRoutes(app, ctx)
   registerSystemRoutes(app, ctx)

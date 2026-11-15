@@ -28,6 +28,16 @@ export interface GpuConfig {
   resourceId: string
 }
 
+export interface EmbeddingConfig {
+  enabled: boolean
+  workerToken: string
+  modelId: string
+  modelRevision: string
+  modelSha256: string
+  pipelineVersion: string
+  dimensions: number
+}
+
 export interface ApiConfig {
   port: number
   host: string
@@ -41,6 +51,7 @@ export interface ApiConfig {
   gpu: GpuConfig
   asr: AsrConfig
   translation: TranslationConfig
+  embedding: EmbeddingConfig
 }
 
 async function resolveSecret(dataDir: string, fromEnv: string | undefined): Promise<string> {
@@ -101,6 +112,30 @@ function resolveTranslation(
   }
 }
 
+function resolveEmbedding(env: Record<string, string | undefined>): EmbeddingConfig {
+  const token = env.EMBEDDING_WORKER_TOKEN?.trim() ?? ''
+  const enabled = env.EMBEDDING_ENABLED ? env.EMBEDDING_ENABLED === '1' : token.length > 0
+  if (enabled && token.length < 16) {
+    throw new Error(
+      'EMBEDDING_WORKER_TOKEN must be at least 16 characters when embeddings are enabled.',
+    )
+  }
+
+  const dimensions = Number(env.EMBEDDING_DIMENSIONS)
+  return {
+    enabled,
+    workerToken: token,
+    modelId: env.EMBEDDING_MODEL_ID?.trim() || 'Qwen/Qwen3-Embedding-4B-GGUF',
+    modelRevision:
+      env.EMBEDDING_MODEL_REVISION?.trim() || 'f4602530db1d980e16da9d7d3a70294cf5c190be',
+    modelSha256:
+      env.EMBEDDING_MODEL_SHA256?.trim() ||
+      '2b0cf8f17b4c723c27303015383c27ec4bf2d8314bb677d05e920dd70bb0f16b',
+    pipelineVersion: env.EMBEDDING_PIPELINE_VERSION?.trim() || '1',
+    dimensions: Number.isInteger(dimensions) && dimensions > 0 ? dimensions : 2560,
+  }
+}
+
 export async function loadConfig(
   env: Record<string, string | undefined> = process.env,
 ): Promise<ApiConfig> {
@@ -116,6 +151,8 @@ export async function loadConfig(
   const translation = resolveTranslation(env, env.ASR_RESULT_DIR ?? 'asr-results')
   if (translation.enabled) await mkdir(translation.resultDir, { recursive: true })
 
+  const embedding = resolveEmbedding(env)
+
   return {
     port: Number(env.PORT ?? 8787),
     host: env.HOST ?? '127.0.0.1',
@@ -129,5 +166,6 @@ export async function loadConfig(
     gpu: { resourceId: env.GPU_RESOURCE?.trim() || 'gpu:0' },
     asr,
     translation,
+    embedding,
   }
 }
