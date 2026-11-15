@@ -6,6 +6,9 @@ services:
   worker:
     environment:
       HWACCEL: nvenc
+      # The default capability set is utility,compute and mounts libcuda but not
+      # libnvidia-encode, which h264_nvenc needs.
+      NVIDIA_DRIVER_CAPABILITIES: all
     deploy:
       resources:
         reservations:
