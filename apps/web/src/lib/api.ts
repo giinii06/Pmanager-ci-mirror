@@ -7,6 +7,7 @@ import type {
   LibraryDTO,
   Page,
   PlaybackProgressDTO,
+  ReviewDTO,
   StatsDTO,
   SubtitleTracksDTO,
   TranscriptDTO,
@@ -109,6 +110,16 @@ export const api = {
   asset: (id: string) => request<AssetDTO>(`/api/assets/${id}`),
   setFavorite: (id: string, favorite: boolean) =>
     request<void>(`/api/assets/${id}/favorite`, { method: favorite ? 'POST' : 'DELETE' }),
+
+  related: (id: string, limit = 8) =>
+    request<{ items: AssetDTO[] }>(`/api/assets/${id}/related?limit=${limit}`),
+  review: (id: string) => request<{ review: ReviewDTO | null }>(`/api/assets/${id}/review`),
+  saveReview: (id: string, input: { rating: number; body: string }) =>
+    request<ReviewDTO>(`/api/assets/${id}/review`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  deleteReview: (id: string) => request<void>(`/api/assets/${id}/review`, { method: 'DELETE' }),
 
   progress: (id: string) =>
     request<{ progress: PlaybackProgressDTO | null }>(`/api/playback/${id}`),
