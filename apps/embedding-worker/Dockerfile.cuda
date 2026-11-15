@@ -1,0 +1,36 @@
+# WSL2 / Linux NVIDIA worker. llama-server comes from the llama.cpp CUDA image and
+# is started per job, so nothing in this container holds VRAM at rest.
+#
+# Build context is the repository root, like the translation worker:
+#
+#   docker compose -f compose.yaml -f compose.embedding.models.yaml \
+#     -f compose.embedding.cuda.yaml up -d --build
+#
+# The library glob includes the versioned files. The llama.cpp image ships
+# libllama-common.so as a link to libllama-common.so.1, so copying only *.so
+# leaves a dangling link and llama-server exits 127 at startup.
+FROM ghcr.io/ggml-org/llama.cpp:server-cuda AS llama
+
+FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src \
+    LD_LIBRARY_PATH=/opt/llama
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.12 \
+        ca-certificates \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=llama /app/llama-server /opt/llama/llama-server
+COPY --from=llama /app/*.so* /opt/llama/
+ENV PATH=/opt/llama:$PATH \
+    LLAMA_SERVER=/opt/llama/llama-server
+
+WORKDIR /app
+COPY apps/embedding-worker/src /app/src
+
+CMD ["python3.12", "-m", "embedding_worker.main"]
