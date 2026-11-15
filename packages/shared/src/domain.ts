@@ -91,6 +91,54 @@ export interface JobSummaryDTO {
   recentFailures: JobDTO[]
 }
 
+/** Media jobs run beside the GPU queue; ASR and translation share one card. */
+export type WorkPipeline = 'media' | 'asr' | 'translation'
+
+export type WorkKind = JobKind | 'asr' | 'translation'
+
+/** Null means the number is not known yet, never zero. */
+export type EtaBasis = 'history' | null
+
+export interface WorkItemDTO {
+  id: string
+  pipeline: WorkPipeline
+  kind: WorkKind
+  assetId: string | null
+  assetName: string | null
+  state: 'running' | 'queued' | 'stalled' | 'failed'
+  stage: string | null
+  /** Null for media jobs, which report no progress. */
+  progress: number | null
+  /** Null for media jobs. False means the job is waiting for the card. */
+  onGpu: boolean | null
+  startedAt: string | null
+  updatedAt: string | null
+  etaSeconds: number | null
+  errorMessage: string | null
+}
+
+export interface WorkPipelineDTO {
+  pipeline: WorkPipeline
+  running: number
+  queued: number
+  stalled: number
+  etaSeconds: number | null
+  basis: EtaBasis
+}
+
+export interface WorkQueueDTO {
+  generatedAt: string
+  running: WorkItemDTO[]
+  queued: WorkItemDTO[]
+  stalled: WorkItemDTO[]
+  remaining: number
+  etaSeconds: number | null
+  basis: EtaBasis
+  pipelines: WorkPipelineDTO[]
+  failures: WorkItemDTO[]
+  lastCompletedAt: string | null
+}
+
 export type AsrJobState =
   | 'queued'
   | 'transcribing'

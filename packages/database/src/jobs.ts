@@ -7,7 +7,8 @@ type Params = SQLQueryBindings[]
 
 const JOB_SELECT = `
   id, kind, state, priority, asset_id AS assetId, library_id AS libraryId, payload,
-  attempts, max_attempts AS maxAttempts, last_error AS lastError, updated_at AS updatedAt
+  attempts, max_attempts AS maxAttempts, last_error AS lastError,
+  started_at AS startedAt, updated_at AS updatedAt
 `
 
 export interface EnqueueJobInput {
@@ -50,7 +51,8 @@ export function claimNextJob(db: Db, now: number): JobRecord | null {
   return (
     db
       .query<JobRecord, Params>(
-        `UPDATE jobs SET state = 'running', attempts = attempts + 1, updated_at = ?
+        `UPDATE jobs SET state = 'running', attempts = attempts + 1,
+           started_at = ?, updated_at = ?
          WHERE id = (
            SELECT id FROM jobs
            WHERE state = 'queued' AND run_after <= ?
@@ -59,7 +61,7 @@ export function claimNextJob(db: Db, now: number): JobRecord | null {
          )
          RETURNING ${JOB_SELECT}`,
       )
-      .get(now, now) ?? null
+      .get(now, now, now) ?? null
   )
 }
 

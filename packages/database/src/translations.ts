@@ -20,7 +20,8 @@ const JOB_COLUMNS = `
   lease_expires_at AS leaseExpiresAt, run_after AS runAfter, model_id AS modelId,
   model_revision AS modelRevision, model_sha256 AS modelSha256,
   prompt_version AS promptVersion, pipeline_version AS pipelineVersion,
-  error_message AS errorMessage, created_at AS createdAt, updated_at AS updatedAt
+  error_message AS errorMessage, started_at AS startedAt,
+  created_at AS createdAt, updated_at AS updatedAt
 `
 
 const TRANSLATION_COLUMNS = `
@@ -165,7 +166,8 @@ export function claimTranslationJob(
       .query<TranslationJobRecord, Params>(
         `UPDATE translation_jobs SET
            state = 'translating', stage = 'starting', progress = 0,
-           attempts = attempts + 1, lease_owner = ?, lease_expires_at = ?, updated_at = ?
+           attempts = attempts + 1, lease_owner = ?, lease_expires_at = ?,
+           started_at = ?, updated_at = ?
          WHERE id = (
            SELECT id FROM translation_jobs
            WHERE state = 'queued' AND run_after <= ?
@@ -180,7 +182,7 @@ export function claimTranslationJob(
          )
          RETURNING ${JOB_COLUMNS}`,
       )
-      .get(owner, now + leaseMs, now, now, now) ?? null
+      .get(owner, now + leaseMs, now, now, now, now) ?? null
   )
 }
 

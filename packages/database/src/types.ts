@@ -92,6 +92,7 @@ export interface JobRecord {
   attempts: number
   maxAttempts: number
   lastError: string | null
+  startedAt: number | null
   updatedAt: number
 }
 
@@ -125,6 +126,7 @@ export interface AsrJobRecord {
   alignerRevision: string
   pipelineVersion: string
   errorMessage: string | null
+  startedAt: number | null
   createdAt: number
   updatedAt: number
 }
@@ -176,6 +178,7 @@ export interface TranslationJobRecord {
   promptVersion: string
   pipelineVersion: string
   errorMessage: string | null
+  startedAt: number | null
   createdAt: number
   updatedAt: number
 }

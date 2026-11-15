@@ -4,9 +4,10 @@ import {
   getStats,
   jobCounts,
   recentFailures,
+  workQueue,
 } from '@mediavault/database'
 import type { AppContext } from '../context'
-import { toJobDTO } from '../dto'
+import { toJobDTO, toWorkQueueDTO } from '../dto'
 
 export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/health', async (_request, reply) => {
@@ -23,5 +24,9 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
       active: activeJobs(ctx.db).map(toJobDTO),
       recentFailures: recentFailures(ctx.db).map(toJobDTO),
     })
+  })
+
+  app.get('/api/queue', async (_request, reply) => {
+    reply.send(toWorkQueueDTO(workQueue(ctx.db, Date.now(), ctx.config.translation.gpuResource)))
   })
 }

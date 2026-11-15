@@ -18,7 +18,7 @@ const JOB_COLUMNS = `
   lease_expires_at AS leaseExpiresAt, run_after AS runAfter,
   model_revision AS modelRevision, aligner_revision AS alignerRevision,
   pipeline_version AS pipelineVersion, error_message AS errorMessage,
-  created_at AS createdAt, updated_at AS updatedAt
+  started_at AS startedAt, created_at AS createdAt, updated_at AS updatedAt
 `
 
 const TRANSCRIPT_COLUMNS = `
@@ -115,7 +115,8 @@ export function claimAsrJob(
       .query<AsrJobRecord, Params>(
         `UPDATE asr_jobs SET
            state = 'transcribing', stage = 'extracting', progress = 0,
-           attempts = attempts + 1, lease_owner = ?, lease_expires_at = ?, updated_at = ?
+           attempts = attempts + 1, lease_owner = ?, lease_expires_at = ?,
+           started_at = ?, updated_at = ?
          WHERE id = (
            SELECT id FROM asr_jobs
            WHERE state = 'queued' AND run_after <= ?
@@ -130,7 +131,7 @@ export function claimAsrJob(
          )
          RETURNING ${JOB_COLUMNS}`,
       )
-      .get(owner, now + leaseMs, now, now, now) ?? null
+      .get(owner, now + leaseMs, now, now, now, now) ?? null
   )
 }
 

@@ -1,0 +1,236 @@
+import { describe, expect, test } from 'bun:test'
+import {
+  acquireGpuLease,
+  claimAsrJob,
+  claimNextJob,
+  completeJob,
+  createAsrJob,
+  createLibrary,
+  enqueueJob,
+  failAsrJob,
+  failJob,
+  insertAsset,
+  openDatabase,
+  upsertFolder,
+  workQueue,
+} from './index'
+import type { NewAsset } from './assets'
+
+const RESOURCE = 'gpu:0'
+const MODEL = 'asr-rev-1'
+const ALIGNER = 'aligner-rev-1'
+const PIPELINE = 'asr-pipeline-1'
+
+function assetInput(id: string, folderId: string): NewAsset {
+  return {
+    id,
+    libraryId: 'lib1',
+    folderId,
+    relativePath: `Videos/${id}.mp4`,
+    filename: `${id}.mp4`,
+    kind: 'video',
+    mimeType: 'video/mp4',
+    sizeBytes: 1_000,
+    mtimeMs: 1_000,
+    width: 1_080,
+    height: 1_920,
+    durationMs: 60_000,
+    takenAt: 10_000,
+    videoCodec: 'h264',
+    audioCodec: 'aac',
+    container: 'mov,mp4',
+    indexedAt: 20_000,
+    scanId: 'scan1',
+  }
+}
+
+function seed() {
+  const db = openDatabase(':memory:')
+  createLibrary(db, { id: 'lib1', name: 'Videos', rootPath: 'Videos', createdAt: 1 })
+  const folderId = upsertFolder(db, {
+    id: 'folder1',
+    libraryId: 'lib1',
+    parentId: null,
+    relativePath: 'Videos',
+    name: 'Videos',
+    depth: 0,
+    scanId: 'scan1',
+  })
+  insertAsset(db, assetInput('asset1', folderId))
+  insertAsset(db, assetInput('asset2', folderId))
+  insertAsset(db, assetInput('asset3', folderId))
+  return db
+}
+
+function finishedMedia(
+  db: ReturnType<typeof seed>,
+  key: string,
+  start: number,
+  durationMs: number,
+): number {
+  enqueueJob(db, { dedupeKey: key, kind: 'thumbnail', priority: 2, assetId: 'asset1' }, start)
+  const job = claimNextJob(db, start)!
+  const done = start + durationMs
+  completeJob(db, job.id, done)
+  return done
+}
+
+function queuedMedia(db: ReturnType<typeof seed>, key: string, at: number): void {
+  enqueueJob(db, { dedupeKey: key, kind: 'thumbnail', priority: 2, assetId: 'asset1' }, at)
+}
+
+function asrJob(
+  db: ReturnType<typeof seed>,
+  id: string,
+  assetId: string,
+  at: number,
+  maxAttempts = 3,
+): void {
+  createAsrJob(
+    db,
+    {
+      id,
+      assetId,
+      fileVersion: 1,
+      modelRevision: MODEL,
+      alignerRevision: ALIGNER,
+      pipelineVersion: PIPELINE,
+      maxAttempts,
+    },
+    at,
+  )
+}
+
+describe('work queue', () => {
+  test('an idle queue reports zero and no estimate', () => {
+    const db = seed()
+    const queue = workQueue(db, 10_000, RESOURCE)
+
+    expect(queue.remaining).toBe(0)
+    expect(queue.etaSeconds).toBe(0)
+    expect(queue.basis).toBeNull()
+    expect(queue.running).toEqual([])
+    expect(queue.lastCompletedAt).toBeNull()
+    expect(queue.pipelines.every((lane) => lane.queued === 0 && lane.running === 0)).toBe(true)
+  })
+
+  test('counts are exact even when the item list is capped', () => {
+    const db = seed()
+    for (let index = 0; index < 60; index += 1) queuedMedia(db, `job-${index}`, 1_000)
+
+    const queue = workQueue(db, 10_000, RESOURCE)
+
+    expect(queue.remaining).toBe(60)
+    expect(queue.queued).toHaveLength(50)
+    expect(queue.pipelines[0]!.queued).toBe(60)
+  })
+
+  test('queued work is multiplied by the median of recent completions', () => {
+    const db = seed()
+    let now = 10_000
+    now = finishedMedia(db, 'a', now, 30_000)
+    now = finishedMedia(db, 'b', now, 40_000)
+    now = finishedMedia(db, 'c', now, 50_000)
+    queuedMedia(db, 'd', now)
+    queuedMedia(db, 'e', now)
+
+    const queue = workQueue(db, now + 1_000, RESOURCE)
+
+    expect(queue.pipelines[0]!.etaSeconds).toBe(80)
+    expect(queue.pipelines[0]!.basis).toBe('history')
+    expect(queue.etaSeconds).toBe(80)
+    expect(queue.basis).toBe('history')
+  })
+
+  test('a running job subtracts the time it already spent', () => {
+    const db = seed()
+    let now = 10_000
+    now = finishedMedia(db, 'a', now, 30_000)
+    now = finishedMedia(db, 'b', now, 40_000)
+    now = finishedMedia(db, 'c', now, 50_000)
+    queuedMedia(db, 'd', now)
+    claimNextJob(db, now)
+
+    const queue = workQueue(db, now + 30_000, RESOURCE)
+
+    expect(queue.pipelines[0]!.running).toBe(1)
+    expect(queue.pipelines[0]!.etaSeconds).toBe(10)
+  })
+
+  test('one completion is not enough history to promise a time', () => {
+    const db = seed()
+    const done = finishedMedia(db, 'a', 10_000, 30_000)
+    queuedMedia(db, 'b', done)
+
+    const queue = workQueue(db, done + 1_000, RESOURCE)
+
+    expect(queue.pipelines[0]!.etaSeconds).toBeNull()
+    expect(queue.etaSeconds).toBeNull()
+    expect(queue.basis).toBeNull()
+  })
+
+  test('an expired lease is stalled, counted, and never estimated', () => {
+    const db = seed()
+    asrJob(db, 'asr1', 'asset1', 1_000)
+    claimAsrJob(db, 'asr-w', 1_000, 10_000)
+
+    const queue = workQueue(db, 20_000, RESOURCE)
+
+    expect(queue.stalled).toHaveLength(1)
+    expect(queue.stalled[0]!.state).toBe('stalled')
+    expect(queue.stalled[0]!.assetName).toBe('asset1.mp4')
+    expect(queue.remaining).toBe(1)
+    expect(queue.pipelines[1]!.stalled).toBe(1)
+    expect(queue.pipelines[1]!.etaSeconds).toBeNull()
+    expect(queue.etaSeconds).toBeNull()
+  })
+
+  test('onGpu follows the lease owner, not the job state', () => {
+    const db = seed()
+    asrJob(db, 'asr1', 'asset1', 1_000)
+    claimAsrJob(db, 'asr-w', 120_000, 10_000)
+
+    expect(workQueue(db, 20_000, RESOURCE).running[0]!.onGpu).toBe(false)
+
+    acquireGpuLease(
+      db,
+      { resourceId: RESOURCE, owner: 'asr-w', taskKind: 'asr', leaseMs: 120_000 },
+      20_000,
+    )
+
+    expect(workQueue(db, 30_000, RESOURCE).running[0]!.onGpu).toBe(true)
+  })
+
+  test('failures from different queues carry the asset name and the error', () => {
+    const db = seed()
+    enqueueJob(
+      db,
+      { dedupeKey: 'thumb', kind: 'thumbnail', priority: 2, assetId: 'asset1', maxAttempts: 1 },
+      1_000,
+    )
+    const media = claimNextJob(db, 1_000)!
+    failJob(db, media.id, 'ffmpeg exited 1', 2_000)
+
+    asrJob(db, 'asr1', 'asset2', 1_000, 1)
+    claimAsrJob(db, 'asr-w', 120_000, 1_000)
+    failAsrJob(db, 'asr1', 'audio stream missing', 3_000)
+
+    const queue = workQueue(db, 4_000, RESOURCE)
+
+    expect(queue.failures).toHaveLength(2)
+    const [first, second] = queue.failures
+    expect(first!.assetName).toBe('asset2.mp4')
+    expect(first!.errorMessage).toBe('audio stream missing')
+    expect(second!.assetName).toBe('asset1.mp4')
+    expect(second!.errorMessage).toBe('ffmpeg exited 1')
+    expect(first!.state).toBe('failed')
+  })
+
+  test('lastCompletedAt is the newest finish across the queues', () => {
+    const db = seed()
+    finishedMedia(db, 'a', 10_000, 5_000)
+    const last = finishedMedia(db, 'b', 100_000, 7_000)
+
+    expect(workQueue(db, 200_000, RESOURCE).lastCompletedAt).toBe(last)
+  })
+})

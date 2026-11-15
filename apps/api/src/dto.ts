@@ -11,6 +11,8 @@ import type {
   TranslationJobDTO,
   TranslationSummaryDTO,
   UserDTO,
+  WorkItemDTO,
+  WorkQueueDTO,
 } from '@mediavault/shared'
 import { playbackModeFor } from '@mediavault/shared'
 import type {
@@ -26,6 +28,8 @@ import type {
   TranslationRecord,
   TranslationWithSegments,
   UserRecord,
+  WorkItemRecord,
+  WorkQueueRecord,
 } from '@mediavault/database'
 
 function iso(ms: number | null): string | null {
@@ -217,5 +221,38 @@ export function toTranslationDTO(stored: TranslationWithSegments): TranslationDT
       text: segment.text,
     })),
     createdAt: new Date(translation.createdAt).toISOString(),
+  }
+}
+
+function toWorkItemDTO(item: WorkItemRecord): WorkItemDTO {
+  return {
+    id: item.id,
+    pipeline: item.pipeline,
+    kind: item.kind as WorkItemDTO['kind'],
+    assetId: item.assetId,
+    assetName: item.assetName,
+    state: item.state,
+    stage: item.stage,
+    progress: item.progress,
+    onGpu: item.onGpu,
+    startedAt: iso(item.startedAt),
+    updatedAt: iso(item.updatedAt),
+    etaSeconds: item.etaSeconds,
+    errorMessage: item.errorMessage,
+  }
+}
+
+export function toWorkQueueDTO(queue: WorkQueueRecord): WorkQueueDTO {
+  return {
+    generatedAt: new Date(queue.generatedAt).toISOString(),
+    running: queue.running.map(toWorkItemDTO),
+    queued: queue.queued.map(toWorkItemDTO),
+    stalled: queue.stalled.map(toWorkItemDTO),
+    remaining: queue.remaining,
+    etaSeconds: queue.etaSeconds,
+    basis: queue.basis,
+    pipelines: queue.pipelines,
+    failures: queue.failures.map(toWorkItemDTO),
+    lastCompletedAt: iso(queue.lastCompletedAt),
   }
 }

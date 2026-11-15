@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -226,4 +226,11 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
   (exec) => exec(ASR_SQL),
   (exec) => exec(TRANSLATION_SQL),
+  (exec) => {
+    // The claim stamps these, so a running row can report how long it has run
+    // without counting the time it spent waiting in the queue.
+    exec('ALTER TABLE jobs ADD COLUMN started_at INTEGER')
+    exec('ALTER TABLE asr_jobs ADD COLUMN started_at INTEGER')
+    exec('ALTER TABLE translation_jobs ADD COLUMN started_at INTEGER')
+  },
 ]
