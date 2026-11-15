@@ -1,0 +1,44 @@
+# Face indexing on the CPU, alongside the GPU workers.
+#
+#   docker compose --env-file .env --env-file .env.face \
+#     -f compose.yaml -f compose.face.models.yaml \
+#     -f compose.face.yaml up -d --build
+#
+# No GPU reservation on purpose: the card stays with ASR, translation, embedding
+# and the scene indexer, and a face pass can run while any of them holds it.
+services:
+  api:
+    environment:
+      FACE_WORKER_TOKEN: ${FACE_WORKER_TOKEN:?set FACE_WORKER_TOKEN to a long random string}
+      FACE_MODEL_ID: ${FACE_MODEL_ID:-antelopev2}
+      FACE_MODEL_REVISION: ${FACE_MODEL_REVISION:?set FACE_MODEL_REVISION to a release tag}
+      FACE_PIPELINE_VERSION: ${FACE_PIPELINE_VERSION:-1}
+      FACE_SAMPLE_MS: ${FACE_SAMPLE_MS:-2000}
+      FACE_MATCH_THRESHOLD: ${FACE_MATCH_THRESHOLD:-0.45}
+      FACE_CANDIDATE_THRESHOLD: ${FACE_CANDIDATE_THRESHOLD:-0.5}
+
+  face-worker:
+    build:
+      context: .
+      dockerfile: apps/face-worker/Dockerfile
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://api:8787
+      FACE_WORKER_TOKEN: ${FACE_WORKER_TOKEN:?set FACE_WORKER_TOKEN to a long random string}
+      FACE_MODEL_DIR: /models/face
+      FACE_MODEL_ID: ${FACE_MODEL_ID:-antelopev2}
+      FACE_MODEL_REVISION: ${FACE_MODEL_REVISION:?set FACE_MODEL_REVISION to a release tag}
+      FACE_SAMPLE_MS: ${FACE_SAMPLE_MS:-2000}
+      FACE_MIN_SCORE: ${FACE_MIN_SCORE:-0.5}
+      FACE_PROVIDERS: CPUExecutionProvider
+      FACE_TEMP_DIR: /face-tmp
+      FACE_CACHE_DIR: /cache
+    volumes:
+      - ${MEDIA_ROOT:-./sample-media}:/media:ro
+      - ./models:/models:ro
+      - mediavault-cache:/cache
+    depends_on:
+      api:
+        condition: service_healthy
+      face-model-init:
+        condition: service_completed_successfully
