@@ -77,6 +77,8 @@ export interface ApiConfig {
   accel: boolean
   hwaccel: 'nvenc' | null
   secureCookies: boolean
+  /** How stale a library scan may be before the pipeline pass queues another. */
+  scanIntervalMs: number
   gpu: GpuConfig
   asr: AsrConfig
   translation: TranslationConfig
@@ -99,6 +101,12 @@ async function resolveSecret(dataDir: string, fromEnv: string | undefined): Prom
   const secret = randomBytes(32).toString('hex')
   await writeFile(file, secret, { mode: 0o600 })
   return secret
+}
+
+function resolveScanInterval(env: Record<string, string | undefined>): number {
+  const minutes = Number(env.SCAN_INTERVAL_MINUTES)
+  const value = Number.isFinite(minutes) && minutes >= 1 ? minutes : 15
+  return value * 60_000
 }
 
 function resolveAsr(env: Record<string, string | undefined>): AsrConfig {
@@ -243,6 +251,7 @@ export async function loadConfig(
     accel: env.MEDIA_ACCEL === 'nginx',
     hwaccel: env.HWACCEL === 'nvenc' ? 'nvenc' : null,
     secureCookies: env.COOKIE_SECURE === '1',
+    scanIntervalMs: resolveScanInterval(env),
     gpu: { resourceId: env.GPU_RESOURCE?.trim() || 'gpu:0' },
     asr,
     translation,

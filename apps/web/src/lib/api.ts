@@ -144,9 +144,15 @@ export const api = {
       `/api/search/semantic?q=${encodeURIComponent(q)}&limit=${limit}`,
     ),
   runIndex: () =>
-    request<{ considered: number; scenes: number; faces: number }>('/api/index/run', {
-      method: 'POST',
-    }),
+    request<{
+      scanned: number
+      considered: number
+      asr: number
+      translations: number
+      embeddings: number
+      scenes: number
+      faces: number
+    }>('/api/index/run', { method: 'POST' }),
 
   people: (state: 'approved' | 'candidate' | 'excluded' | 'all' = 'approved', limit = 200) =>
     request<{

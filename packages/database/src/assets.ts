@@ -304,14 +304,16 @@ export function countAssets(db: Db, libraryId: string): number {
 /**
  * The videos an index pass may enqueue work for. A file with no duration has no
  * windows and no frames to sample, so it is skipped until a scan fills it in.
+ * `audioCodec` is null when the file has no audio stream, which is what keeps a
+ * silent clip out of the transcription queue.
  */
 export function listVideosForIndexing(
   db: Db,
   limit: number,
-): Array<{ id: string; fileVersion: number }> {
+): Array<{ id: string; fileVersion: number; audioCodec: string | null }> {
   return db
-    .query<{ id: string; fileVersion: number }, Params>(
-      `SELECT id, file_version AS fileVersion FROM assets
+    .query<{ id: string; fileVersion: number; audioCodec: string | null }, Params>(
+      `SELECT id, file_version AS fileVersion, audio_codec AS audioCodec FROM assets
        WHERE deleted_at IS NULL AND kind = 'video' AND duration_ms IS NOT NULL
        ORDER BY id ASC LIMIT ?`,
     )

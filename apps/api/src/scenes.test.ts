@@ -259,6 +259,7 @@ async function harness(options: { sceneEnabled?: boolean; faceEnabled?: boolean;
     accel: false,
     hwaccel: null,
     secureCookies: false,
+    scanIntervalMs: 15 * 60_000,
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: false,
@@ -772,7 +773,7 @@ describe('index pass', () => {
     expect(body.faces).toBe(0)
   })
 
-  test('the pass is refused when neither lane is configured', async () => {
+  test('the pass answers with counters when no lane is configured', async () => {
     const h = await harness({ sceneEnabled: false, faceEnabled: false })
     const response = await h.app.inject({
       method: 'POST',
@@ -780,7 +781,8 @@ describe('index pass', () => {
       headers: auth(h),
     })
 
-    expect(response.statusCode).toBe(409)
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({ scenes: 0, faces: 0, asr: 0 })
   })
 
   test('enqueueing faces for a video is refused when faces are off', async () => {

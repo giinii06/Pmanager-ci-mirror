@@ -47,10 +47,10 @@ export function PeoplePage() {
   const runIndex = useMutation({
     mutationFn: api.runIndex,
     onSuccess: (result) => {
+      const queued =
+        result.asr + result.translations + result.embeddings + result.scenes + result.faces
       toast(
-        result.scenes + result.faces > 0
-          ? `색인 작업을 ${result.scenes + result.faces}개 넣었습니다`
-          : '새로 색인할 영상이 없습니다',
+        queued > 0 ? `작업을 ${queued}개 넣었습니다` : '새로 할 일이 없습니다',
         'success',
       )
     },

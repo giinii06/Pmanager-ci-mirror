@@ -26,21 +26,35 @@ export type SubtitleSource =
  * Subtitles belong to the file version that produced them, and a stored
  * transcript only counts while the running model revisions match it.
  */
+function isCurrentTranscript(ctx: AppContext, transcript: TranscriptRecord): boolean {
+  return (
+    transcript.modelRevision === ctx.config.asr.modelRevision &&
+    transcript.alignerRevision === ctx.config.asr.alignerRevision &&
+    transcript.pipelineVersion === ctx.config.asr.pipelineVersion
+  )
+}
+
+/**
+ * The transcript row alone, without its segments, for callers that only need to
+ * know whether a current transcript exists.
+ */
+export function currentTranscriptRecord(
+  ctx: AppContext,
+  assetId: string,
+  fileVersion: number,
+): TranscriptRecord | null {
+  const stored = getTranscript(ctx.db, assetId, fileVersion)
+  if (!stored || !isCurrentTranscript(ctx, stored.transcript)) return null
+  return stored.transcript
+}
+
 export function currentTranscript(
   ctx: AppContext,
   assetId: string,
   fileVersion: number,
 ): TranscriptWithSegments | null {
   const stored = getTranscript(ctx.db, assetId, fileVersion)
-  if (!stored) return null
-  const { transcript } = stored
-  if (
-    transcript.modelRevision !== ctx.config.asr.modelRevision ||
-    transcript.alignerRevision !== ctx.config.asr.alignerRevision ||
-    transcript.pipelineVersion !== ctx.config.asr.pipelineVersion
-  ) {
-    return null
-  }
+  if (!stored || !isCurrentTranscript(ctx, stored.transcript)) return null
   return stored
 }
 

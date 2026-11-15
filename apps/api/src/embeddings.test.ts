@@ -130,6 +130,7 @@ async function harness(options: { transcripts?: boolean } = {}): Promise<Harness
     accel: false,
     hwaccel: null,
     secureCookies: false,
+    scanIntervalMs: 15 * 60_000,
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: false,

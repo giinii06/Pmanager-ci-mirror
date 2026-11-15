@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { getAssetFileInfo } from '@mediavault/database'
 import type { AppContext } from '../context'
-import { ensureIndexJobs } from '../index-trigger'
+import { ensurePipelineJobs } from '../index-trigger'
 import { enqueueFaces } from '../scene-trigger'
 import { parseInput } from '../validate'
 
@@ -11,11 +11,7 @@ const idParams = z.object({ id: z.string().min(1).max(64) })
 export function registerIndexRoutes(app: FastifyInstance, ctx: AppContext): void {
   /** Runs the same pass the API's timer runs, so the UI can ask for it now. */
   app.post('/api/index/run', async (_request, reply) => {
-    if (!ctx.config.scene.enabled && !ctx.config.face.enabled) {
-      reply.code(409).send({ error: 'disabled', message: 'Scene and face indexing are not configured.' })
-      return
-    }
-    reply.send(ensureIndexJobs(ctx, Date.now()))
+    reply.send(ensurePipelineJobs(ctx, Date.now()))
   })
 
   app.post('/api/assets/:id/faces', async (request, reply) => {

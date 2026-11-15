@@ -27,6 +27,7 @@ function apiConfig(dir: string): ApiConfig {
     accel: false,
     hwaccel: null,
     secureCookies: false,
+    scanIntervalMs: 15 * 60_000,
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: false,
