@@ -260,8 +260,8 @@ async function storeTranslation(h: Harness, input: StoredTranslation): Promise<v
       resultDir: `asset1/1/translations/transcript1/${input.targetLanguage}/fp`,
       plainText: input.text,
       segments: [
-        { seq: 0, startMs: 0, endMs: 2_000, text: 'それ、マジでやばくない？' },
-        { seq: 1, startMs: 2_000, endMs: 4_000, text: '本当に？' },
+        { seq: 0, startMs: 0, endMs: 2_000, text: input.text },
+        { seq: 1, startMs: 2_000, endMs: 4_000, text: input.text },
       ],
     },
     3_200,
@@ -345,7 +345,9 @@ describe('translation routes', () => {
       headers: auth(h),
     })
     expect(english.statusCode).toBe(200)
-    expect(english.body).toContain('Really?')
+    // The track carries the Korean line and its English translation.
+    expect(english.body).toContain('それ、マジでやばくない？\nReally?')
+    expect(english.body).toContain('本当に？\nReally?')
     await h.app.close()
   })
 

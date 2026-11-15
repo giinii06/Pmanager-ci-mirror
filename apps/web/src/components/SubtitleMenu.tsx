@@ -8,6 +8,7 @@ const LANGUAGE_NAME: Record<string, string> = {
   en: '영어',
   ja: '일본어',
   zh: '중국어',
+  yue: '광둥어',
   es: '스페인어',
   fr: '프랑스어',
   de: '독일어',
@@ -24,6 +25,16 @@ const LANGUAGE_NAME: Record<string, string> = {
   pl: '폴란드어',
   sv: '스웨덴어',
   uk: '우크라이나어',
+  ms: '말레이어',
+  da: '덴마크어',
+  fi: '핀란드어',
+  cs: '체코어',
+  fil: '필리핀어',
+  fa: '페르시아어',
+  el: '그리스어',
+  ro: '루마니아어',
+  hu: '헝가리어',
+  mk: '마케도니아어',
 }
 
 /** Language tags can carry a region (`ko-KR`), so match on the base tag. */
@@ -32,9 +43,13 @@ export function languageName(tag: string): string {
   return LANGUAGE_NAME[base] ?? base.toUpperCase()
 }
 
-export function trackLabel(track: SubtitleTrackDTO): string {
+export function trackLabel(track: SubtitleTrackDTO, sourceLanguage?: string | null): string {
   const name = languageName(track.language)
-  return track.source === 'asr' ? `${name} (AI)` : `${name} (AI 번역)`
+  if (track.source === 'asr') return `${name} (AI)`
+  if (sourceLanguage && sourceLanguage !== track.language) {
+    return `${name} (${languageName(sourceLanguage)}에서 번역됨)`
+  }
+  return `${name} (AI 번역)`
 }
 
 export function SubtitleMenu({
@@ -49,6 +64,7 @@ export function SubtitleMenu({
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const ready = tracks.filter((track) => track.ready)
+  const sourceLanguage = tracks.find((track) => track.source === 'asr')?.language ?? null
 
   useEffect(() => {
     if (!open) return
@@ -101,7 +117,7 @@ export function SubtitleMenu({
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1.5 w-[172px] rounded-lg border border-white/10 bg-[#0b0c0f]/97 py-1 shadow-[0_12px_32px_rgba(0,0,0,0.55)]"
+          className="absolute right-0 top-full mt-1.5 w-[224px] rounded-lg border border-white/10 bg-[#0b0c0f]/97 py-1 shadow-[0_12px_32px_rgba(0,0,0,0.55)]"
         >
           {ready.map((track) => (
             <button
@@ -116,7 +132,7 @@ export function SubtitleMenu({
               className={item(track.language === language)}
             >
               <Check size={12} className={tick(track.language === language)} />
-              <span className="truncate">{trackLabel(track)}</span>
+              <span className="truncate">{trackLabel(track, sourceLanguage)}</span>
             </button>
           ))}
           <div className="my-1 h-px bg-white/10" />

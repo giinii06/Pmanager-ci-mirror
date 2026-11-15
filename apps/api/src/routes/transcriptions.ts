@@ -12,7 +12,7 @@ import { fileExists } from '@mediavault/media'
 import type { AppContext } from '../context'
 import { toAsrJobDTO, toTranscriptDTO, toTranscriptSummaryDTO } from '../dto'
 import { sendFile } from '../http'
-import { currentTranscript, resolveSubtitleSource, subtitleFile } from '../subtitles'
+import { currentTranscript, dualSubtitleVtt, resolveSubtitleSource, subtitleFile } from '../subtitles'
 import { parseInput } from '../validate'
 
 const idParams = z.object({ id: z.string().min(1).max(64) })
@@ -163,6 +163,16 @@ export function registerTranscriptionRoutes(app: FastifyInstance, ctx: AppContex
       }
 
       const source = resolveSubtitleSource(ctx, info, query.lang)
+      // The player shows the spoken line above the translation, so a
+      // translation track is served as one document built from both.
+      if (source?.kind === 'translation' && name === 'subtitles.vtt') {
+        reply
+          .header('content-type', contentType)
+          .header('cache-control', 'private, max-age=60')
+          .send(dualSubtitleVtt(source))
+        return
+      }
+
       const target = source ? subtitleFile(ctx, source, name) : null
       if (!target || !(await fileExists(target))) {
         reply.code(404).send({ error: 'not_found', message: 'No subtitles yet.' })

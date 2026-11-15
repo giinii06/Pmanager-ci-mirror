@@ -5,7 +5,10 @@ import {
   isCurrentTranslation,
   type AssetFileInfo,
   type TranscriptRecord,
+  type TranscriptSegmentRecord,
   type TranscriptWithSegments,
+  type TranslationRecord,
+  type TranslationSegmentRecord,
   type TranslationWithSegments,
 } from '@mediavault/database'
 import { resolveInside } from '@mediavault/media'
@@ -14,12 +17,14 @@ import type { AppContext } from './context'
 export const ORIGINAL = 'original'
 
 export type SubtitleSource =
-  | { kind: 'asr'; language: string; transcript: TranscriptRecord; segmentCount: number }
+  | { kind: 'asr'; language: string; transcript: TranscriptRecord }
   | {
       kind: 'translation'
       language: string
-      translation: TranslationWithSegments['translation']
-      segmentCount: number
+      translation: TranslationRecord
+      segments: TranslationSegmentRecord[]
+      /** The ASR cues the translation was built from, shown above each line. */
+      sourceSegments: TranscriptSegmentRecord[]
     }
 
 /**
@@ -99,7 +104,6 @@ export function resolveSubtitleSource(
       kind: 'asr',
       language: transcript.transcript.language,
       transcript: transcript.transcript,
-      segmentCount: transcript.segments.length,
     }
   }
 
@@ -109,8 +113,58 @@ export function resolveSubtitleSource(
     kind: 'translation',
     language: stored.translation.targetLanguage,
     translation: stored.translation,
-    segmentCount: stored.segments.length,
+    segments: stored.segments,
+    sourceSegments: transcript.segments,
   }
+}
+
+function clock(ms: number): string {
+  const total = Math.max(0, Math.round(ms))
+  const hours = Math.floor(total / 3_600_000)
+  const minutes = Math.floor((total % 3_600_000) / 60_000)
+  const seconds = Math.floor((total % 60_000) / 1_000)
+  const millis = total % 1_000
+  const pad = (value: number, width = 2) => String(value).padStart(width, '0')
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(millis, 3)}`
+}
+
+/** A cue is one line in WebVTT, so a stored line break becomes a space. */
+function oneLine(text: string): string {
+  return text.replace(/\s*\r?\n\s*/g, ' ').trim()
+}
+
+export interface DualSubtitleCues {
+  segments: TranslationSegmentRecord[]
+  sourceSegments: TranscriptSegmentRecord[]
+}
+
+/**
+ * The track a viewer picks when the file is not in their language: the line
+ * that was spoken on top, the translation under it. The translation keeps the
+ * source seq, which is what pairs the two rows.
+ */
+export function dualSubtitleVtt(source: DualSubtitleCues): string {
+  const original = new Map(source.sourceSegments.map((segment) => [segment.seq, segment.text]))
+  const cues = source.segments
+    .map((segment) => ({
+      startMs: segment.startMs,
+      endMs: segment.endMs,
+      lines: [oneLine(original.get(segment.seq) ?? ''), oneLine(segment.text)],
+    }))
+    .filter((cue) => cue.lines[1] !== '')
+
+  const blocks = ['WEBVTT', '']
+  cues.forEach((cue, index) => {
+    // A cue end is exclusive, so ending where the next line starts keeps this
+    // one on screen through the silence instead of blinking off.
+    const next = cues[index + 1]
+    const end = next && next.startMs > cue.endMs ? next.startMs : cue.endMs
+    blocks.push(String(index + 1))
+    blocks.push(`${clock(cue.startMs)} --> ${clock(end)}`)
+    blocks.push(cue.lines.filter(Boolean).join('\n'))
+    blocks.push('')
+  })
+  return blocks.join('\n')
 }
 
 /**

@@ -4,6 +4,13 @@ import { Maximize, Minimize } from 'lucide-react'
 import type { AssetDTO, SubtitleTrackDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
+import {
+  CAPTION_SCALE_KEY,
+  CAPTION_SCALE_MAX,
+  CAPTION_SCALE_MIN,
+  CaptionSizeMenu,
+  storedCaptionScale,
+} from './CaptionSizeMenu'
 import { Spinner } from './ui/Spinner'
 import { SubtitleMenu, languageName, trackLabel } from './SubtitleMenu'
 
@@ -36,13 +43,25 @@ export function VideoPlayer({
   const [useHls, setUseHls] = useState(asset.playback === 'hls')
   const [hlsState, setHlsState] = useState<HlsState>(asset.playback === 'hls' ? 'preparing' : 'idle')
   const [failure, setFailure] = useState<string | null>(null)
-  const [caption, setCaption] = useState<string | null>(null)
+  const [captionLines, setCaptionLines] = useState<string[] | null>(null)
   const [controlsVisible, setControlsVisible] = useState(true)
   const [fullscreen, setFullscreen] = useState(false)
   const [nativeFullscreen, setNativeFullscreen] = useState(false)
   const [captionFontSize, setCaptionFontSize] = useState(16)
+  const [captionScale, setCaptionScale] = useState(storedCaptionScale)
   const startAt = useRef(startMs && startMs > 0 ? startMs / 1000 : 0)
   const lastSave = useRef(0)
+
+  const changeCaptionScale = (value: number) => {
+    const next =
+      Math.round(Math.min(CAPTION_SCALE_MAX, Math.max(CAPTION_SCALE_MIN, value)) * 100) / 100
+    setCaptionScale(next)
+    try {
+      localStorage.setItem(CAPTION_SCALE_KEY, String(next))
+    } catch {
+      // A blocked storage only costs the preference on the next visit.
+    }
+  }
 
   useEffect(() => {
     if (startMs && startMs > 0) startAt.current = startMs / 1000
@@ -176,10 +195,13 @@ export function VideoPlayer({
     const sync = () => {
       track.mode = nativeFullscreen ? 'showing' : 'hidden'
       const cues = track.activeCues ? Array.from(track.activeCues) : []
+      // A translation track carries the spoken line and its translation as two
+      // lines of one cue, so each line is kept separate for styling.
       const lines = cues
-        .map((cue) => (cue instanceof VTTCue ? cue.text : ''))
+        .flatMap((cue) => (cue instanceof VTTCue ? cue.text.split('\n') : []))
+        .map((line) => line.trim())
         .filter((line) => line !== '')
-      setCaption(lines.length > 0 ? lines.join('\n') : null)
+      setCaptionLines(lines.length > 0 ? lines : null)
     }
 
     sync()
@@ -188,7 +210,7 @@ export function VideoPlayer({
     return () => {
       track.removeEventListener('cuechange', sync)
       track.removeEventListener('load', sync)
-      setCaption(null)
+      setCaptionLines(null)
     }
   }, [nativeFullscreen, subtitleUrl, videoRef])
 
@@ -314,6 +336,9 @@ export function VideoPlayer({
   }
 
   const activeTrack = language ? tracks.find((track) => track.language === language) : undefined
+  const sourceLanguage = tracks.find((track) => track.source === 'asr')?.language ?? null
+  // A translation track is served with the spoken line above it.
+  const dual = activeTrack?.source === 'translation'
   const preparing = useHls && hlsState !== 'ready'
 
   return (
@@ -344,7 +369,7 @@ export function VideoPlayer({
             kind="subtitles"
             src={subtitleUrl}
             srcLang={language}
-            label={activeTrack ? trackLabel(activeTrack) : languageName(language)}
+            label={activeTrack ? trackLabel(activeTrack, sourceLanguage) : languageName(language)}
           />
         ) : null}
       </video>
@@ -359,6 +384,9 @@ export function VideoPlayer({
             {fullscreen ? <Minimize size={13} /> : <Maximize size={13} />}
           </button>
           <SubtitleMenu tracks={tracks} language={language} onSelect={onSelectLanguage} />
+          {language ? (
+            <CaptionSizeMenu scale={captionScale} onChange={changeCaptionScale} />
+          ) : null}
         </div>
       ) : null}
       {/*
@@ -366,16 +394,29 @@ export function VideoPlayer({
         layer. The native renderer would sit under the fullscreen controls, which
         is why the offset grows with the control bar instead of using it.
       */}
-      {!nativeFullscreen && caption ? (
+      {!nativeFullscreen && captionLines ? (
         <div
           className="pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3"
           style={{ bottom: controlsVisible ? (fullscreen ? 96 : 64) : fullscreen ? 32 : 24 }}
         >
           <span
             className="max-w-[86%] rounded-md bg-black/75 px-3 py-1.5 text-center font-medium leading-[1.4] whitespace-pre-line text-white [overflow-wrap:anywhere] [word-break:keep-all]"
-            style={{ fontSize: captionFontSize }}
+            style={{ fontSize: captionFontSize * captionScale }}
           >
-            {caption}
+            {captionLines.map((line, index) => {
+              // The spoken line sits above the translation, smaller and dimmer
+              // so the eye lands on the language the viewer chose.
+              const spoken = dual && index === 0
+              return (
+                <span
+                  key={index}
+                  className={cn('block', spoken && 'font-normal text-white/60')}
+                  style={spoken ? { fontSize: '0.82em' } : undefined}
+                >
+                  {line}
+                </span>
+              )
+            })}
           </span>
         </div>
       ) : null}
