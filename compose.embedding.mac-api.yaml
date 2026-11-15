@@ -1,0 +1,18 @@
+# Apple Silicon: the embedding worker runs natively on the host, because Docker
+# on macOS does not expose Metal to Linux containers. Only the model download
+# and the usual services run in Compose.
+#
+#   docker compose --env-file .env --env-file .env.embedding \
+#     -f compose.yaml -f compose.embedding.models.yaml \
+#     -f compose.embedding.mac-api.yaml up -d --build
+#
+# The API is published on loopback only. The host worker talks to it on
+# 127.0.0.1:8788; do not expose that port to the LAN. Loading this file
+# alongside compose.asr.mac-api.yaml is safe: both publish the same loopback
+# mapping and Compose keeps one.
+services:
+  api:
+    ports:
+      - "127.0.0.1:${EMBEDDING_API_PORT:-8788}:8787"
+    env_file:
+      - .env.embedding

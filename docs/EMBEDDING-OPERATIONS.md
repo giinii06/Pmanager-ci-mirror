@@ -56,9 +56,16 @@ job ... finished in ...s
 Docker Desktop의 Linux 컨테이너는 Apple Metal을 쓰지 못한다. 모델과 API만 Compose로 띄우고 worker는 호스트에서 실행한다.
 
 ```bash
-docker compose -f compose.yaml -f compose.embedding.models.yaml up -d --build
-docker compose -f compose.yaml run --rm embedding-model-init
+docker compose --env-file .env --env-file .env.embedding \
+  -f compose.yaml -f compose.embedding.models.yaml \
+  -f compose.embedding.mac-api.yaml up -d --build
+
+docker compose --env-file .env --env-file .env.embedding \
+  -f compose.yaml -f compose.embedding.models.yaml \
+  run --rm embedding-model-init
 ```
+
+`compose.embedding.mac-api.yaml`이 API에 `.env.embedding`을 넘기고 8788을 loopback에 연다. 이 파일 없이 올리면 `EMBEDDING_WORKER_TOKEN`이 API에 닿지 않아 worker 라우트가 등록되지 않고, 호스트 worker는 404만 받는다. ASR의 `compose.asr.mac-api.yaml`과 같이 올려도 포트 매핑이 같아 충돌하지 않는다.
 
 호스트에서 llama.cpp를 설치한 뒤 worker를 실행한다.
 
@@ -86,7 +93,14 @@ bun run scripts/backfill-embeddings.ts --dry-run
 MV_USERNAME=<계정> MV_PASSWORD=<비밀번호> bun run scripts/backfill-embeddings.ts
 ```
 
-스크립트는 `data/mediavault.db`를 읽기 전용으로 열어 영상 목록을 만들고, 각 영상에 `POST /api/assets/<assetId>/embedding`을 호출한다. DB를 직접 고치지 않는다. 세션이 이미 있으면 `MV_SESSION`에 `mv_session` 쿠키 값을 넣어 로그인을 건너뛴다.
+스크립트는 `mediavault.db`를 읽기 전용으로 열어 영상 목록을 만들고, 각 영상에 `POST /api/assets/<assetId>/embedding`을 호출한다. DB를 직접 고치지 않는다. 세션이 이미 있으면 `MV_SESSION`에 `mv_session` 쿠키 값을 넣어 로그인을 건너뛴다.
+
+DB 경로는 `DATA_DIR`이 정한다. 기본값 `./data`는 API를 저장소에서 직접 띄울 때만 맞다. Compose 스택은 DB를 볼륨에 두므로 볼륨 경로를 넘긴다.
+
+```bash
+DATA_DIR="$(docker volume inspect mediavault_mediavault-data --format '{{.Mountpoint}}')" \
+MV_USERNAME=<계정> MV_PASSWORD=<비밀번호> bun run scripts/backfill-embeddings.ts
+```
 
 전사가 없는 영상도 함께 넣는다. worker가 파일명만 임베딩하므로 그 영상도 의미 검색에 등장한다. 빼면 그 영상은 `/related`에 영원히 나오지 않는다.
 
@@ -95,10 +109,13 @@ MV_USERNAME=<계정> MV_PASSWORD=<비밀번호> bun run scripts/backfill-embeddi
 ## 6. 동작 확인
 
 ```bash
-curl -X POST http://127.0.0.1:8787/api/assets/<assetId>/embedding \
+# Compose 스택은 nginx를 통해 8080, macOS 경로는 API가 8788에 직접 열린다.
+BASE=http://127.0.0.1:8080
+
+curl -X POST $BASE/api/assets/<assetId>/embedding \
   -H 'content-type: application/json' -b 'mv_session=<token>' -d '{}'
 
-curl -s 'http://127.0.0.1:8787/api/assets/<assetId>/related?limit=8' -b 'mv_session=<token>'
+curl -s "$BASE/api/assets/<assetId>/related?limit=8" -b 'mv_session=<token>'
 ```
 
 `/related`의 응답에는 `basis`가 붙는다. `semantic`이면 저장된 벡터로 정렬한 것이고, `folder`면 아직 벡터가 없어 폴더 기준으로 답한 것이다. 영상에 벡터가 하나라도 쌓이면 그 영상의 응답은 `semantic`으로 바뀐다.
@@ -168,7 +185,7 @@ HLS는 같은 영상(97.6초, 1080x1920)으로 두 경우를 쟀다.
 
 ## 9. 되돌리기
 
-`EMBEDDING_ENABLED=0`으로 두고 API를 재시작하면 worker 라우트가 503을 반환하고 `/related`는 폴더 기준으로 돌아간다. 저장된 벡터는 남지만 읽히지 않는다.
+`EMBEDDING_ENABLED=0`으로 두고 API를 재시작하면 worker 라우트가 등록되지 않아 404를 반환하고, `/related`는 폴더 기준으로 돌아간다. 저장된 벡터는 남지만 읽히지 않는다.
 
 벡터를 지우려면 해당 행을 삭제한다. 원본 영상과 전사는 영향을 받지 않는다.
 

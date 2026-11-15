@@ -14,10 +14,14 @@
  *
  * Credentials: MV_SESSION holds a session cookie, either the bare token or the
  * whole `mv_session=...` pair. Without it the script logs in with MV_USERNAME
- * and MV_PASSWORD. MV_BASE_URL defaults to http://127.0.0.1:8787 and DATA_DIR
- * to ./data.
+ * and MV_PASSWORD. MV_BASE_URL defaults to http://127.0.0.1:8787.
+ *
+ * DATA_DIR defaults to ./data, which is right when the API runs from the repo.
+ * A compose stack keeps mediavault.db in a volume instead, so point DATA_DIR at
+ * the volume's mountpoint.
  */
 import { Database } from 'bun:sqlite'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 
 const BASE = (process.env.MV_BASE_URL ?? 'http://127.0.0.1:8787').replace(/\/+$/, '')
@@ -37,6 +41,13 @@ function fail(message: string): never {
 }
 
 function readVideos(): VideoRow[] {
+  if (!existsSync(DB_PATH)) {
+    fail(
+      `${DB_PATH} does not exist. Set DATA_DIR to the directory holding mediavault.db. ` +
+        'A compose stack keeps it in a volume, so find the path with ' +
+        '`docker volume inspect mediavault_mediavault-data`.',
+    )
+  }
   const db = new Database(DB_PATH, { readonly: true })
   try {
     return db
