@@ -3,33 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, Search, Sparkles, X } from 'lucide-react'
 import type {
   AssetDTO,
-  AsrStage,
   SubtitleTrackDTO,
   TranscriptSegmentDTO,
-  TranslationStage,
 } from '@mediavault/shared'
 import { api, ApiError } from '../lib/api'
 import { cn } from '../lib/cn'
+import { ASR_STAGE_LABEL, TRANSLATION_STAGE_LABEL } from '../lib/stages'
 import { Spinner } from './ui/Spinner'
 import { languageName } from './SubtitleMenu'
-
-const STAGE_LABEL: Record<AsrStage, string> = {
-  queued: '대기 중',
-  extracting: '오디오 추출 중',
-  chunking: '음성 구간 분석 중',
-  transcribing: '음성 인식 중',
-  aligning: '시간 정렬 중',
-  writing: '자막 저장 중',
-  completed: '완료',
-}
-
-const TRANSLATION_STAGE_LABEL: Record<TranslationStage, string> = {
-  queued: '대기 중',
-  starting: '번역 준비 중',
-  translating: '번역 중',
-  writing: '자막 저장 중',
-  completed: '완료',
-}
 
 function clock(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000))
@@ -236,7 +217,7 @@ export function TranscriptPanel({
           </p>
         ) : running ? (
           <JobProgress
-            label={STAGE_LABEL[job?.stage ?? 'queued']}
+            label={ASR_STAGE_LABEL[job?.stage ?? 'queued']}
             progress={job?.progress ?? 0}
             note="음성 인식과 시간 정렬은 한 번에 하나씩 실행됩니다. 창을 닫아도 작업은 계속됩니다."
           />

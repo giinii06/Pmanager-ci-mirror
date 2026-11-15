@@ -1,0 +1,356 @@
+import { useQuery } from '@tanstack/react-query'
+import { AlertTriangle, Cpu } from 'lucide-react'
+import type {
+  AsrStage,
+  TranslationStage,
+  WorkItemDTO,
+  WorkPipelineDTO,
+  WorkQueueDTO,
+} from '@mediavault/shared'
+import { api } from '../lib/api'
+import { cn } from '../lib/cn'
+import { formatAgo, formatCount, formatEta } from '../lib/format'
+import {
+  ASR_STAGE_LABEL,
+  TRANSLATION_STAGE_LABEL,
+  kindLabel,
+  pipelineLabel,
+} from '../lib/stages'
+import { Progress } from './ui/Progress'
+import { Spinner } from './ui/Spinner'
+
+function stageLabel(item: WorkItemDTO): string {
+  if (item.pipeline === 'asr' && item.stage) {
+    return ASR_STAGE_LABEL[item.stage as AsrStage] ?? kindLabel[item.kind]
+  }
+  if (item.pipeline === 'translation' && item.stage) {
+    return TRANSLATION_STAGE_LABEL[item.stage as TranslationStage] ?? kindLabel[item.kind]
+  }
+  return kindLabel[item.kind]
+}
+
+function assetLabel(item: WorkItemDTO): string {
+  return item.assetName ?? kindLabel[item.kind]
+}
+
+function itemEta(item: WorkItemDTO): string | null {
+  if (item.etaSeconds === null || item.etaSeconds <= 0) return null
+  return `약 ${formatEta(item.etaSeconds)} 남음`
+}
+
+/** The API only claims a number when it has completion history behind it. */
+function laneEta(lane: WorkPipelineDTO): { text: string; known: boolean } | null {
+  if (lane.basis === 'history' && lane.etaSeconds !== null && lane.etaSeconds > 0) {
+    return { text: `약 ${formatEta(lane.etaSeconds)}`, known: true }
+  }
+  if (lane.running > lane.stalled) return { text: '계산 중', known: false }
+  if (lane.queued > 0 || lane.stalled > 0) return { text: '미정', known: false }
+  return null
+}
+
+function overallEta(queue: WorkQueueDTO): { text: string; known: boolean } {
+  if (queue.basis === 'history' && queue.etaSeconds !== null && queue.etaSeconds > 0) {
+    return { text: `약 ${formatEta(queue.etaSeconds)} 남음`, known: true }
+  }
+  // A stalled job still counts in the lane's running total, so ask the live
+  // list instead. It is capped at 50 but never empty while a job runs.
+  const running = queue.running.length > 0
+  return running
+    ? { text: '남은 시간 계산 중', known: false }
+    : { text: '남은 시간 미정', known: false }
+}
+
+function GpuBadge({ onGpu }: { onGpu: boolean | null }) {
+  if (onGpu === null) return null
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10.5px]',
+        onGpu ? 'border-line-strong text-muted' : 'border-line text-faint',
+      )}
+    >
+      <Cpu size={10} />
+      {onGpu ? 'GPU 사용 중' : 'GPU 대기 중'}
+    </span>
+  )
+}
+
+function RunningHero({ item }: { item: WorkItemDTO }) {
+  const waiting = item.onGpu === false
+  const eta = itemEta(item)
+
+  return (
+    <div className="px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <p
+            className={cn(
+              'truncate text-[13.5px] font-medium',
+              waiting ? 'text-muted' : 'text-ink',
+            )}
+          >
+            {assetLabel(item)}
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-muted">
+            <span>{pipelineLabel[item.pipeline]}</span>
+            <span className="text-faint">·</span>
+            <span>{stageLabel(item)}</span>
+            {item.startedAt ? (
+              <>
+                <span className="text-faint">·</span>
+                <span>{formatAgo(item.startedAt)} 시작</span>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <GpuBadge onGpu={item.onGpu} />
+          {item.progress !== null ? (
+            <span className="text-[15px] font-semibold tabular-nums text-ink">
+              {item.progress}%
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <Progress
+        className="mt-3"
+        value={item.progress}
+        size="hero"
+        tone={waiting ? 'muted' : 'accent'}
+        label={`${assetLabel(item)} ${stageLabel(item)}`}
+      />
+
+      {eta ? <p className="mt-2 text-right text-[11.5px] text-faint">{eta}</p> : null}
+    </div>
+  )
+}
+
+function RunningRow({ item }: { item: WorkItemDTO }) {
+  const waiting = item.onGpu === false
+  const eta = itemEta(item)
+
+  return (
+    <div className="px-4 py-2.5">
+      <div className="flex items-center gap-2">
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate text-[12px]',
+            waiting ? 'text-muted' : 'text-ink',
+          )}
+        >
+          {assetLabel(item)}
+        </span>
+        <span className="shrink-0 text-[11px] text-muted">{stageLabel(item)}</span>
+        <GpuBadge onGpu={item.onGpu} />
+        {item.progress !== null ? (
+          <span className="shrink-0 text-[12px] tabular-nums text-ink">{item.progress}%</span>
+        ) : null}
+      </div>
+      <Progress
+        className="mt-1.5"
+        value={item.progress}
+        tone={waiting ? 'muted' : 'accent'}
+        label={`${assetLabel(item)} ${stageLabel(item)}`}
+      />
+      {eta ? <p className="mt-1 text-right text-[11px] text-faint">{eta}</p> : null}
+    </div>
+  )
+}
+
+function StalledRow({ item }: { item: WorkItemDTO }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
+      <span className="min-w-0 flex-1 truncate text-[12px] text-muted">{assetLabel(item)}</span>
+      <span className="shrink-0 text-[11px] text-faint">{pipelineLabel[item.pipeline]}</span>
+      <span className="shrink-0 rounded-full border border-[#4a2a2e] bg-[#241518] px-1.5 py-0.5 text-[10.5px] text-danger">
+        응답 없음
+      </span>
+    </div>
+  )
+}
+
+/** The API counts a stalled job in its lane's running total, so split it out. */
+function liveCount(lane: WorkPipelineDTO): number {
+  return Math.max(0, lane.running - lane.stalled)
+}
+
+function LaneCounts({ lane }: { lane: WorkPipelineDTO }) {
+  const parts: { text: string; danger?: boolean }[] = []
+  const live = liveCount(lane)
+  if (live > 0) parts.push({ text: `처리 중 ${formatCount(live)}` })
+  if (lane.queued > 0) parts.push({ text: `대기 ${formatCount(lane.queued)}` })
+  if (lane.stalled > 0) parts.push({ text: `응답 없음 ${formatCount(lane.stalled)}`, danger: true })
+
+  return (
+    <span className="flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-muted">
+      {parts.map((part, index) => (
+        <span key={part.text} className="flex items-center gap-1.5">
+          {index > 0 ? <span className="text-faint">·</span> : null}
+          <span className={part.danger ? 'text-danger' : undefined}>{part.text}</span>
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function LaneRow({ lane }: { lane: WorkPipelineDTO }) {
+  const eta = laneEta(lane)
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-2">
+      <span className="w-16 shrink-0 text-[12px] text-ink">{pipelineLabel[lane.pipeline]}</span>
+      <LaneCounts lane={lane} />
+      {eta ? (
+        <span
+          className={cn(
+            'ml-auto shrink-0 text-[11.5px] tabular-nums',
+            eta.known ? 'text-ink' : 'text-faint',
+          )}
+        >
+          {eta.text}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+function FailureStrip({ failures }: { failures: WorkItemDTO[] }) {
+  if (failures.length === 0) return null
+
+  return (
+    <div className="border-t border-line px-4 py-3">
+      <p className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.08em] text-faint">
+        <AlertTriangle size={11} className="text-danger" />
+        최근 실패
+      </p>
+      <div className="mt-1.5 space-y-1">
+        {failures.slice(0, 2).map((item) => (
+          <p
+            key={item.id}
+            className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11.5px]"
+          >
+            <span className="shrink-0 text-ink">「{assetLabel(item)}」</span>
+            <span
+              className="min-w-0 flex-1 truncate text-muted"
+              title={item.errorMessage ?? undefined}
+            >
+              {item.errorMessage ?? '알 수 없는 오류입니다.'}
+            </span>
+          </p>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function EmptyState({ lastCompletedAt }: { lastCompletedAt: string | null }) {
+  return (
+    <div className="px-4 py-8 text-center">
+      <p className="text-[13px] text-muted">대기 중인 작업이 없습니다</p>
+      {lastCompletedAt ? (
+        <p className="mt-1 text-[11.5px] text-faint">
+          마지막 작업 {formatAgo(lastCompletedAt)} 완료
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+export function ProcessingPanel() {
+  const queue = useQuery({
+    queryKey: ['work-queue'],
+    queryFn: api.workQueue,
+    refetchInterval: (query) => ((query.state.data?.remaining ?? 0) > 0 ? 2000 : 15_000),
+  })
+
+  const data = queue.data
+  const hero = data && data.running.length === 1 ? (data.running[0] ?? null) : null
+  const runningTotal = data?.pipelines.reduce((sum, lane) => sum + liveCount(lane), 0) ?? 0
+  const hasWork = Boolean(
+    data && (data.remaining > 0 || data.running.length > 0 || data.stalled.length > 0),
+  )
+  const lanes =
+    data?.pipelines.filter((lane) => lane.running + lane.queued + lane.stalled > 0) ?? []
+  const eta = data ? overallEta(data) : null
+
+  return (
+    <section className="mb-6 overflow-hidden rounded-panel border border-line bg-panel">
+      <div className="border-b border-line px-4 py-3">
+        <h2 className="text-[13.5px] font-semibold text-ink">처리 현황</h2>
+        <p className="mt-0.5 text-[11.5px] text-muted">
+          지금 처리 중인 작업과 남은 시간을 최근 처리 기록으로 계산합니다.
+        </p>
+      </div>
+
+      {queue.isPending ? (
+        <div className="flex justify-center py-8">
+          <Spinner />
+        </div>
+      ) : queue.isError ? (
+        <p className="px-4 py-6 text-[12px] text-muted">
+          {queue.error instanceof Error ? queue.error.message : '처리 현황을 불러오지 못했습니다.'}
+        </p>
+      ) : !data ? null : !hasWork ? (
+        <EmptyState lastCompletedAt={data.lastCompletedAt} />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-line px-4 py-2.5">
+            <p className="text-[12px] text-muted">
+              남은 작업{' '}
+              <span className="font-medium tabular-nums text-ink">
+                {formatCount(data.remaining)}
+              </span>
+              개
+            </p>
+            {eta ? (
+              <p
+                className={cn(
+                  'tabular-nums',
+                  eta.known ? 'text-[13px] font-medium text-ink' : 'text-[12px] text-muted',
+                )}
+              >
+                {eta.text}
+              </p>
+            ) : null}
+          </div>
+
+          {hero ? (
+            <RunningHero item={hero} />
+          ) : data.running.length > 1 ? (
+            <div className="divide-y divide-line/60">
+              <p className="px-4 pb-1.5 pt-3 text-[11.5px] text-muted">
+                {formatCount(runningTotal)}개 작업이 동시에 진행 중입니다
+              </p>
+              {data.running.map((item) => (
+                <RunningRow key={item.id} item={item} />
+              ))}
+            </div>
+          ) : null}
+
+          {data.stalled.length > 0 ? (
+            <div className="divide-y divide-line/60 border-t border-line/60">
+              {data.stalled.map((item) => (
+                <StalledRow key={item.id} item={item} />
+              ))}
+            </div>
+          ) : null}
+
+          {lanes.length > 0 ? (
+            <div className="divide-y divide-line/60 border-t border-line">
+              <p className="px-4 pb-1 pt-3 text-[10.5px] uppercase tracking-[0.08em] text-faint">
+                파이프라인별 남은 작업
+              </p>
+              {lanes.map((lane) => (
+                <LaneRow key={lane.pipeline} lane={lane} />
+              ))}
+            </div>
+          ) : null}
+
+          <FailureStrip failures={data.failures} />
+        </>
+      )}
+    </section>
+  )
+}

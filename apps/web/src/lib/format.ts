@@ -55,6 +55,28 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat('ko-KR').format(value)
 }
 
+/** Only call this with a known estimate; an unknown ETA has no number to show. */
+export function formatEta(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 60) return '1분 미만'
+  const totalMinutes = Math.max(1, Math.round(seconds / 60))
+  if (totalMinutes < 60) return `${totalMinutes}분`
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes > 0 ? `${hours}시간 ${minutes}분` : `${hours}시간`
+}
+
+export function formatAgo(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
+  if (seconds < 60) return '방금 전'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}분 전`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}시간 전`
+  return `${Math.floor(hours / 24)}일 전`
+}
+
 export function aspectRatio(width: number | null, height: number | null): number {
   if (!width || !height || width <= 0 || height <= 0) return 1.5
   return Math.min(4, Math.max(0.3, width / height))

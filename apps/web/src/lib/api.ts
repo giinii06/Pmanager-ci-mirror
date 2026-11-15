@@ -17,6 +17,7 @@ import type {
   TranslationStatusDTO,
   TranslationSummaryDTO,
   UserDTO,
+  WorkQueueDTO,
 } from '@mediavault/shared'
 
 export class ApiError extends Error {
@@ -119,6 +120,7 @@ export const api = {
 
   stats: () => request<StatsDTO>('/api/stats'),
   jobs: () => request<JobSummaryDTO>('/api/jobs'),
+  workQueue: () => request<WorkQueueDTO>('/api/queue'),
 
   transcriptionStatus: (id: string) =>
     request<TranscriptionStatusDTO>(`/api/assets/${id}/transcription/status`),

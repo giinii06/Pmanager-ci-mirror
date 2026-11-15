@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle,
   Film,
   FolderTree,
   HardDrive,
@@ -13,23 +12,16 @@ import {
   RefreshCw,
   Trash2,
 } from 'lucide-react'
-import type { JobDTO, LibraryDTO } from '@mediavault/shared'
+import type { LibraryDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { formatCount, formatDate } from '../lib/format'
-import { cn } from '../lib/cn'
 import { useUi } from '../store/ui'
 import { Dialog } from '../components/ui/Dialog'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { PageHeading } from '../components/PageHeading'
 import { Spinner } from '../components/ui/Spinner'
-
-const JOB_LABELS: Record<string, string> = {
-  scan_library: '폴더 스캔',
-  thumbnail: '썸네일',
-  preview: '프리뷰',
-  hls: 'HLS 변환',
-}
+import { ProcessingPanel } from '../components/ProcessingPanel'
 
 function Section({
   title,
@@ -70,32 +62,6 @@ function StatCard({ icon, label, value }: { icon: ReactNode; label: string; valu
   )
 }
 
-function JobRow({ job }: { job: JobDTO }) {
-  return (
-    <div className="flex items-center gap-3 border-b border-line/60 px-4 py-2 last:border-0">
-      <span
-        className={cn(
-          'h-1.5 w-1.5 shrink-0 rounded-full',
-          job.state === 'running'
-            ? 'bg-accent'
-            : job.state === 'failed'
-              ? 'bg-danger'
-              : 'bg-faint',
-        )}
-      />
-      <span className="w-24 shrink-0 text-[12px] text-ink">
-        {JOB_LABELS[job.kind] ?? job.kind}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted">
-        {job.lastError ?? `${job.assetId ?? job.libraryId ?? ''} · P${job.priority}`}
-      </span>
-      <span className="shrink-0 text-[10.5px] tabular-nums text-faint">
-        {job.attempts}/{job.maxAttempts}
-      </span>
-    </div>
-  )
-}
-
 export function SettingsPage() {
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
@@ -107,7 +73,6 @@ export function SettingsPage() {
     refetchInterval: (query) =>
       query.state.data?.some((library) => library.scanState !== 'idle') ? 1500 : false,
   })
-  const jobs = useQuery({ queryKey: ['jobs'], queryFn: api.jobs, refetchInterval: 4000 })
   const stats = useQuery({ queryKey: ['stats'], queryFn: api.stats })
 
   const [addOpen, setAddOpen] = useState(false)
@@ -173,7 +138,6 @@ export function SettingsPage() {
     },
   })
 
-  const counts = jobs.data?.counts
   const scanning = libraries.data?.some((library) => library.scanState !== 'idle') ?? false
 
   return (
@@ -264,52 +228,7 @@ export function SettingsPage() {
         )}
       </Section>
 
-      <Section
-        title="작업 큐"
-        description="우선순위가 낮은 작업은 뒤로 밀리고, 화면에 보이는 사진이 먼저 처리됩니다."
-      >
-        <div className="grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
-          {(['queued', 'running', 'done', 'failed'] as const).map((state) => (
-            <div key={state} className="bg-panel px-4 py-3">
-              <p className="text-[10.5px] uppercase tracking-[0.08em] text-faint">
-                {state === 'queued'
-                  ? '대기'
-                  : state === 'running'
-                    ? '처리 중'
-                    : state === 'done'
-                      ? '완료'
-                      : '실패'}
-              </p>
-              <p className="mt-1 text-[18px] font-semibold tabular-nums text-ink">
-                {formatCount(counts?.[state] ?? 0)}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {jobs.data?.active.length ? (
-          <div className="border-t border-line">
-            <p className="px-4 pb-1 pt-3 text-[10.5px] uppercase tracking-[0.08em] text-faint">
-              진행 중
-            </p>
-            {jobs.data.active.slice(0, 8).map((job) => (
-              <JobRow key={job.id} job={job} />
-            ))}
-          </div>
-        ) : null}
-
-        {jobs.data?.recentFailures.length ? (
-          <div className="border-t border-line">
-            <p className="flex items-center gap-1.5 px-4 pb-1 pt-3 text-[10.5px] uppercase tracking-[0.08em] text-faint">
-              <AlertTriangle size={11} className="text-danger" />
-              최근 실패
-            </p>
-            {jobs.data.recentFailures.slice(0, 6).map((job) => (
-              <JobRow key={job.id} job={job} />
-            ))}
-          </div>
-        ) : null}
-      </Section>
+      <ProcessingPanel />
 
       <Section title="계정" description="개인 서버이므로 계정은 하나만 사용합니다.">
         <div className="flex flex-wrap items-center gap-3 px-4 py-3">
