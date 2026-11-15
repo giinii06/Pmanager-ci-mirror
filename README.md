@@ -79,6 +79,19 @@ docker compose -f compose.yaml -f compose.asr.models.yaml run --rm asr-model-ini
 - macOS: `compose.asr.mac-api.yaml`로 API만 띄우고 워커는 호스트에서 MPS로 실행
 - 결과는 `./asr-results`에, 원본은 읽기 전용으로만 접근한다
 
+### 번역 자막 (선택)
+
+원문이 한국어가 아니면 Index-Translate-9B로 한국어 자막을 따로 만든다.
+원문 전사와 원문 자막은 그대로 남고, 플레이어에서 원문으로 전환할 수 있다.
+모델은 `translation-model-init`이 `./models/translation`으로 내려받는다.
+설치·운영 방법은 [docs/TRANSLATION-OPERATIONS.md](docs/TRANSLATION-OPERATIONS.md)를
+따른다.
+
+```bash
+cp .env.translation.example .env.translation   # 토큰, 모델 커밋 SHA 채우기
+docker compose -f compose.yaml -f compose.translation.models.yaml run --rm translation-model-init
+```
+
 ## 빠른 시작 — 로컬 개발 (Bun)
 
 Bun 1.4+ 만 있으면 된다. Node, npm, better-sqlite3는 쓰지 않는다.

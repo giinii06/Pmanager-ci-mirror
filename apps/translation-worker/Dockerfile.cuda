@@ -1,0 +1,40 @@
+# WSL2 / Linux NVIDIA worker. llama-server comes from the llama.cpp CUDA image and
+# is started per job, so nothing in this container holds VRAM at rest.
+#
+# Build context is the repository root, like the ASR worker:
+#
+#   docker compose -f compose.yaml -f compose.translation.models.yaml \
+#     -f compose.translation.cuda.yaml up -d --build
+#
+# Not built or run while this file was written: the llama.cpp image layout and
+# the CUDA runtime are unverified here.
+FROM ghcr.io/ggml-org/llama.cpp:server-cuda AS llama
+
+FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    LD_LIBRARY_PATH=/opt/llama
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.12 \
+        python3.12-venv \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=llama /app/llama-server /opt/llama/llama-server
+COPY --from=llama /app/*.so /opt/llama/
+ENV PATH=/opt/llama:$PATH \
+    LLAMA_SERVER=/opt/llama/llama-server
+
+RUN python3.12 -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+WORKDIR /app
+COPY apps/translation-worker/pyproject.toml /app/pyproject.toml
+COPY apps/translation-worker/src /app/src
+RUN pip install --upgrade pip && pip install /app
+
+CMD ["python", "-m", "translation_worker.main"]

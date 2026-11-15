@@ -1,0 +1,37 @@
+# WSL2 / Linux: run the translation worker on the NVIDIA GPU.
+#
+#   docker compose -f compose.yaml -f compose.translation.models.yaml \
+#     -f compose.translation.cuda.yaml up -d --build
+#
+# The worker starts llama-server for a job and stops it afterwards, so ASR and
+# translation never hold the card at the same time. The API hands out one GPU
+# lease per card, and a translation job waits until the ASR worker releases it.
+services:
+  api:
+    env_file:
+      - .env.translation
+    environment:
+      TRANSLATION_RESULT_DIR: /asr-results
+    volumes:
+      - ./asr-results:/asr-results
+
+  translation-worker:
+    build:
+      context: .
+      dockerfile: apps/translation-worker/Dockerfile.cuda
+    restart: unless-stopped
+    gpus: all
+    env_file:
+      - .env.translation
+    environment:
+      API_BASE_URL: http://api:8787
+      TRANSLATION_MODEL_PATH: /models/translation/Index-Translate-9B.Q4_K_M.gguf
+      RESULT_DIR: /asr-results
+    volumes:
+      - ./models:/models:ro
+      - ./asr-results:/asr-results
+    depends_on:
+      api:
+        condition: service_healthy
+      translation-model-init:
+        condition: service_completed_successfully

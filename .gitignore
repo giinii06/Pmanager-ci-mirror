@@ -1,9 +1,11 @@
 node_modules/
 dist/
 .env
+.env.translation
 .DS_Store
 
 data/
+backups/
 cache/
 sample-media/
 .audit/
@@ -16,6 +18,6 @@ asr-results/
 .codegraph/
 .playwright-cli/
 
-apps/asr-worker/.venv/
+.venv/
 __pycache__/
 .pytest_cache/

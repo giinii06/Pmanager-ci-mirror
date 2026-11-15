@@ -1,0 +1,25 @@
+[project]
+name = "mediavault-translation-worker"
+version = "0.1.0"
+description = "Korean subtitle translation worker for MediaVault: Index-Translate-9B through a local llama.cpp server."
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/translation_worker"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.uv]
+package = true

@@ -1,0 +1,21 @@
+# One-shot download of the Index-Translate-9B GGUF file. Weights live on the
+# host in ./models so image rebuilds and container replacements never re-download
+# 5.78 GB.
+#
+#   cp .env.translation.example .env.translation   # fill in the revision SHA
+#   docker compose -f compose.yaml -f compose.translation.models.yaml \
+#     run --rm translation-model-init
+#
+# A second run verifies the file already on disk and exits without downloading.
+services:
+  translation-model-init:
+    build:
+      context: .
+      dockerfile: apps/translation-model-init/Dockerfile
+    restart: "no"
+    env_file:
+      - .env.translation
+    environment:
+      MODELS_DIR: /models
+    volumes:
+      - ./models:/models

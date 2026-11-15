@@ -1,0 +1,21 @@
+# Apple Silicon: the translation worker runs natively on the host, because
+# Docker on macOS does not expose Metal to Linux containers. Only the model
+# download and the usual services run in Compose.
+#
+#   docker compose -f compose.yaml -f compose.translation.models.yaml \
+#     -f compose.translation.mac-api.yaml up -d --build
+#
+# The API is published on loopback only. The host worker talks to it on
+# 127.0.0.1:8788; do not expose that port to the LAN. Loading
+# compose.asr.mac-api.yaml alongside this file is safe: both publish the same
+# loopback mapping and Compose keeps one.
+services:
+  api:
+    ports:
+      - "127.0.0.1:${TRANSLATION_API_PORT:-8788}:8787"
+    env_file:
+      - .env.translation
+    environment:
+      TRANSLATION_RESULT_DIR: /asr-results
+    volumes:
+      - ./asr-results:/asr-results
