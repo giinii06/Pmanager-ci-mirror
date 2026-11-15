@@ -284,6 +284,32 @@ describe('pipeline pass', () => {
     expect(jobCount(h, 'asr_jobs', 'video1')).toBe(1)
   })
 
+  test('a terminal failure from an older pipeline is retried', async () => {
+    const h = await harness()
+    h.scannedAt(NOW - 60_000)
+    h.addVideo('video1', 'aac')
+    const job = createAsrJob(
+      h.db,
+      {
+        id: 'asr-old',
+        assetId: 'video1',
+        fileVersion: 1,
+        modelRevision: ASR_MODEL,
+        alignerRevision: ALIGNER,
+        pipelineVersion: 'asr-0',
+      },
+      NOW - 100,
+    )
+    h.db
+      .query(`UPDATE asr_jobs SET state = 'failed', attempts = max_attempts, updated_at = ? WHERE id = ?`)
+      .run(NOW - 50, job.id)
+
+    const result = ensurePipelineJobs(h.ctx, NOW)
+
+    expect(result.asr).toBe(1)
+    expect(jobCount(h, 'asr_jobs', 'video1')).toBe(2)
+  })
+
   test('an active ASR job is not duplicated', async () => {
     const h = await harness()
     h.scannedAt(NOW - 60_000)

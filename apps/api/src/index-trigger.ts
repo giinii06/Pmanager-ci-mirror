@@ -104,9 +104,17 @@ function shouldTranscribe(
   if (activeAsrJob(ctx.db, video.id, video.fileVersion)) return false
 
   // A job that used every attempt is not retried on a timer. The player can
-  // still ask for it again, and that creates a fresh job.
+  // still ask for it again, and that creates a fresh job. A failure from an
+  // older pipeline says nothing about the running one, so it is retried.
   const latest = latestAsrJob(ctx.db, video.id, video.fileVersion)
-  if (latest && latest.state === 'failed' && latest.attempts >= latest.maxAttempts) return false
+  if (
+    latest &&
+    latest.pipelineVersion === ctx.config.asr.pipelineVersion &&
+    latest.state === 'failed' &&
+    latest.attempts >= latest.maxAttempts
+  ) {
+    return false
+  }
   return true
 }
 
