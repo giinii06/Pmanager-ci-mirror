@@ -9,6 +9,7 @@ from .subtitles import Cue
 
 FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
 LIST_KEYS = ("translations", "items", "segments")
+STRAY_ID_QUOTE = re.compile(r'("id"\s*:\s*\d+)"')
 
 LANGUAGE_NAMES = {
     "ko": "韩语",
@@ -96,12 +97,21 @@ def _items(payload: object) -> list[object]:
     return []
 
 
+def _repair(candidate: str) -> str:
+    """Two shapes a single-cue answer arrives in: a stray quote after the id,
+    and the last two closing tokens swapped."""
+    repaired = STRAY_ID_QUOTE.sub(r"\1", candidate)
+    if repaired.startswith('[{"') and repaired.endswith("]}"):
+        repaired = repaired[:-2] + "}]"
+    return repaired
+
+
 def parse_translations(raw: str, expected: list[int]) -> dict[int, str]:
     """Map cue id to translated text, or raise when the answer is unusable."""
     items: list[object] = []
     for candidate in _candidates(raw):
         try:
-            payload = json.loads(candidate)
+            payload = json.loads(_repair(candidate))
         except json.JSONDecodeError:
             continue
         items = _items(payload)
@@ -126,7 +136,10 @@ def parse_translations(raw: str, expected: list[int]) -> dict[int, str]:
             raise TranslationError(f"Cue {cue_id} appears twice.")
         mapping[cue_id] = text
 
-    if set(mapping) != set(expected):
+    if len(expected) == 1 and len(mapping) == 1:
+        # One cue leaves one possible correspondence, so the id is formatting noise.
+        mapping = {expected[0]: next(iter(mapping.values()))}
+    elif set(mapping) != set(expected):
         missing = sorted(set(expected) - set(mapping))
         extra = sorted(set(mapping) - set(expected))
         raise TranslationError(f"Cue ids do not match the batch: missing {missing}, extra {extra}.")

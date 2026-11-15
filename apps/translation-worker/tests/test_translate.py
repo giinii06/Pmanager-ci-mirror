@@ -65,6 +65,30 @@ def test_a_newline_inside_a_line_is_collapsed() -> None:
     assert parse_translations(raw, [0]) == {0: "첫 줄 둘째 줄"}
 
 
+def test_swapped_closing_tokens_are_repaired() -> None:
+    raw = '[{"id": 31, "text": "I run every day."]}'
+    assert parse_translations(raw, [31]) == {31: "I run every day."}
+
+
+def test_a_stray_quote_after_the_id_is_repaired() -> None:
+    raw = '[{"id": 17", "text": "Um, excuse me, but is this a bad time?"}]'
+    assert parse_translations(raw, [16]) == {
+        16: "Um, excuse me, but is this a bad time?"
+    }
+
+
+def test_the_only_id_in_a_single_cue_answer_is_remapped_to_the_expected_one() -> None:
+    assert parse_translations('[{"id": 17, "text": "Um, excuse me"}]', [16]) == {
+        16: "Um, excuse me"
+    }
+
+
+def test_shifted_ids_in_a_multi_cue_answer_are_still_rejected() -> None:
+    raw = '[{"id": 17, "text": "가"}, {"id": 18, "text": "나"}]'
+    with pytest.raises(TranslationError):
+        parse_translations(raw, [16, 17])
+
+
 @pytest.mark.parametrize(
     "raw, expected",
     [
