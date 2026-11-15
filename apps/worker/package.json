@@ -1,0 +1,16 @@
+{
+  "name": "@mediavault/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mediavault/database": "workspace:*",
+    "@mediavault/media": "workspace:*",
+    "@mediavault/shared": "workspace:*"
+  }
+}

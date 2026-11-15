@@ -1,0 +1,17 @@
+{
+  "name": "@mediavault/media",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@mediavault/shared": "workspace:*",
+    "exifr": "7.1.3",
+    "sharp": "0.35.5"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

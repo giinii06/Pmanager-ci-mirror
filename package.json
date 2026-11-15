@@ -1,0 +1,28 @@
+{
+  "name": "mediavault",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run scripts/dev.ts",
+    "sample": "bun run scripts/make-sample.ts",
+    "smoke": "bun run scripts/smoke.ts",
+    "test": "bun test",
+    "typecheck": "bun run --filter '*' typecheck",
+    "api": "bun run apps/api/src/index.ts",
+    "worker": "bun run apps/worker/src/index.ts",
+    "web": "bun run --cwd apps/web dev"
+  },
+  "devDependencies": {
+    "@mediavault/database": "workspace:*",
+    "@mediavault/media": "workspace:*",
+    "@mediavault/shared": "workspace:*",
+    "@types/bun": "1.4.4",
+    "sharp": "0.35.5",
+    "typescript": "5.9.3"
+  }
+}
