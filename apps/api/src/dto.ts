@@ -7,6 +7,8 @@ import type {
   LibraryDTO,
   PlaybackProgressDTO,
   ReviewDTO,
+  FaceJobDTO,
+  SceneJobDTO,
   TranscriptDTO,
   TranscriptSummaryDTO,
   TranslationDTO,
@@ -26,6 +28,8 @@ import type {
   LibraryRecord,
   PlaybackRecord,
   ReviewRecord,
+  FaceJobRecord,
+  SceneJobRecord,
   TranscriptRecord,
   TranscriptWithSegments,
   TranslationJobRecord,
@@ -211,6 +215,38 @@ export function toTranslationJobDTO(job: TranslationJobRecord): TranslationJobDT
 }
 
 export function toEmbeddingJobDTO(job: EmbeddingJobRecord): EmbeddingJobDTO {
+  return {
+    id: job.id,
+    assetId: job.assetId,
+    fileVersion: job.fileVersion,
+    state: job.state,
+    stage: job.stage,
+    progress: job.progress,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    errorMessage: job.errorMessage,
+    createdAt: new Date(job.createdAt).toISOString(),
+    updatedAt: new Date(job.updatedAt).toISOString(),
+  }
+}
+
+export function toFaceJobDTO(job: FaceJobRecord): FaceJobDTO {
+  return {
+    id: job.id,
+    assetId: job.assetId,
+    fileVersion: job.fileVersion,
+    state: job.state,
+    stage: job.stage,
+    progress: job.progress,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    errorMessage: job.errorMessage,
+    createdAt: new Date(job.createdAt).toISOString(),
+    updatedAt: new Date(job.updatedAt).toISOString(),
+  }
+}
+
+export function toSceneJobDTO(job: SceneJobRecord): SceneJobDTO {
   return {
     id: job.id,
     assetId: job.assetId,

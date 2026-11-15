@@ -159,6 +159,30 @@ async function harness(options: { transcripts?: boolean } = {}): Promise<Harness
       pipelineVersion: EMB_PIPELINE,
       dimensions: DIMENSIONS,
     },
+    scene: {
+      enabled: false,
+      workerToken: '',
+      modelId: 'facebook/pe-av-base-16-frame',
+      modelRevision: 'main',
+      modelSha256: 'scene-sha',
+      pipelineVersion: 'scene-1',
+      dimensions: 4,
+      windowMs: 10_000,
+      overlapMs: 2_000,
+      queryUrl: 'http://127.0.0.1:1',
+    },
+    face: {
+      enabled: false,
+      workerToken: '',
+      modelId: 'antelopev2',
+      modelRevision: 'v0.7',
+      modelSha256: 'face-sha',
+      pipelineVersion: 'face-1',
+      dimensions: 4,
+      sampleMs: 2_000,
+      matchThreshold: 0.45,
+      candidateThreshold: 0.5,
+    },
   }
 
   const ctx: AppContext = {

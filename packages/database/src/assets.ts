@@ -301,6 +301,23 @@ export function countAssets(db: Db, libraryId: string): number {
   )
 }
 
+/**
+ * The videos an index pass may enqueue work for. A file with no duration has no
+ * windows and no frames to sample, so it is skipped until a scan fills it in.
+ */
+export function listVideosForIndexing(
+  db: Db,
+  limit: number,
+): Array<{ id: string; fileVersion: number }> {
+  return db
+    .query<{ id: string; fileVersion: number }, Params>(
+      `SELECT id, file_version AS fileVersion FROM assets
+       WHERE deleted_at IS NULL AND kind = 'video' AND duration_ms IS NOT NULL
+       ORDER BY id ASC LIMIT ?`,
+    )
+    .all(limit)
+}
+
 export function getStats(db: Db, userId: string): StatsDTO {
   const counts =
     db

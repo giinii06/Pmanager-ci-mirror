@@ -157,6 +157,19 @@ export function getFaceJob(db: Db, id: string): FaceJobRecord | null {
   )
 }
 
+/** A face job that is queued or running for this file version, if any. */
+export function activeFaceJob(db: Db, assetId: string, fileVersion: number): FaceJobRecord | null {
+  return (
+    db
+      .query<FaceJobRecord, Params>(
+        `SELECT ${JOB_COLUMNS} FROM face_jobs
+         WHERE asset_id = ? AND file_version = ? AND state IN ${ACTIVE_STATES}
+         ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(assetId, fileVersion) ?? null
+  )
+}
+
 /**
  * Faces run on the CPU, so several can run at once. The only serialisation is
  * per asset, which the unique index already gives.
@@ -544,11 +557,13 @@ export function personFaces(
   db: Db,
   personId: string,
   limit: number,
-): Array<{ detectionId: string; assetId: string; frameMs: number }> {
+): Array<{ detectionId: string; assetId: string; filename: string; frameMs: number }> {
   return db
-    .query<{ detectionId: string; assetId: string; frameMs: number }, Params>(
-      `SELECT d.id AS detectionId, d.asset_id AS assetId, d.frame_ms AS frameMs
-       FROM person_faces pf JOIN face_detections d ON d.id = pf.detection_id
+    .query<{ detectionId: string; assetId: string; filename: string; frameMs: number }, Params>(
+      `SELECT d.id AS detectionId, d.asset_id AS assetId, a.filename, d.frame_ms AS frameMs
+       FROM person_faces pf
+       JOIN face_detections d ON d.id = pf.detection_id
+       JOIN assets a ON a.id = d.asset_id
        WHERE pf.person_id = ?
        ORDER BY d.score DESC, d.frame_ms ASC
        LIMIT ?`,

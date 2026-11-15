@@ -166,6 +166,19 @@ export function getSceneJob(db: Db, id: string): SceneJobRecord | null {
   )
 }
 
+/** A job that is queued or running for this file version, if any. */
+export function activeSceneJob(db: Db, assetId: string, fileVersion: number): SceneJobRecord | null {
+  return (
+    db
+      .query<SceneJobRecord, Params>(
+        `SELECT ${JOB_COLUMNS} FROM scene_jobs
+         WHERE asset_id = ? AND file_version = ? AND state IN ${ACTIVE_STATES}
+         ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(assetId, fileVersion) ?? null
+  )
+}
+
 /** One scene pass at a time, for the same reason the embedding lane allows one. */
 export function claimSceneJob(db: Db, owner: string, leaseMs: number, now: number): SceneJobRecord | null {
   return (
