@@ -17,7 +17,7 @@ from . import audio
 from .client import FatalError, LeaseLost, WorkerClient
 from .config import Config
 from .jsonio import write_json_atomic
-from .language import detect_language
+from .language import spoken_language
 from .stage_pid import reap_stale_stage, stage_pid_file
 from .subtitles import build_segments, to_srt, to_txt, to_vtt
 
@@ -245,11 +245,12 @@ class Pipeline:
             aligned_path = workdir / "aligned.json"
             # The hint only nudges the model; the chunks say what was actually
             # spoken, and that is what the aligner and the transcript use.
-            detected = detect_language(
-                json.loads(asr_path.read_text(encoding="utf-8")).get("chunks", [])
+            detected = spoken_language(
+                json.loads(asr_path.read_text(encoding="utf-8")).get("chunks", []),
+                self.config.language,
             )
             if not detected:
-                raise RuntimeError("No speech in a language the model recognises was found.")
+                raise RuntimeError("No speech was found in this file.")
             self._run_stage(
                 [
                     "align",
