@@ -20,6 +20,10 @@ export function VideoPlayer({
   const [useHls, setUseHls] = useState(asset.playback === 'hls')
   const [hlsState, setHlsState] = useState<HlsState>(asset.playback === 'hls' ? 'preparing' : 'idle')
   const [failure, setFailure] = useState<string | null>(null)
+  const [caption, setCaption] = useState<string | null>(null)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const [nativeFullscreen, setNativeFullscreen] = useState(false)
+  const [captionFontSize, setCaptionFontSize] = useState(16)
   const startAt = useRef(0)
   const lastSave = useRef(0)
 
@@ -144,14 +148,102 @@ export function VideoPlayer({
   useEffect(() => {
     const video = videoRef.current
     if (!video || !subtitleUrl) return
-    const show = () => {
-      const track = video.textTracks[0]
-      if (track) track.mode = 'showing'
+    const track = video.textTracks[0]
+    if (!track) return
+    track.mode = nativeFullscreen ? 'showing' : 'hidden'
+
+    const sync = () => {
+      const cues = track.activeCues ? Array.from(track.activeCues) : []
+      const lines = cues
+        .map((cue) => (cue instanceof VTTCue ? cue.text : ''))
+        .filter((line) => line !== '')
+      setCaption(lines.length > 0 ? lines.join('\n') : null)
     }
-    show()
-    const timer = window.setTimeout(show, 300)
-    return () => window.clearTimeout(timer)
-  }, [subtitleUrl, videoRef])
+
+    sync()
+    track.addEventListener('cuechange', sync)
+    track.addEventListener('load', sync)
+    return () => {
+      track.removeEventListener('cuechange', sync)
+      track.removeEventListener('load', sync)
+      setCaption(null)
+    }
+  }, [nativeFullscreen, subtitleUrl, videoRef])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0
+      if (width === 0) return
+      setCaptionFontSize(Math.min(32, Math.max(13, width * 0.028)))
+    })
+    observer.observe(video)
+    return () => observer.disconnect()
+  }, [videoRef])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    let timer: number | null = null
+
+    const arm = () => {
+      if (timer !== null) window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        timer = null
+        if (!video.paused) setControlsVisible(false)
+      }, 2500)
+    }
+
+    const show = () => {
+      setControlsVisible(true)
+      arm()
+    }
+
+    const hold = () => {
+      setControlsVisible(true)
+      if (timer !== null) window.clearTimeout(timer)
+      timer = null
+    }
+
+    window.addEventListener('keydown', show)
+    video.addEventListener('pointermove', show)
+    video.addEventListener('pointerdown', show)
+    video.addEventListener('play', show)
+    video.addEventListener('seeking', show)
+    video.addEventListener('pause', hold)
+    return () => {
+      window.removeEventListener('keydown', show)
+      video.removeEventListener('pointermove', show)
+      video.removeEventListener('pointerdown', show)
+      video.removeEventListener('play', show)
+      video.removeEventListener('seeking', show)
+      video.removeEventListener('pause', hold)
+      if (timer !== null) window.clearTimeout(timer)
+    }
+  }, [videoRef])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const sync = () => {
+      const fullscreen =
+        document.fullscreenElement ??
+        (document as Document & { webkitFullscreenElement?: Element | null })
+          .webkitFullscreenElement
+      setNativeFullscreen(fullscreen === video)
+    }
+
+    sync()
+    document.addEventListener('fullscreenchange', sync)
+    document.addEventListener('webkitfullscreenchange', sync)
+    return () => {
+      document.removeEventListener('fullscreenchange', sync)
+      document.removeEventListener('webkitfullscreenchange', sync)
+    }
+  }, [videoRef])
 
   if (failure) {
     return (
@@ -184,13 +276,26 @@ export function VideoPlayer({
             srcLang="ko"
             label="한국어 (AI)"
             default
-            onLoad={(event) => {
-              const track = event.currentTarget.track
-              if (track) track.mode = 'showing'
-            }}
           />
         ) : null}
       </video>
+      {/*
+        Native fullscreen promotes the video into the top layer, where this sibling overlay
+        is not painted, so the track renderer draws the captions there instead.
+      */}
+      {!nativeFullscreen && caption ? (
+        <div
+          className="pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3 transition-[bottom] duration-150 ease-out"
+          style={{ bottom: controlsVisible ? 64 : 24 }}
+        >
+          <span
+            className="max-w-[86%] rounded-md bg-black/75 px-3 py-1.5 text-center font-medium leading-[1.4] whitespace-pre-line text-white [overflow-wrap:anywhere] [word-break:keep-all]"
+            style={{ fontSize: captionFontSize }}
+          >
+            {caption}
+          </span>
+        </div>
+      ) : null}
       {useHls && hlsState !== 'ready' ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/70 text-center">
           <Spinner className="text-accent" />
