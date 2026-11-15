@@ -36,7 +36,10 @@ function baseLanguage(tag: string): string {
   return tag.trim().toLowerCase().split(/[-_]/)[0] ?? tag
 }
 
-function matchesRunningModel(ctx: AppContext, job: { modelSha256: string; promptVersion: string; pipelineVersion: string }): boolean {
+function matchesRunningModel(
+  ctx: AppContext,
+  job: { modelSha256: string; promptVersion: string; pipelineVersion: string },
+): boolean {
   return (
     job.modelSha256 === ctx.config.translation.modelSha256 &&
     job.promptVersion === ctx.config.translation.promptVersion &&

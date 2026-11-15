@@ -15,7 +15,12 @@ export const ORIGINAL = 'original'
 
 export type SubtitleSource =
   | { kind: 'asr'; language: string; transcript: TranscriptRecord; segmentCount: number }
-  | { kind: 'translation'; language: string; translation: TranslationWithSegments['translation']; segmentCount: number }
+  | {
+      kind: 'translation'
+      language: string
+      translation: TranslationWithSegments['translation']
+      segmentCount: number
+    }
 
 /**
  * Subtitles belong to the file version that produced them, and a stored
