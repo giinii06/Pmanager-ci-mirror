@@ -3,6 +3,8 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
+  activeTranslationJob,
+  claimAsrJob,
   completeAsrJob,
   completeTranslationJob,
   createAsrJob,
@@ -395,6 +397,78 @@ describe('translation routes', () => {
       payload: { owner: 'worker-a' },
     })
     expect(claim.statusCode).toBe(401)
+    await h.app.close()
+  })
+
+  test('ASR completion enqueues a translation for a non-Korean source', async () => {
+    const h = await harness('ja')
+    createAsrJob(
+      h.db,
+      {
+        id: 'asr2',
+        assetId: 'asset1',
+        fileVersion: 2,
+        modelRevision: MODEL,
+        alignerRevision: ALIGNER,
+        pipelineVersion: ASR_PIPELINE,
+      },
+      5_000,
+    )
+    claimAsrJob(h.db, 'worker-a', 120_000, 5_100)
+
+    const done = await h.app.inject({
+      method: 'POST',
+      url: '/worker/asr/jobs/asr2/complete',
+      headers: { 'x-worker-token': ASR_TOKEN },
+      payload: {
+        owner: 'worker-a',
+        transcriptId: 'transcript2',
+        resultDir: 'asset1/2/source',
+        plainText: 'それ、マジでやばくない？',
+        language: 'ja',
+        segments: [{ startMs: 0, endMs: 2_000, text: 'それ、マジでやばくない？' }],
+      },
+    })
+
+    expect(done.statusCode).toBe(200)
+    const job = activeTranslationJob(h.db, 'transcript2', 'ko')
+    expect(job?.state).toBe('queued')
+    expect(job?.sourceLanguage).toBe('ja')
+    await h.app.close()
+  })
+
+  test('ASR completion skips the translation when the source is Korean', async () => {
+    const h = await harness('ja')
+    createAsrJob(
+      h.db,
+      {
+        id: 'asr2',
+        assetId: 'asset1',
+        fileVersion: 2,
+        modelRevision: MODEL,
+        alignerRevision: ALIGNER,
+        pipelineVersion: ASR_PIPELINE,
+      },
+      5_000,
+    )
+    claimAsrJob(h.db, 'worker-a', 120_000, 5_100)
+
+    const done = await h.app.inject({
+      method: 'POST',
+      url: '/worker/asr/jobs/asr2/complete',
+      headers: { 'x-worker-token': ASR_TOKEN },
+      payload: {
+        owner: 'worker-a',
+        transcriptId: 'transcript2',
+        resultDir: 'asset1/2/source',
+        plainText: '안녕하세요',
+        language: 'ko',
+        segments: [{ startMs: 0, endMs: 2_000, text: '안녕하세요' }],
+      },
+    })
+
+    expect(done.statusCode).toBe(200)
+    expect(activeTranslationJob(h.db, 'transcript2', 'ko')).toBeNull()
     await h.app.close()
   })
 

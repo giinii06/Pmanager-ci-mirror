@@ -36,6 +36,14 @@ function baseLanguage(tag: string): string {
   return tag.trim().toLowerCase().split(/[-_]/)[0] ?? tag
 }
 
+function matchesRunningModel(ctx: AppContext, job: { modelSha256: string; promptVersion: string; pipelineVersion: string }): boolean {
+  return (
+    job.modelSha256 === ctx.config.translation.modelSha256 &&
+    job.promptVersion === ctx.config.translation.promptVersion &&
+    job.pipelineVersion === ctx.config.translation.pipelineVersion
+  )
+}
+
 export function registerTranslationRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.post('/api/assets/:id/translations', async (request, reply) => {
     const params = parseInput(idParams, request.params, reply)
@@ -111,9 +119,10 @@ export function registerTranslationRoutes(app: FastifyInstance, ctx: AppContext)
 
     const transcript = currentTranscript(ctx, info.id, info.fileVersion)
     const target = query.lang ?? ctx.config.translation.targetLanguage
-    const job = transcript
+    const latest = transcript
       ? latestTranslationJob(ctx.db, info.id, info.fileVersion, target)
       : null
+    const job = latest && matchesRunningModel(ctx, latest) ? latest : null
     const stored = transcript ? currentTranslation(ctx, transcript.transcript, target) : null
 
     reply.send({

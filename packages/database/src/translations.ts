@@ -68,7 +68,16 @@ export function createTranslationJob(
   now: number,
 ): TranslationJobRecord {
   const existing = activeTranslationJob(db, input.sourceTranscriptId, input.targetLanguage)
-  if (existing) return existing
+  if (existing) {
+    const sameFingerprint =
+      existing.modelSha256 === input.modelSha256 &&
+      existing.promptVersion === input.promptVersion &&
+      existing.pipelineVersion === input.pipelineVersion
+    // A queued job from an older model would finish as a result the reader
+    // rejects, so it is replaced instead of joined.
+    if (sameFingerprint) return existing
+    cancelTranslationJob(db, existing.id, now)
+  }
 
   return db
     .query<TranslationJobRecord, Params>(
@@ -370,7 +379,7 @@ export function getTranslation(
       .query<TranslationRecord, Params>(
         `SELECT ${TRANSLATION_COLUMNS} FROM translations
          WHERE asset_id = ? AND file_version = ? AND target_language = ?
-         ORDER BY created_at DESC LIMIT 1`,
+         ORDER BY created_at DESC, id DESC LIMIT 1`,
       )
       .get(assetId, fileVersion, targetLanguage) ?? null
   if (!translation) return null

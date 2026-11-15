@@ -139,6 +139,16 @@ describe('translation queue', () => {
     db.close()
   })
 
+  test('a queued job from an older model is replaced, not joined', () => {
+    const db = seed()
+    const first = createTranslationJob(db, jobInput(), 3_000)
+    const second = createTranslationJob(db, jobInput({ id: 'tr2', modelSha256: 'new-sha' }), 3_100)
+
+    expect(second.id).toBe('tr2')
+    expect(getTranslationJob(db, first.id)?.state).toBe('canceled')
+    db.close()
+  })
+
   test('a different target language gets its own job', () => {
     const db = seed()
     createTranslationJob(db, jobInput(), 3_000)
