@@ -6,8 +6,9 @@
 #   docker compose -f compose.yaml -f compose.translation.models.yaml \
 #     -f compose.translation.cuda.yaml up -d --build
 #
-# Not built or run while this file was written: the llama.cpp image layout and
-# the CUDA runtime are unverified here.
+# The library glob includes the versioned files. The llama.cpp image ships
+# libllama-common.so as a link to libllama-common.so.1, so copying only *.so
+# leaves a dangling link and llama-server exits 127 at startup.
 FROM ghcr.io/ggml-org/llama.cpp:server-cuda AS llama
 
 FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
@@ -24,7 +25,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=llama /app/llama-server /opt/llama/llama-server
-COPY --from=llama /app/*.so /opt/llama/
+COPY --from=llama /app/*.so* /opt/llama/
 ENV PATH=/opt/llama:$PATH \
     LLAMA_SERVER=/opt/llama/llama-server
 
