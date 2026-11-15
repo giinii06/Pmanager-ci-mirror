@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
+import { HoverPreview } from './HoverPreview'
 import { Toasts } from './ui/Toasts'
 import { useUi } from '../store/ui'
 
@@ -33,6 +34,7 @@ export function AppShell() {
       <Suspense fallback={null}>
         <Lightbox />
       </Suspense>
+      <HoverPreview />
       <Toasts />
     </div>
   )

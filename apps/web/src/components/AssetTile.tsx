@@ -1,7 +1,9 @@
+import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { Heart, Play } from 'lucide-react'
 import type { AssetDTO } from '@mediavault/shared'
 import { formatDuration } from '../lib/format'
 import { cn } from '../lib/cn'
+import { useHoverPreview } from '../store/hoverPreview'
 import { Thumb } from './Thumb'
 
 interface AssetTileProps {
@@ -14,9 +16,34 @@ interface AssetTileProps {
 
 export function AssetTile({ asset, width, height, onOpen, onToggleFavorite }: AssetTileProps) {
   const duration = asset.kind === 'video' ? formatDuration(asset.durationMs) : ''
+  const previewHost = useRef<HTMLDivElement>(null)
+  const previewToken = useRef<symbol | null>(null)
+
+  const stopPreview = useCallback(() => {
+    const token = previewToken.current
+    previewToken.current = null
+    if (token !== null) useHoverPreview.getState().release(token)
+  }, [])
+
+  // A tile can be virtualized away while its preview is still playing.
+  useEffect(() => stopPreview, [stopPreview])
+
+  const beginPreview = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'touch') return
+    if (asset.kind !== 'video' || asset.playback === 'none') return
+    const host = previewHost.current
+    if (!host) return
+    stopPreview()
+    previewToken.current = useHoverPreview.getState().request(asset, host)
+  }
 
   return (
-    <div className="group relative" style={{ width, height }}>
+    <div
+      className="group relative"
+      style={{ width, height }}
+      onPointerEnter={beginPreview}
+      onPointerLeave={stopPreview}
+    >
       <button
         type="button"
         onClick={onOpen}
@@ -35,6 +62,8 @@ export function AssetTile({ asset, width, height, onOpen, onToggleFavorite }: As
           className="h-full w-full"
           imageClassName="transition-[transform,opacity] duration-500 ease-out group-hover:scale-[1.025]"
         />
+        {/* The hover preview portals into this host, below the ring, gradient and badges. */}
+        <div ref={previewHost} className="pointer-events-none absolute inset-0" />
         <span className="absolute inset-0 rounded-tile ring-1 ring-inset ring-white/0 transition-colors duration-200 group-hover:ring-white/20" />
         <span className="absolute inset-0 rounded-tile bg-gradient-to-t from-black/35 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
 
