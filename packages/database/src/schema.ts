@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 6
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -221,6 +221,21 @@ CREATE TABLE IF NOT EXISTS gpu_leases (
 );
 `
 
+export const REVIEW_SQL = `
+CREATE TABLE IF NOT EXISTS asset_reviews (
+  id TEXT PRIMARY KEY,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(asset_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_reviews_asset
+  ON asset_reviews(asset_id, updated_at DESC);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -233,4 +248,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
     exec('ALTER TABLE asr_jobs ADD COLUMN started_at INTEGER')
     exec('ALTER TABLE translation_jobs ADD COLUMN started_at INTEGER')
   },
+  (exec) => exec(REVIEW_SQL),
 ]

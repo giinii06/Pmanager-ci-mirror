@@ -108,6 +108,31 @@ export function getAsset(db: Db, userId: string, id: string): AssetRecord | null
   return row ? mapAsset(row) : null
 }
 
+/** Same folder first, then the rest of the library. No similarity model. */
+export function relatedAssets(
+  db: Db,
+  userId: string,
+  assetId: string,
+  limit: number,
+): AssetRecord[] {
+  const rows = db
+    .query<AssetRow, Params>(
+      `SELECT ${COLUMNS},
+        EXISTS (SELECT 1 FROM favorites f WHERE f.asset_id = a.id AND f.user_id = ?) AS favorite
+       FROM assets a
+       JOIN assets current ON current.id = ?
+       WHERE a.id != current.id
+         AND a.kind = 'video'
+         AND a.library_id = current.library_id
+         AND a.deleted_at IS NULL
+       ORDER BY CASE WHEN a.folder_id IS current.folder_id THEN 0 ELSE 1 END,
+                a.taken_at DESC, a.id DESC
+       LIMIT ?`,
+    )
+    .all(userId, assetId, limit)
+  return rows.map(mapAsset)
+}
+
 export function getAssetFileInfo(db: Db, id: string): AssetFileInfo | null {
   return (
     db

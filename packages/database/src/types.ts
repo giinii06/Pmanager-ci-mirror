@@ -220,3 +220,13 @@ export interface GpuLeaseRecord {
   leaseExpiresAt: number
   updatedAt: number
 }
+
+export interface ReviewRecord {
+  id: string
+  assetId: string
+  userId: string
+  rating: number
+  body: string
+  createdAt: number
+  updatedAt: number
+}

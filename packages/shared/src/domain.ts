@@ -72,6 +72,15 @@ export interface Page<T> {
   total: number
 }
 
+export interface ReviewDTO {
+  id: string
+  assetId: string
+  rating: number
+  body: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface JobDTO {
   id: number
   kind: JobKind

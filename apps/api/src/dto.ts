@@ -5,6 +5,7 @@ import type {
   JobDTO,
   LibraryDTO,
   PlaybackProgressDTO,
+  ReviewDTO,
   TranscriptDTO,
   TranscriptSummaryDTO,
   TranslationDTO,
@@ -22,6 +23,7 @@ import type {
   JobRecord,
   LibraryRecord,
   PlaybackRecord,
+  ReviewRecord,
   TranscriptRecord,
   TranscriptWithSegments,
   TranslationJobRecord,
@@ -122,6 +124,17 @@ export function toPlaybackDTO(progress: PlaybackRecord): PlaybackProgressDTO {
     positionMs: progress.positionMs,
     durationMs: progress.durationMs,
     updatedAt: new Date(progress.updatedAt).toISOString(),
+  }
+}
+
+export function toReviewDTO(review: ReviewRecord): ReviewDTO {
+  return {
+    id: review.id,
+    assetId: review.assetId,
+    rating: review.rating,
+    body: review.body,
+    createdAt: new Date(review.createdAt).toISOString(),
+    updatedAt: new Date(review.updatedAt).toISOString(),
   }
 }
 
