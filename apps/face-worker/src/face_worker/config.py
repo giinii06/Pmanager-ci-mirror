@@ -10,6 +10,7 @@ class Config:
     api_base_url: str
     worker_token: str
     worker_id: str
+    media_root: str
     model_dir: str
     model_id: str
     model_revision: str
@@ -58,6 +59,7 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         api_base_url=source.get("API_BASE_URL", "http://127.0.0.1:8787").rstrip("/"),
         worker_token=token,
         worker_id=source.get("FACE_WORKER_ID", "").strip() or f"{socket.gethostname()}-{os.getpid()}",
+        media_root=source.get("MEDIA_ROOT", "/media"),
         model_dir=source.get("FACE_MODEL_DIR", "/models/face"),
         model_id=source.get("FACE_MODEL_ID", "antelopev2"),
         model_revision=source.get("FACE_MODEL_REVISION", "v0.7"),

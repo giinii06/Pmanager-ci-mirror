@@ -10,6 +10,7 @@ class Config:
     api_base_url: str
     worker_token: str
     worker_id: str
+    media_root: str
     model_dir: str
     model_id: str
     model_revision: str
@@ -53,6 +54,7 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         api_base_url=source.get("API_BASE_URL", "http://127.0.0.1:8787").rstrip("/"),
         worker_token=token,
         worker_id=source.get("SCENE_WORKER_ID", "").strip() or f"{socket.gethostname()}-{os.getpid()}",
+        media_root=source.get("MEDIA_ROOT", "/media"),
         model_dir=source.get("SCENE_MODEL_DIR", "/models/scene"),
         model_id=source.get("SCENE_MODEL_ID", "facebook/pe-av-base-16-frame"),
         model_revision=source.get("SCENE_MODEL_REVISION", "main"),

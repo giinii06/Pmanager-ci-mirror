@@ -27,6 +27,7 @@ services:
       API_BASE_URL: http://api:8787
       SCENE_WORKER_TOKEN: ${SCENE_WORKER_TOKEN:?set SCENE_WORKER_TOKEN to a long random string}
       SCENE_MODEL_DIR: /models/scene
+      MEDIA_ROOT: /media
       SCENE_MODEL_ID: ${SCENE_MODEL_ID:-facebook/pe-av-base-16-frame}
       SCENE_MODEL_REVISION: ${SCENE_MODEL_REVISION:?set SCENE_MODEL_REVISION to a commit SHA}
       SCENE_TEMP_DIR: /scene-tmp

@@ -5,7 +5,9 @@ import struct
 
 import pytest
 
+from scene_worker.config import load_config
 from scene_worker.model import encode_vector, normalise
+from scene_worker.pipeline import resolve_media_path
 from scene_worker.stage import plan_windows
 
 
@@ -64,3 +66,17 @@ def test_encode_vector_normalises_before_packing() -> None:
 
     values = struct.unpack("<3f", base64.b64decode(payload))
     assert sum(value * value for value in values) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_media_paths_resolve_under_the_mounted_root() -> None:
+    assert resolve_media_path("/media", "Videos/a.mp4") == "/media/Videos/a.mp4"
+
+
+def test_an_absolute_media_path_is_left_alone() -> None:
+    assert resolve_media_path("/media", "/mnt/d/a.mp4") == "/mnt/d/a.mp4"
+
+
+def test_the_default_media_root_is_the_mount() -> None:
+    config = load_config({"SCENE_WORKER_TOKEN": "token-token-token"})
+
+    assert config.media_root == "/media"

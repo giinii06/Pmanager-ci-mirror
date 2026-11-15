@@ -19,6 +19,11 @@ log = logging.getLogger(__name__)
 GPU_RETRY_SECONDS = 5.0
 
 
+def resolve_media_path(media_root: str, stored: str) -> str:
+    """The database keeps library-relative paths; the worker mounts the root."""
+    return str(Path(media_root) / stored)
+
+
 class Heartbeat:
     """Keeps both leases alive and tells the pipeline when either is gone.
 
@@ -156,7 +161,7 @@ class Pipeline:
                 {
                     "assetId": job["assetId"],
                     "fileVersion": job["fileVersion"],
-                    "mediaPath": media["path"],
+                    "mediaPath": resolve_media_path(self.config.media_root, media["path"]),
                     "durationMs": media["durationMs"],
                     "modelDir": self.config.model_dir,
                     "modelId": model["id"],

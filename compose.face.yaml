@@ -26,6 +26,7 @@ services:
       API_BASE_URL: http://api:8787
       FACE_WORKER_TOKEN: ${FACE_WORKER_TOKEN:?set FACE_WORKER_TOKEN to a long random string}
       FACE_MODEL_DIR: /models/face
+      MEDIA_ROOT: /media
       FACE_MODEL_ID: ${FACE_MODEL_ID:-antelopev2}
       FACE_MODEL_REVISION: ${FACE_MODEL_REVISION:?set FACE_MODEL_REVISION to a release tag}
       FACE_SAMPLE_MS: ${FACE_SAMPLE_MS:-2000}

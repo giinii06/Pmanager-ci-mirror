@@ -16,6 +16,11 @@ from .config import Config
 log = logging.getLogger(__name__)
 
 
+def resolve_media_path(media_root: str, stored: str) -> str:
+    """The database keeps library-relative paths; the worker mounts the root."""
+    return str(Path(media_root) / stored)
+
+
 class Heartbeat:
     """Keeps the job lease alive and tells the pipeline when it is gone.
 
@@ -119,7 +124,7 @@ class Pipeline:
             json.dumps(
                 {
                     "assetId": job["assetId"],
-                    "mediaPath": media["path"],
+                    "mediaPath": resolve_media_path(self.config.media_root, media["path"]),
                     "durationMs": media["durationMs"],
                     "modelDir": self.config.model_dir,
                     "modelId": model["id"],

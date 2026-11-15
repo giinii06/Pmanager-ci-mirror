@@ -6,6 +6,7 @@ import struct
 import pytest
 
 from face_worker.config import load_config
+from face_worker.pipeline import resolve_media_path
 from face_worker.stage import crop_face, encode_vector, plan_sampling
 
 
@@ -76,3 +77,17 @@ def test_the_defaults_keep_faces_on_the_cpu() -> None:
     assert config.sample_ms == 2_000
     assert config.dimensions == 512
     assert config.worker_id
+
+
+def test_media_paths_resolve_under_the_mounted_root() -> None:
+    assert resolve_media_path("/media", "Videos/a.mp4") == "/media/Videos/a.mp4"
+
+
+def test_an_absolute_media_path_is_left_alone() -> None:
+    assert resolve_media_path("/media", "/mnt/d/a.mp4") == "/mnt/d/a.mp4"
+
+
+def test_the_default_media_root_is_the_mount() -> None:
+    config = load_config({"FACE_WORKER_TOKEN": "token-token-token"})
+
+    assert config.media_root == "/media"
