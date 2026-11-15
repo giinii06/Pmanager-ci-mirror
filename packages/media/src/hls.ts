@@ -91,7 +91,10 @@ export async function generateHls(
     if (options.hwaccel === 'nvenc') {
       try {
         await encode('nvenc')
-      } catch {
+      } catch (error) {
+        // A silent fallback hides a worker with no /dev/nvidia, so say why once.
+        const stderr = (error as { stderr?: string }).stderr?.trim().split('\n')[0]
+        console.warn(`[hls] nvenc failed, encoding on the cpu${stderr ? `: ${stderr}` : ''}`)
         await rm(path.join(tmpDir, 'master.m3u8'), { force: true })
         await encode('libx264')
       }
