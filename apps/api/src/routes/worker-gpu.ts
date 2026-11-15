@@ -32,7 +32,7 @@ function leaseLost(): { error: string; message: string } {
 }
 
 /**
- * One card, one lease. The ASR, translation and embedding workers each
+ * One card, one lease. The ASR, translation, embedding and scene workers each
  * authenticate with their own token, so any of them can take the card but never
  * two at the same time.
  */
@@ -41,6 +41,7 @@ export function registerWorkerGpuRoutes(app: FastifyInstance, ctx: AppContext): 
     ctx.config.asr.workerToken,
     ctx.config.translation.workerToken,
     ctx.config.embedding.workerToken,
+    ctx.config.scene.workerToken,
   ].filter((token) => token.length >= 16)
   if (tokens.length === 0) return
 

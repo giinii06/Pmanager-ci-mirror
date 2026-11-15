@@ -490,6 +490,26 @@ describe('worker scene lane', () => {
     expect(response.statusCode).toBe(401)
   })
 
+  test('the indexer takes the shared gpu lease with its own token', async () => {
+    const h = await harness()
+    const acquired = await h.app.inject({
+      method: 'POST',
+      url: '/worker/gpu/acquire',
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: { owner: 'scene-worker', taskKind: 'scene' },
+    })
+    expect(acquired.json().acquired).toBe(true)
+
+    const wrong = await h.app.inject({
+      method: 'POST',
+      url: '/worker/gpu/acquire',
+      headers: { 'x-worker-token': 'wrong-token-000000' },
+      payload: { owner: 'other-worker', taskKind: 'scene' },
+    })
+    expect(wrong.statusCode).toBe(401)
+    await h.app.close()
+  })
+
   test('a claim carries the media path, the model and the window', async () => {
     const h = await harness()
     await queued(h)
