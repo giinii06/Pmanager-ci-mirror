@@ -49,6 +49,9 @@ export interface AssetDTO {
   filename: string
   relativePath: string
   mimeType: string
+  container: string | null
+  videoCodec: string | null
+  audioCodec: string | null
   sizeBytes: number
   width: number | null
   height: number | null
