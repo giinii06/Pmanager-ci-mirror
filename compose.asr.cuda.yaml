@@ -1,6 +1,7 @@
 # WSL2 / Linux: run the ASR worker on the NVIDIA GPU.
 #
-#   docker compose -f compose.yaml -f compose.asr.models.yaml \
+#   docker compose --env-file .env --env-file .env.asr \
+#     -f compose.yaml -f compose.asr.models.yaml \
 #     -f compose.asr.cuda.yaml up -d --build
 #
 # One ASR job runs at a time, and the worker exits its model process between

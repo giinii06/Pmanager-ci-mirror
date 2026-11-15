@@ -2,7 +2,8 @@
 # Docker on macOS does not expose Metal to Linux containers, so only the model
 # download and the usual services run in Compose.
 #
-#   docker compose -f compose.yaml -f compose.asr.mac-api.yaml up -d --build
+#   docker compose --env-file .env --env-file .env.asr \
+#     -f compose.yaml -f compose.asr.mac-api.yaml up -d --build
 #
 # The API is published on loopback only. The host worker talks to it on
 # 127.0.0.1:8788; do not expose that port to the LAN.

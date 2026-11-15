@@ -72,8 +72,12 @@ docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 
 ```bash
 cp .env.asr.example .env.asr   # ASR_WORKER_TOKEN, 모델 커밋 SHA 채우기
-docker compose -f compose.yaml -f compose.asr.models.yaml run --rm asr-model-init
+docker compose --env-file .env --env-file .env.asr \
+  -f compose.yaml -f compose.asr.models.yaml run --rm asr-model-init
 ```
+
+Compose는 `.env`만 기본으로 읽고 `.env.asr`은 스스로 읽지 않는다. ASR 스택을
+띄우는 명령에는 `--env-file .env --env-file .env.asr`을 항상 붙인다.
 
 - WSL2/NVIDIA: `compose.asr.cuda.yaml`을 추가해 GPU 컨테이너로 실행
 - macOS: `compose.asr.mac-api.yaml`로 API만 띄우고 워커는 호스트에서 MPS로 실행

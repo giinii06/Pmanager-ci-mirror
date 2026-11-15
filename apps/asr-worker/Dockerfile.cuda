@@ -2,7 +2,8 @@
 # of PyTorch; the weights arrive through the asr-model-init service and are
 # mounted read-only.
 #
-#   docker compose -f compose.yaml -f compose.asr.models.yaml \
+#   docker compose --env-file .env --env-file .env.asr \
+#     -f compose.yaml -f compose.asr.models.yaml \
 #     -f compose.asr.cuda.yaml up -d --build
 #
 # RTX 50 series needs a CUDA 12.8+ runtime, which the base image and the PyPI

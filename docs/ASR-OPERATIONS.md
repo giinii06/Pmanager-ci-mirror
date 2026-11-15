@@ -26,7 +26,7 @@ MediaVault의 AI 자막 파이프라인을 설치하고 운영하는 방법입�
 
 ## 1. 모델 내려받기
 
-`.env.asr.example`을 참고해 `.env`에 값을 채웁니다. 최소한 아래 세 개가 필요합니다.
+`.env.asr.example`을 `.env.asr`로 복사하고 값을 채웁니다. 최소한 아래 세 개가 필요합니다.
 
 ```bash
 ASR_WORKER_TOKEN=$(openssl rand -hex 32)
@@ -34,11 +34,14 @@ ASR_MODEL_REVISION=a8b7485274ac50e80a685f3813489fed475adc5f
 ALIGN_MODEL_REVISION=c7cbfc2048c462b0d63a45797104fc9db3ad62b7
 ```
 
+Compose는 `.env`만 기본으로 읽고 `.env.asr`은 스스로 읽지 않습니다. 이 문서의 ASR 명령에는 `--env-file .env --env-file .env.asr`을 붙입니다.
+
 그다음 한 번만 실행합니다.
 
 ```bash
 mkdir -p models asr-results
-docker compose -f compose.yaml -f compose.asr.models.yaml run --rm asr-model-init
+docker compose --env-file .env --env-file .env.asr \
+  -f compose.yaml -f compose.asr.models.yaml run --rm asr-model-init
 ls -lah models/asr models/aligner
 ```
 
@@ -56,10 +59,12 @@ ls -lah models/asr models/aligner
 nvidia-smi
 docker run --rm --gpus all nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04 nvidia-smi
 
-docker compose -f compose.yaml -f compose.asr.models.yaml \
+docker compose --env-file .env --env-file .env.asr \
+  -f compose.yaml -f compose.asr.models.yaml \
   -f compose.asr.cuda.yaml config -q
 
-docker compose -f compose.yaml -f compose.asr.models.yaml \
+docker compose --env-file .env --env-file .env.asr \
+  -f compose.yaml -f compose.asr.models.yaml \
   -f compose.asr.cuda.yaml up -d --build
 ```
 
@@ -72,7 +77,8 @@ RTX 50 계열은 CUDA 12.8 이상이 필요합니다. 이미지 빌드 중 `torc
 Docker for Mac의 Linux 컨테이너는 Metal을 쓰지 못합니다. 모델 다운로드와 나머지 서비스만 Compose로 띄우고, 워커는 호스트에서 실행합니다.
 
 ```bash
-docker compose -f compose.yaml -f compose.asr.mac-api.yaml up -d --build
+docker compose --env-file .env --env-file .env.asr \
+  -f compose.yaml -f compose.asr.mac-api.yaml up -d --build
 ```
 
 API는 `127.0.0.1:8788`에만 열립니다. LAN에 노출하지 마세요.
@@ -81,7 +87,7 @@ API는 `127.0.0.1:8788`에만 열립니다. LAN에 노출하지 마세요.
 cd apps/asr-worker
 uv sync --python 3.12 --extra dev
 
-ASR_WORKER_TOKEN=<.env와 같은 값> \
+ASR_WORKER_TOKEN=<.env.asr과 같은 값> \
 API_BASE_URL=http://127.0.0.1:8788 \
 ASR_DEVICE=mps \
 ASR_MODEL_DIR=../../models/asr \

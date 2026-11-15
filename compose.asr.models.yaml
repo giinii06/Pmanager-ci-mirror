@@ -1,8 +1,8 @@
 # One-shot model download. Weights live on the host in ./models so image
 # rebuilds and container replacements never re-download several gigabytes.
 #
-#   docker compose -f compose.yaml -f compose.asr.models.yaml \
-#     run --rm asr-model-init
+#   docker compose --env-file .env --env-file .env.asr \
+#     -f compose.yaml -f compose.asr.models.yaml run --rm asr-model-init
 #
 # Pinning a commit SHA keeps the revision stable across upstream updates.
 services:

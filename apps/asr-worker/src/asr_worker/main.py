@@ -24,7 +24,8 @@ def verify_model_dir(path: str, label: str) -> None:
     if not root.is_dir():
         raise SystemExit(
             f"{label} directory {path} is missing. Run the asr-model-init service first "
-            "(docker compose -f compose.yaml -f compose.asr.models.yaml run --rm asr-model-init)."
+            "(docker compose --env-file .env --env-file .env.asr "
+            "-f compose.yaml -f compose.asr.models.yaml run --rm asr-model-init)."
         )
     missing = [name for name in REQUIRED_FILES if not (root / name).is_file()]
     if missing:
