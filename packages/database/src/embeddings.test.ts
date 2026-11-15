@@ -9,6 +9,7 @@ import {
   createLibrary,
   getCurrentEmbedding,
   getEmbeddingJob,
+  heartbeatEmbeddingJob,
   insertAsset,
   openDatabase,
   recoverExpiredEmbeddingJobs,
@@ -253,6 +254,16 @@ describe('embedding queue', () => {
 
     expect(rebuilt.state).toBe('queued')
     expect(rebuilt.sourceTranscriptId).toBe(replaced)
+    db.close()
+  })
+
+  test('a heartbeat after the job lease expired is refused', () => {
+    const db = seed()
+    const job = createEmbeddingJob(db, jobInput(), 3_000)
+    claimEmbeddingJob(db, 'worker-a', 1_000, 3_100)
+
+    expect(heartbeatEmbeddingJob(db, job.id, 'worker-a', 1_000, 3_500)).toBe(true)
+    expect(heartbeatEmbeddingJob(db, job.id, 'worker-a', 1_000, 4_600)).toBe(false)
     db.close()
   })
 

@@ -201,22 +201,6 @@ export function getEmbeddingJob(db: Db, id: string): EmbeddingJobRecord | null {
   )
 }
 
-export function activeEmbeddingJob(
-  db: Db,
-  assetId: string,
-  fileVersion: number,
-): EmbeddingJobRecord | null {
-  return (
-    db
-      .query<EmbeddingJobRecord, Params>(
-        `SELECT ${JOB_COLUMNS} FROM embedding_jobs
-         WHERE asset_id = ? AND file_version = ? AND state IN ${ACTIVE_STATES}
-         ORDER BY created_at DESC LIMIT 1`,
-      )
-      .get(assetId, fileVersion) ?? null
-  )
-}
-
 /**
  * One embedding runs at a time because it owns the whole GPU. The claim refuses
  * while another embedding holds a live lease, so a second worker cannot start a
@@ -264,9 +248,10 @@ export function heartbeatEmbeddingJob(
     db
       .query<null, Params>(
         `UPDATE embedding_jobs SET lease_expires_at = ?, updated_at = ?
-         WHERE id = ? AND lease_owner = ? AND state IN ${ACTIVE_STATES}`,
+         WHERE id = ? AND lease_owner = ? AND state IN ${ACTIVE_STATES}
+           AND lease_expires_at >= ?`,
       )
-      .run(now + leaseMs, now, id, owner).changes > 0
+      .run(now + leaseMs, now, id, owner, now).changes > 0
   )
 }
 
@@ -438,24 +423,6 @@ export function recoverExpiredEmbeddingJobs(db: Db, now: number): number {
          AND lease_expires_at IS NOT NULL AND lease_expires_at < ?`,
     )
     .run(now, now).changes
-}
-
-export function embeddingJobCounts(db: Db): Record<EmbeddingJobState, number> {
-  const counts: Record<EmbeddingJobState, number> = {
-    queued: 0,
-    embedding: 0,
-    writing: 0,
-    completed: 0,
-    failed: 0,
-    canceled: 0,
-  }
-  const rows = db
-    .query<{ state: EmbeddingJobState; n: number }, []>(
-      'SELECT state, COUNT(*) AS n FROM embedding_jobs GROUP BY state',
-    )
-    .all()
-  for (const row of rows) counts[row.state] = row.n
-  return counts
 }
 
 /**
