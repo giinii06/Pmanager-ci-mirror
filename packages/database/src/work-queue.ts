@@ -122,6 +122,15 @@ function counts(rows: CountRow[], runningStates: string[]): { running: number; q
   return { running, queued }
 }
 
+/** Every pipeline that has to wait for the card before it can report progress. */
+function isGpuPipeline(pipeline: WorkPipeline): boolean {
+  return pipeline !== 'media'
+}
+
+function pipelineOf(kind: string): WorkPipeline {
+  return kind === 'asr' || kind === 'translation' || kind === 'embedding' ? kind : 'media'
+}
+
 /**
  * One read model over the three queues. Media runs beside the GPU work, while
  * ASR and translation share a card, so their estimates add up.
@@ -170,6 +179,21 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
     )
     .all(gpuResource, ITEM_LIMIT)
 
+  const embedding = db
+    .query<RawItem, Params>(
+      `SELECT j.id, 'embedding' AS kind, j.asset_id AS assetId, a.filename AS assetName,
+              j.state, j.stage, j.progress,
+              CASE WHEN g.owner = j.lease_owner THEN 1 ELSE 0 END AS onGpu,
+              j.started_at AS startedAt, j.updated_at AS updatedAt,
+              j.lease_expires_at AS leaseExpiresAt, j.error_message AS errorMessage
+       FROM embedding_jobs j LEFT JOIN assets a ON a.id = j.asset_id
+       LEFT JOIN gpu_leases g ON g.resource_id = ?
+       WHERE j.state IN ('queued','embedding','writing')
+       ORDER BY CASE j.state WHEN 'queued' THEN 1 ELSE 0 END, j.created_at ASC
+       LIMIT ?`,
+    )
+    .all(gpuResource, ITEM_LIMIT)
+
   const mediaCounts = counts(
     db
       .query<CountRow, []>(
@@ -196,6 +220,21 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
       .all(),
     ['translating', 'writing'],
   )
+  const embeddingCounts = counts(
+    db
+      .query<CountRow, []>(
+        `SELECT state, COUNT(*) AS n FROM embedding_jobs
+         WHERE state IN ('queued','embedding','writing') GROUP BY state`,
+      )
+      .all(),
+    ['embedding', 'writing'],
+  )
+  const countsByPipeline: Record<WorkPipeline, { running: number; queued: number }> = {
+    media: mediaCounts,
+    asr: asrCounts,
+    translation: translationCounts,
+    embedding: embeddingCounts,
+  }
 
   const toItem = (raw: RawItem, pipeline: WorkPipeline): WorkItemRecord => {
     const active =
@@ -203,6 +242,7 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
       raw.state === 'transcribing' ||
       raw.state === 'aligning' ||
       raw.state === 'translating' ||
+      raw.state === 'embedding' ||
       raw.state === 'writing'
     const stalled =
       active && raw.leaseExpiresAt !== null && raw.leaseExpiresAt < now
@@ -233,91 +273,75 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
   const mediaItems = media.map((raw) => toItem(raw, 'media'))
   const asrItems = asr.map((raw) => toItem(raw, 'asr'))
   const translationItems = translation.map((raw) => toItem(raw, 'translation'))
+  const embeddingItems = embedding.map((raw) => toItem(raw, 'embedding'))
 
-  const mediaAverage = history(db, 'jobs', 'done', now)
-  const asrAverage = history(db, 'asr_jobs', 'completed', now)
-  const translationAverage = history(db, 'translation_jobs', 'completed', now)
+  const averages: Record<WorkPipeline, number | null> = {
+    media: history(db, 'jobs', 'done', now),
+    asr: history(db, 'asr_jobs', 'completed', now),
+    translation: history(db, 'translation_jobs', 'completed', now),
+    embedding: history(db, 'embedding_jobs', 'completed', now),
+  }
 
   const lanes: Array<{
     pipeline: WorkPipeline
     items: WorkItemRecord[]
-    running: number
-    queued: number
-    stalled: number
-    average: number | null
   }> = [
-    {
-      pipeline: 'media',
-      items: mediaItems,
-      running: mediaCounts.running,
-      queued: mediaCounts.queued,
-      stalled: 0,
-      average: mediaAverage,
-    },
-    {
-      pipeline: 'asr',
-      items: asrItems,
-      running: asrCounts.running,
-      queued: asrCounts.queued,
-      stalled: asrItems.filter((item) => item.state === 'stalled').length,
-      average: asrAverage,
-    },
-    {
-      pipeline: 'translation',
-      items: translationItems,
-      running: translationCounts.running,
-      queued: translationCounts.queued,
-      stalled: translationItems.filter((item) => item.state === 'stalled').length,
-      average: translationAverage,
-    },
+    { pipeline: 'media', items: mediaItems },
+    { pipeline: 'asr', items: asrItems },
+    { pipeline: 'translation', items: translationItems },
+    { pipeline: 'embedding', items: embeddingItems },
   ]
 
   const pipelines: WorkPipelineRecord[] = lanes.map((lane) => {
     const live = lane.items.filter((item) => item.state === 'running')
+    const stalled = lane.items.filter((item) => item.state === 'stalled').length
     const { etaSeconds, basis } = pipelineEta(
       live,
-      lane.queued,
-      lane.average,
+      countsByPipeline[lane.pipeline].queued,
+      averages[lane.pipeline],
       now,
     )
     return {
       pipeline: lane.pipeline,
-      running: Math.max(0, lane.running - lane.stalled),
-      queued: lane.queued,
-      stalled: lane.stalled,
-      etaSeconds: lane.stalled > 0 ? null : etaSeconds,
-      basis: lane.stalled > 0 ? null : basis,
+      running: Math.max(0, countsByPipeline[lane.pipeline].running - stalled),
+      queued: countsByPipeline[lane.pipeline].queued,
+      stalled,
+      etaSeconds: stalled > 0 ? null : etaSeconds,
+      basis: stalled > 0 ? null : basis,
     }
   })
 
-  for (const item of [...asrItems, ...translationItems]) {
-    if (item.state !== 'running') continue
-    const average = item.pipeline === 'asr' ? asrAverage : translationAverage
-    if (average === null) continue
-    const elapsed = item.startedAt === null ? 0 : Math.max(0, now - item.startedAt)
-    item.etaSeconds = Math.max(0, Math.round((average - elapsed) / 1000))
+  for (const lane of lanes) {
+    for (const item of lane.items) {
+      if (item.state !== 'running') continue
+      const average = averages[item.pipeline]
+      if (average === null) continue
+      const elapsed = item.startedAt === null ? 0 : Math.max(0, now - item.startedAt)
+      item.etaSeconds = Math.max(0, Math.round((average - elapsed) / 1000))
+    }
   }
 
-  // ASR and translation take turns on one card, so their estimates add up.
-  // Media runs beside them, so the slower side decides the wall clock.
-  const gpuEta =
-    pipelines[1]!.etaSeconds === null || pipelines[2]!.etaSeconds === null
-      ? null
-      : pipelines[1]!.etaSeconds + pipelines[2]!.etaSeconds
-  const mediaBusy = mediaCounts.running + mediaCounts.queued > 0
-  const gpuBusy =
-    asrCounts.running +
-      asrCounts.queued +
-      translationCounts.running +
-      translationCounts.queued >
-    0
+  const laneOf = (pipeline: WorkPipeline) => pipelines.find((lane) => lane.pipeline === pipeline)!
+  const mediaLane = laneOf('media')
+  const gpuLanes = pipelines.filter((lane) => isGpuPipeline(lane.pipeline))
+
+  // ASR, translation and embedding take turns on one card, so their estimates
+  // add up. Media runs beside them, so the slower side decides the wall clock.
+  const gpuEta = gpuLanes.some((lane) => lane.etaSeconds === null)
+    ? null
+    : gpuLanes.reduce((total, lane) => total + (lane.etaSeconds ?? 0), 0)
+  const mediaBusy =
+    countsByPipeline.media.running + countsByPipeline.media.queued > 0
+  const gpuBusy = gpuLanes.some(
+    (lane) => countsByPipeline[lane.pipeline].running + countsByPipeline[lane.pipeline].queued > 0,
+  )
 
   const overall: number | null =
     !mediaBusy && !gpuBusy
       ? 0
-      : (mediaBusy && pipelines[0]!.etaSeconds === null) || (gpuBusy && gpuEta === null)
+      : (mediaBusy && mediaLane.etaSeconds === null) || (gpuBusy && gpuEta === null)
         ? null
-        : Math.max(mediaBusy ? (pipelines[0]!.etaSeconds ?? 0) : 0, gpuBusy ? (gpuEta ?? 0) : 0)
+        : Math.max(mediaBusy ? (mediaLane.etaSeconds ?? 0) : 0, gpuBusy ? (gpuEta ?? 0) : 0)
 
   const basis: EtaBasis =
     overall === null || (!mediaBusy && !gpuBusy) ? null : 'history'
@@ -338,6 +362,10 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
          SELECT j.id, 'translation', j.asset_id, a.filename, j.state, j.stage, j.progress,
                 NULL, j.started_at, j.updated_at, NULL, j.error_message
          FROM translation_jobs j LEFT JOIN assets a ON a.id = j.asset_id WHERE j.state = 'failed'
+         UNION ALL
+         SELECT j.id, 'embedding', j.asset_id, a.filename, j.state, j.stage, j.progress,
+                NULL, j.started_at, j.updated_at, NULL, j.error_message
+         FROM embedding_jobs j LEFT JOIN assets a ON a.id = j.asset_id WHERE j.state = 'failed'
        ) ORDER BY updatedAt DESC LIMIT ?`,
     )
     .all(FAILURE_LIMIT)
@@ -349,11 +377,12 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
            SELECT MAX(updated_at) AS finished FROM jobs WHERE state = 'done'
            UNION ALL SELECT MAX(updated_at) FROM asr_jobs WHERE state = 'completed'
            UNION ALL SELECT MAX(updated_at) FROM translation_jobs WHERE state = 'completed'
+           UNION ALL SELECT MAX(updated_at) FROM embedding_jobs WHERE state = 'completed'
          )`,
       )
       .get()?.last ?? null
 
-  const all = [...mediaItems, ...asrItems, ...translationItems]
+  const all = [...mediaItems, ...asrItems, ...translationItems, ...embeddingItems]
   const running = all.filter((item) => item.state === 'running')
   const queued = all.filter((item) => item.state === 'queued')
   const stalled = all.filter((item) => item.state === 'stalled')
@@ -363,16 +392,14 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
     running,
     queued,
     stalled,
-    remaining: mediaCounts.running + mediaCounts.queued + asrCounts.running + asrCounts.queued + translationCounts.running + translationCounts.queued,
+    remaining: pipelines.reduce(
+      (total, lane) => total + countsByPipeline[lane.pipeline].running + countsByPipeline[lane.pipeline].queued,
+      0,
+    ),
     etaSeconds: overall,
     basis,
     pipelines,
-    failures: failures.map((raw) =>
-      toItem(
-        raw,
-        raw.kind === 'asr' ? 'asr' : raw.kind === 'translation' ? 'translation' : 'media',
-      ),
-    ),
+    failures: failures.map((raw) => toItem(raw, pipelineOf(raw.kind ?? 'media'))),
     lastCompletedAt,
   }
 }

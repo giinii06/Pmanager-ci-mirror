@@ -103,10 +103,10 @@ export interface JobSummaryDTO {
   recentFailures: JobDTO[]
 }
 
-/** Media jobs run beside the GPU queue; ASR and translation share one card. */
-export type WorkPipeline = 'media' | 'asr' | 'translation'
+/** Media jobs run beside the GPU queue; ASR, translation and embedding share one card. */
+export type WorkPipeline = 'media' | 'asr' | 'translation' | 'embedding'
 
-export type WorkKind = JobKind | 'asr' | 'translation'
+export type WorkKind = JobKind | 'asr' | 'translation' | 'embedding'
 
 /** Null means the number is not known yet, never zero. */
 export type EtaBasis = 'history' | null

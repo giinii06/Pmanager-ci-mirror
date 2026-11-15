@@ -1,4 +1,10 @@
-import type { AsrStage, TranslationStage, WorkKind, WorkPipeline } from '@mediavault/shared'
+import type {
+  AsrStage,
+  EmbeddingStage,
+  TranslationStage,
+  WorkKind,
+  WorkPipeline,
+} from '@mediavault/shared'
 
 export const ASR_STAGE_LABEL: Record<AsrStage, string> = {
   queued: '대기 중',
@@ -18,10 +24,19 @@ export const TRANSLATION_STAGE_LABEL: Record<TranslationStage, string> = {
   completed: '완료',
 }
 
+export const EMBEDDING_STAGE_LABEL: Record<EmbeddingStage, string> = {
+  queued: '대기 중',
+  starting: '임베딩 준비 중',
+  embedding: '임베딩 중',
+  writing: '벡터 저장 중',
+  completed: '완료',
+}
+
 export const pipelineLabel: Record<WorkPipeline, string> = {
   media: '미디어',
   asr: '음성 인식',
   translation: '번역',
+  embedding: '임베딩',
 }
 
 export const kindLabel: Record<WorkKind, string> = {
@@ -31,4 +46,5 @@ export const kindLabel: Record<WorkKind, string> = {
   hls: 'HLS 변환',
   asr: '음성 인식',
   translation: '번역',
+  embedding: '임베딩',
 }

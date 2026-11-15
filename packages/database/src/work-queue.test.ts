@@ -2,12 +2,16 @@ import { describe, expect, test } from 'bun:test'
 import {
   acquireGpuLease,
   claimAsrJob,
+  claimEmbeddingJob,
   claimNextJob,
+  completeEmbeddingJob,
   completeJob,
   createAsrJob,
+  createEmbeddingJob,
   createLibrary,
   enqueueJob,
   failAsrJob,
+  failEmbeddingJob,
   failJob,
   insertAsset,
   openDatabase,
@@ -15,6 +19,7 @@ import {
   workQueue,
 } from './index'
 import type { NewAsset } from './assets'
+import type { Db } from './db'
 
 const RESOURCE = 'gpu:0'
 const MODEL = 'asr-rev-1'
@@ -99,6 +104,62 @@ function asrJob(
     },
     at,
   )
+}
+
+function embeddingJob(
+  db: Db,
+  id: string,
+  assetId: string,
+  at: number,
+  maxAttempts = 3,
+): void {
+  createEmbeddingJob(
+    db,
+    {
+      id,
+      assetId,
+      fileVersion: 1,
+      sourceTranscriptId: null,
+      modelId: 'Qwen/Qwen3-Embedding-4B-GGUF',
+      modelRevision: 'commit-sha',
+      modelSha256: 'sha-embed',
+      pipelineVersion: 'embed-pipeline-1',
+      dimensions: 2,
+      maxAttempts,
+    },
+    at,
+  )
+}
+
+function finishedEmbedding(
+  db: Db,
+  id: string,
+  assetId: string,
+  start: number,
+  durationMs: number,
+): number {
+  embeddingJob(db, id, assetId, start)
+  claimEmbeddingJob(db, `embed-${id}`, 120_000, start)
+  const done = completeEmbeddingJob(
+    db,
+    {
+      jobId: id,
+      owner: `embed-${id}`,
+      vectors: [
+        {
+          kind: 'title',
+          chunkIndex: 0,
+          startMs: null,
+          endMs: null,
+          text: assetId,
+          vector: Float32Array.from([1, 0]),
+        },
+      ],
+    },
+    start + durationMs,
+  )
+  expect(done).toBe(true)
+  return start + durationMs
 }
 
 describe('work queue', () => {
@@ -233,5 +294,38 @@ describe('work queue', () => {
     const last = finishedMedia(db, 'b', 100_000, 7_000)
 
     expect(workQueue(db, 200_000, RESOURCE).lastCompletedAt).toBe(last)
+  })
+
+  test('the embedding lane estimates on its own and adds to the GPU total', () => {
+    const db = seed()
+    let now = 10_000
+    now = finishedEmbedding(db, 'e1', 'asset1', now, 10_000)
+    now = finishedEmbedding(db, 'e2', 'asset2', now, 20_000)
+    now = finishedEmbedding(db, 'e3', 'asset3', now, 30_000)
+    embeddingJob(db, 'e4', 'asset1', now)
+
+    const queue = workQueue(db, now + 1_000, RESOURCE)
+    const lane = queue.pipelines.find((item) => item.pipeline === 'embedding')!
+
+    expect(lane.queued).toBe(1)
+    expect(lane.etaSeconds).toBe(20)
+    expect(lane.basis).toBe('history')
+    expect(queue.remaining).toBe(1)
+    expect(queue.etaSeconds).toBe(20)
+  })
+
+  test('a failed embedding job is listed with the other failures', () => {
+    const db = seed()
+    embeddingJob(db, 'e1', 'asset1', 1_000, 1)
+    claimEmbeddingJob(db, 'embed-w', 120_000, 1_000)
+    failEmbeddingJob(db, 'e1', 'llama-server exited 1', 2_000)
+
+    const queue = workQueue(db, 3_000, RESOURCE)
+
+    expect(queue.failures).toHaveLength(1)
+    expect(queue.failures[0]!.pipeline).toBe('embedding')
+    expect(queue.failures[0]!.kind).toBe('embedding')
+    expect(queue.failures[0]!.assetName).toBe('asset1.mp4')
+    expect(queue.failures[0]!.errorMessage).toBe('llama-server exited 1')
   })
 })

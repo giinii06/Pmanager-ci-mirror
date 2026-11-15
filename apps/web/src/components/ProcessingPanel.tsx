@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Cpu } from 'lucide-react'
 import type {
   AsrStage,
+  EmbeddingStage,
   TranslationStage,
   WorkItemDTO,
   WorkPipelineDTO,
@@ -12,6 +13,7 @@ import { cn } from '../lib/cn'
 import { formatAgo, formatCount, formatEta } from '../lib/format'
 import {
   ASR_STAGE_LABEL,
+  EMBEDDING_STAGE_LABEL,
   TRANSLATION_STAGE_LABEL,
   kindLabel,
   pipelineLabel,
@@ -25,6 +27,9 @@ function stageLabel(item: WorkItemDTO): string {
   }
   if (item.pipeline === 'translation' && item.stage) {
     return TRANSLATION_STAGE_LABEL[item.stage as TranslationStage] ?? kindLabel[item.kind]
+  }
+  if (item.pipeline === 'embedding' && item.stage) {
+    return EMBEDDING_STAGE_LABEL[item.stage as EmbeddingStage] ?? kindLabel[item.kind]
   }
   return kindLabel[item.kind]
 }
