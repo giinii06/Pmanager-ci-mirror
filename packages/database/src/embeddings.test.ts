@@ -392,4 +392,16 @@ describe('related by embedding', () => {
     expect(ranked(db)).toEqual([])
     db.close()
   })
+
+  test('a vector from an older file version does not rank', () => {
+    const db = seed()
+    store(db, 'asset1', [chunk(0, [1, 0, 0, 0])], 5_000)
+    store(db, 'asset2', [chunk(0, [1, 0, 0, 0])], 5_100)
+    expect(ranked(db)).toEqual(['asset2'])
+
+    db.query('UPDATE assets SET file_version = 2 WHERE id = ?').run('asset2')
+
+    expect(ranked(db)).toEqual([])
+    db.close()
+  })
 })

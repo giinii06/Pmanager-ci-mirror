@@ -464,6 +464,7 @@ export function relatedByEmbedding(
        FROM video_embeddings e JOIN assets a ON a.id = e.asset_id
        WHERE e.asset_id <> ?
          AND a.deleted_at IS NULL
+         AND e.file_version = a.file_version
          AND e.model_sha256 = ? AND e.pipeline_version = ? AND e.dimensions = ?
          AND e.source_transcript_id IS ${currentTranscript('e')}`,
     )
