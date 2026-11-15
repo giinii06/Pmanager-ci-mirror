@@ -4,9 +4,14 @@ import type {
   AssetKind,
   EmbeddingJobState,
   EmbeddingStage,
+  FaceJobState,
+  FaceStage,
   JobKind,
   JobState,
+  PersonState,
   ScanState,
+  SceneJobState,
+  SceneStage,
   TranslationJobState,
   TranslationStage,
 } from '@mediavault/shared'
@@ -281,4 +286,137 @@ export interface ReviewRecord {
   body: string
   createdAt: number
   updatedAt: number
+}
+
+export interface SceneJobRecord {
+  id: string
+  assetId: string
+  fileVersion: number
+  state: SceneJobState
+  stage: SceneStage
+  progress: number
+  attempts: number
+  maxAttempts: number
+  leaseOwner: string | null
+  leaseExpiresAt: number | null
+  runAfter: number
+  modelId: string
+  modelRevision: string
+  modelSha256: string
+  pipelineVersion: string
+  dimensions: number
+  windowMs: number
+  overlapMs: number
+  errorMessage: string | null
+  startedAt: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface VideoSceneRecord {
+  id: string
+  jobId: string
+  assetId: string
+  fileVersion: number
+  seq: number
+  startMs: number
+  endMs: number
+  thumbnailPath: string | null
+  modelSha256: string
+  pipelineVersion: string
+  createdAt: number
+}
+
+/** One window's three vectors, as the worker computed them. */
+export interface SceneVectorInput {
+  seq: number
+  startMs: number
+  endMs: number
+  thumbnailPath: string | null
+  visual: Float32Array
+  audio: Float32Array
+  av: Float32Array
+}
+
+export interface SceneSearchHit {
+  sceneId: string
+  assetId: string
+  seq: number
+  startMs: number
+  endMs: number
+  thumbnailPath: string | null
+  score: number
+  modality: 'visual' | 'audio' | 'av'
+}
+
+export interface FaceJobRecord {
+  id: string
+  assetId: string
+  fileVersion: number
+  state: FaceJobState
+  stage: FaceStage
+  progress: number
+  attempts: number
+  maxAttempts: number
+  leaseOwner: string | null
+  leaseExpiresAt: number | null
+  runAfter: number
+  modelId: string
+  modelRevision: string
+  modelSha256: string
+  pipelineVersion: string
+  dimensions: number
+  sampleMs: number
+  errorMessage: string | null
+  startedAt: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface FaceDetectionRecord {
+  id: string
+  jobId: string
+  assetId: string
+  fileVersion: number
+  frameMs: number
+  x: number
+  y: number
+  width: number
+  height: number
+  score: number
+  thumbnailPath: string | null
+  modelSha256: string
+  pipelineVersion: string
+  createdAt: number
+}
+
+export interface FaceVectorInput {
+  frameMs: number
+  x: number
+  y: number
+  width: number
+  height: number
+  score: number
+  thumbnailPath: string | null
+  vector: Float32Array
+}
+
+export interface PersonRecord {
+  id: string
+  name: string
+  state: PersonState
+  coverDetectionId: string | null
+  faceCount: number
+  centroid: Float32Array | null
+  dimensions: number | null
+  modelSha256: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface PersonAssetRecord {
+  personId: string
+  assetId: string
+  faceCount: number
+  bestDetectionId: string | null
 }

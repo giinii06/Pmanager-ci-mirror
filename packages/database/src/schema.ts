@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 9
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -287,6 +287,161 @@ CREATE INDEX IF NOT EXISTS idx_video_embeddings_asset
   ON video_embeddings(asset_id, file_version, kind, chunk_index);
 `
 
+export const SCENE_SQL = `
+CREATE TABLE IF NOT EXISTS scene_jobs (
+  id TEXT PRIMARY KEY,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('queued','extracting','embedding','writing','completed','failed','canceled')),
+  stage TEXT NOT NULL DEFAULT 'queued' CHECK (stage IN ('queued','extracting','embedding','writing','completed')),
+  progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  lease_owner TEXT,
+  lease_expires_at INTEGER,
+  run_after INTEGER NOT NULL DEFAULT 0,
+  model_id TEXT NOT NULL,
+  model_revision TEXT NOT NULL,
+  model_sha256 TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  window_ms INTEGER NOT NULL,
+  overlap_ms INTEGER NOT NULL,
+  error_message TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  started_at INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_scene_jobs_active
+  ON scene_jobs(asset_id, file_version)
+  WHERE state IN ('queued','extracting','embedding','writing');
+CREATE INDEX IF NOT EXISTS idx_scene_jobs_claim ON scene_jobs(state, run_after, created_at);
+CREATE INDEX IF NOT EXISTS idx_scene_jobs_lease ON scene_jobs(state, lease_expires_at);
+
+CREATE TABLE IF NOT EXISTS video_scenes (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES scene_jobs(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  seq INTEGER NOT NULL,
+  start_ms INTEGER NOT NULL CHECK (start_ms >= 0),
+  end_ms INTEGER NOT NULL CHECK (end_ms >= start_ms),
+  thumbnail_path TEXT,
+  model_sha256 TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(asset_id, file_version, model_sha256, pipeline_version, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_video_scenes_asset
+  ON video_scenes(asset_id, file_version, seq);
+
+CREATE TABLE IF NOT EXISTS scene_embeddings (
+  scene_id TEXT NOT NULL REFERENCES video_scenes(id) ON DELETE CASCADE,
+  modality TEXT NOT NULL CHECK (modality IN ('visual','audio','av')),
+  dimensions INTEGER NOT NULL,
+  vector BLOB NOT NULL,
+  PRIMARY KEY (scene_id, modality)
+);
+`
+
+export const FACE_SQL = `
+CREATE TABLE IF NOT EXISTS face_jobs (
+  id TEXT PRIMARY KEY,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('queued','detecting','writing','completed','failed','canceled')),
+  stage TEXT NOT NULL DEFAULT 'queued' CHECK (stage IN ('queued','sampling','detecting','writing','completed')),
+  progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  lease_owner TEXT,
+  lease_expires_at INTEGER,
+  run_after INTEGER NOT NULL DEFAULT 0,
+  model_id TEXT NOT NULL,
+  model_revision TEXT NOT NULL,
+  model_sha256 TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  sample_ms INTEGER NOT NULL,
+  error_message TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  started_at INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_face_jobs_active
+  ON face_jobs(asset_id, file_version)
+  WHERE state IN ('queued','detecting','writing');
+CREATE INDEX IF NOT EXISTS idx_face_jobs_claim ON face_jobs(state, run_after, created_at);
+CREATE INDEX IF NOT EXISTS idx_face_jobs_lease ON face_jobs(state, lease_expires_at);
+
+CREATE TABLE IF NOT EXISTS people (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('candidate','approved','excluded')),
+  cover_detection_id TEXT,
+  face_count INTEGER NOT NULL DEFAULT 0,
+  centroid BLOB,
+  dimensions INTEGER,
+  model_sha256 TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_people_state ON people(state, face_count DESC);
+
+CREATE TABLE IF NOT EXISTS face_detections (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES face_jobs(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  frame_ms INTEGER NOT NULL CHECK (frame_ms >= 0),
+  x REAL NOT NULL,
+  y REAL NOT NULL,
+  width REAL NOT NULL,
+  height REAL NOT NULL,
+  score REAL NOT NULL,
+  thumbnail_path TEXT,
+  model_sha256 TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_face_detections_asset
+  ON face_detections(asset_id, file_version, frame_ms);
+
+CREATE TABLE IF NOT EXISTS face_embeddings (
+  detection_id TEXT PRIMARY KEY REFERENCES face_detections(id) ON DELETE CASCADE,
+  dimensions INTEGER NOT NULL,
+  vector BLOB NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS person_faces (
+  person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  detection_id TEXT NOT NULL REFERENCES face_detections(id) ON DELETE CASCADE,
+  similarity REAL,
+  source TEXT NOT NULL CHECK (source IN ('seed','assigned','manual')),
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (person_id, detection_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_person_faces_detection ON person_faces(detection_id);
+
+CREATE TABLE IF NOT EXISTS person_assets (
+  person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  face_count INTEGER NOT NULL,
+  best_detection_id TEXT,
+  PRIMARY KEY (person_id, asset_id)
+);
+CREATE INDEX IF NOT EXISTS idx_person_assets_asset ON person_assets(asset_id);
+
+CREATE TABLE IF NOT EXISTS person_review_actions (
+  id TEXT PRIMARY KEY,
+  person_id TEXT,
+  action TEXT NOT NULL CHECK (action IN ('approve','exclude','merge','split','rename','rescan')),
+  payload TEXT,
+  user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL
+);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -301,4 +456,6 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   },
   (exec) => exec(REVIEW_SQL),
   (exec) => exec(EMBEDDING_SQL),
+  (exec) => exec(SCENE_SQL),
+  (exec) => exec(FACE_SQL),
 ]

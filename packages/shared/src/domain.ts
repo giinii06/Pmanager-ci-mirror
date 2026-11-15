@@ -243,12 +243,66 @@ export type EmbeddingJobState =
 
 export type EmbeddingStage = 'queued' | 'starting' | 'embedding' | 'writing' | 'completed'
 
+export type SceneJobState =
+  | 'queued'
+  | 'extracting'
+  | 'embedding'
+  | 'writing'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+
+export type SceneStage = 'queued' | 'extracting' | 'embedding' | 'writing' | 'completed'
+
+export type FaceJobState =
+  | 'queued'
+  | 'detecting'
+  | 'writing'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+
+export type FaceStage = 'queued' | 'sampling' | 'detecting' | 'writing' | 'completed'
+
+export type PersonState = 'candidate' | 'approved' | 'excluded'
+
+/** Which part of a window matched. The player labels the hit with this. */
+export type SceneModality = 'visual' | 'audio' | 'av'
+
 export interface EmbeddingJobDTO {
   id: string
   assetId: string
   fileVersion: number
   state: EmbeddingJobState
   stage: EmbeddingStage
+  progress: number
+  attempts: number
+  maxAttempts: number
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FaceJobDTO {
+  id: string
+  assetId: string
+  fileVersion: number
+  state: FaceJobState
+  stage: FaceStage
+  progress: number
+  attempts: number
+  maxAttempts: number
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SceneJobDTO {
+  id: string
+  assetId: string
+  fileVersion: number
+  state: SceneJobState
+  stage: SceneStage
   progress: number
   attempts: number
   maxAttempts: number
@@ -356,4 +410,72 @@ export interface AssetQuery {
 export interface ApiErrorBody {
   error: string
   message: string
+}
+
+export interface SceneDTO {
+  id: string
+  assetId: string
+  seq: number
+  startMs: number
+  endMs: number
+  thumbnailUrl: string | null
+}
+
+/** One result row of a semantic search, before the client groups it by asset. */
+export interface SemanticHitDTO {
+  kind: 'scene' | 'dialogue' | 'asset'
+  assetId: string
+  sceneId: string | null
+  startMs: number | null
+  endMs: number | null
+  score: number
+  source: SceneModality | 'dialogue' | 'title'
+  text: string
+  thumbnailUrl: string | null
+  asset: {
+    id: string
+    filename: string
+    kind: AssetKind
+    durationMs: number | null
+  }
+}
+
+export interface SemanticSearchDTO {
+  query: string
+  hits: SemanticHitDTO[]
+  /** False when the scene index could not be reached, so only text ranked. */
+  scenesSearched: boolean
+}
+
+export interface PersonDTO {
+  id: string
+  name: string
+  state: PersonState
+  faceCount: number
+  assetCount: number
+  coverUrl: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PersonFaceDTO {
+  detectionId: string
+  assetId: string
+  filename: string
+  frameMs: number
+  url: string
+}
+
+export interface PersonDetailDTO {
+  person: PersonDTO
+  faces: PersonFaceDTO[]
+}
+
+export interface PersonAssetDTO {
+  assetId: string
+  filename: string
+  durationMs: number | null
+  faceCount: number
+  bestDetectionId: string | null
+  thumbnailUrl: string | null
 }
