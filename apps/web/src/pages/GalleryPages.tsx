@@ -1,5 +1,9 @@
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Images, Film, Heart } from 'lucide-react'
+import { api } from '../lib/api'
+import { useUi } from '../store/ui'
+import { useViewer } from '../store/viewer'
 import { AssetGallery } from '../components/AssetGallery'
 import { EmptyState } from '../components/EmptyState'
 import { PageHeading } from '../components/PageHeading'
@@ -7,6 +11,32 @@ import { Button } from '../components/ui/Button'
 
 export function VideosPage() {
   const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const sharedId = params.get('v')
+  const openedFor = useRef<string | null>(null)
+
+  // A shared watch link carries the video id. Open it once, then drop the
+  // parameter so closing the viewer leaves the plain gallery behind.
+  useEffect(() => {
+    if (!sharedId || openedFor.current === sharedId) return
+    openedFor.current = sharedId
+    setParams(
+      (current) => {
+        current.delete('v')
+        return current
+      },
+      { replace: true },
+    )
+    void api
+      .asset(sharedId)
+      .then((asset) => {
+        if (asset.kind === 'video') useViewer.getState().open([asset], 0)
+      })
+      .catch(() => {
+        useUi.getState().toast('공유된 영상을 열 수 없습니다.', 'error')
+      })
+  }, [sharedId, setParams])
+
   return (
     <AssetGallery
       title="동영상"
