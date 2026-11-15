@@ -13,7 +13,11 @@ import {
   resolveInside,
 } from '@mediavault/media'
 import type { WorkerConfig } from './config'
+import { withGpuLease } from './gpu'
 import { scanLibrary } from './scan'
+
+const HLS_LEASE_WAIT_MS = 5_000
+const HLS_LEASE_MS = 120_000
 
 function resolveSource(
   db: Db,
@@ -72,10 +76,29 @@ export async function executeJob(db: Db, config: WorkerConfig, job: JobRecord): 
   }
 
   if (job.kind === 'hls') {
-    await generateHls(source, config.cacheDir, info.id, info.fileVersion, {
-      hwaccel: config.hwaccel,
-      width: info.width,
-    })
+    const encode = (hwaccel: 'nvenc' | null) =>
+      generateHls(source, config.cacheDir, info.id, info.fileVersion, {
+        hwaccel,
+        width: info.width,
+      })
+
+    if (config.hwaccel !== 'nvenc') {
+      await encode(config.hwaccel)
+      return
+    }
+
+    // Playback never waits on a busy card, so a refused lease encodes on the CPU.
+    await withGpuLease(
+      db,
+      {
+        resourceId: config.gpuResource,
+        owner: config.workerId,
+        taskKind: 'hls',
+        waitMs: HLS_LEASE_WAIT_MS,
+        leaseMs: HLS_LEASE_MS,
+      },
+      (held) => encode(held ? 'nvenc' : null),
+    )
     return
   }
 
