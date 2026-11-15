@@ -6,7 +6,6 @@ import {
   Film,
   FolderTree as FolderTreeIcon,
   Heart,
-  Images,
   Loader2,
   Settings2,
   X,
@@ -18,9 +17,8 @@ import { useUi } from '../store/ui'
 import { FolderTree } from './FolderTree'
 
 const navItems = [
-  { to: '/', label: '모든 사진', icon: Images, count: 'images' as const, end: true },
+  { to: '/', label: '사진 모음', icon: FolderTreeIcon, count: null, end: true },
   { to: '/videos', label: '동영상', icon: Film, count: 'videos' as const, end: false },
-  { to: '/folders', label: '폴더', icon: FolderTreeIcon, count: null, end: false },
   { to: '/favorites', label: '즐겨찾기', icon: Heart, count: 'favorites' as const, end: false },
 ]
 

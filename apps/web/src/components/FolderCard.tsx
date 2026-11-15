@@ -4,7 +4,7 @@ import type { FolderDTO } from '@mediavault/shared'
 import { formatCount } from '../lib/format'
 import { Thumb } from './Thumb'
 
-export function FolderCard({ folder }: { folder: FolderDTO }) {
+export function FolderCard({ folder, count }: { folder: FolderDTO; count?: number }) {
   return (
     <Link
       to={`/folders/${folder.id}`}
@@ -28,7 +28,7 @@ export function FolderCard({ folder }: { folder: FolderDTO }) {
       <div className="flex items-center gap-2 px-3.5 py-2.5">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium text-ink">{folder.name}</p>
-          <p className="text-[11.5px] text-muted">{formatCount(folder.assetCount)}개</p>
+          <p className="text-[11.5px] text-muted">{formatCount(count ?? folder.assetCount)}개</p>
         </div>
         <ChevronRight
           size={14}

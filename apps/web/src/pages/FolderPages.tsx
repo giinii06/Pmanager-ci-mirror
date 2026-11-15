@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { FolderPlus, Images } from 'lucide-react'
 import { api } from '../lib/api'
@@ -17,7 +17,6 @@ export function FoldersPage() {
   const navigate = useNavigate()
   const libraries = useQuery({ queryKey: ['libraries'], queryFn: api.libraries })
   const folders = useQuery({ queryKey: ['folders'], queryFn: api.folders })
-  const stats = useQuery({ queryKey: ['stats'], queryFn: api.stats })
 
   if (libraries.isPending || folders.isPending) {
     return (
@@ -27,61 +26,39 @@ export function FoldersPage() {
     )
   }
 
-  const sections = (libraries.data ?? []).map((library) => {
-    const root = folders.data?.find(
-      (folder) => folder.libraryId === library.id && folder.parentId === null,
-    )
-    const top = root ? (folders.data ?? []).filter((folder) => folder.parentId === root.id) : []
-    return { library, root, top }
-  })
+  const collections = (folders.data ?? []).filter((folder) => folder.directImageCount > 0)
+  const sections = (libraries.data ?? [])
+    .map((library) => ({
+      library,
+      folders: collections.filter((folder) => folder.libraryId === library.id),
+    }))
+    .filter((section) => section.folders.length > 0)
 
   return (
     <div className="h-full overflow-y-auto px-6 pb-24">
-      <PageHeading
-        title="폴더"
-        meta={`${formatCount(stats.data?.folders ?? 0)}개 폴더`}
-        actions={<Button onClick={() => navigate('/settings')}>라이브러리 관리</Button>}
-      />
+      <PageHeading title="사진 모음" meta={`${formatCount(collections.length)}개 폴더`} />
 
       {sections.length === 0 ? (
         <EmptyState
-          title="폴더가 없습니다"
-          body="설정에서 원본 폴더를 라이브러리로 등록하면 폴더 구조를 그대로 읽어옵니다."
+          title="사진 폴더가 없습니다"
+          body="설정에서 폴더를 라이브러리로 등록하면 폴더별로 사진이 모입니다."
           icon={<FolderPlus size={20} />}
           action={<Button onClick={() => navigate('/settings')}>라이브러리 추가</Button>}
         />
       ) : (
-        sections.map(({ library, root, top }) => (
-          <section key={library.id} className="mb-9">
+        sections.map((section) => (
+          <section key={section.library.id} className="mb-9">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <h2 className="text-[14px] font-semibold text-ink">{library.name}</h2>
+              <h2 className="text-[14px] font-semibold text-ink">{section.library.name}</h2>
               <span className="text-[11.5px] text-muted">
-                {formatCount(library.assetCount)}개
+                {formatCount(section.folders.length)}개 폴더
               </span>
-              {root ? (
-                <Link
-                  to={`/folders/${root.id}`}
-                  className="ml-auto text-[12px] text-muted transition-colors hover:text-ink"
-                >
-                  전체 보기
-                </Link>
-              ) : (
-                <span className="ml-auto text-[11.5px] text-faint">아직 스캔하지 않았습니다</span>
-              )}
             </div>
-            {top.length > 0 ? (
-              <div className={CARD_GRID}>
-                {top.map((folder) => (
-                  <FolderCard key={folder.id} folder={folder} />
-                ))}
-              </div>
-            ) : (
-              <p className="rounded-panel border border-dashed border-line px-4 py-6 text-[12.5px] text-faint">
-                {library.scanState === 'idle'
-                  ? '이 라이브러리에 표시할 하위 폴더가 없습니다.'
-                  : '폴더를 읽는 중입니다.'}
-              </p>
-            )}
+            <div className={CARD_GRID}>
+              {section.folders.map((folder) => (
+                <FolderCard key={folder.id} folder={folder} count={folder.directImageCount} />
+              ))}
+            </div>
           </section>
         ))
       )}
@@ -121,7 +98,7 @@ export function FolderPage() {
         <EmptyState
           title="폴더를 찾을 수 없습니다"
           body="스캔 후 삭제되었을 수 있습니다."
-          action={<Button onClick={() => navigate('/folders')}>폴더 목록</Button>}
+          action={<Button onClick={() => navigate('/')}>사진 모음</Button>}
         />
       </div>
     )

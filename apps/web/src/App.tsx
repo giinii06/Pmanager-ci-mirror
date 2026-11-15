@@ -1,4 +1,11 @@
-import { BrowserRouter, Route, Routes, useNavigate, useSearchParams } from 'react-router-dom'
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Aperture } from 'lucide-react'
 import { api } from './lib/api'
@@ -8,7 +15,7 @@ import { Spinner } from './components/ui/Spinner'
 import { Button } from './components/ui/Button'
 import { LoginPage, SetupPage } from './pages/AuthPages'
 import { FolderPage, FoldersPage } from './pages/FolderPages'
-import { FavoritesPage, PhotosPage, SearchPage, VideosPage } from './pages/GalleryPages'
+import { FavoritesPage, SearchPage, VideosPage } from './pages/GalleryPages'
 import { SettingsPage } from './pages/SettingsPage'
 
 function Splash() {
@@ -49,7 +56,7 @@ function NotFound() {
       <EmptyState
         title="페이지를 찾을 수 없습니다"
         body="주소가 바뀌었거나 삭제되었습니다."
-        action={<Button onClick={() => navigate('/')}>모든 사진</Button>}
+        action={<Button onClick={() => navigate('/')}>사진 모음</Button>}
       />
     </div>
   )
@@ -67,10 +74,10 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AppShell />}>
-          <Route index element={<PhotosPage />} />
+          <Route index element={<FoldersPage />} />
           <Route path="videos" element={<VideosPage />} />
           <Route path="favorites" element={<FavoritesPage />} />
-          <Route path="folders" element={<FoldersPage />} />
+          <Route path="folders" element={<Navigate to="/" replace />} />
           <Route path="folders/:folderId" element={<FolderPage />} />
           <Route path="search" element={<SearchRoute />} />
           <Route path="settings" element={<SettingsPage />} />

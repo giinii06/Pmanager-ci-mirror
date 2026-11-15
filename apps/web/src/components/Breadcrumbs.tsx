@@ -5,8 +5,8 @@ import type { FolderDTO } from '@mediavault/shared'
 export function Breadcrumbs({ trail }: { trail: FolderDTO[] }) {
   return (
     <nav className="flex flex-wrap items-center gap-1 pt-5 text-[12px] text-muted">
-      <Link to="/folders" className="transition-colors hover:text-ink">
-        폴더
+      <Link to="/" className="transition-colors hover:text-ink">
+        사진 모음
       </Link>
       {trail.map((folder, index) => {
         const last = index === trail.length - 1

@@ -1,23 +1,9 @@
 import { useNavigate } from 'react-router-dom'
-import { ImagePlus, Images, Film, Heart } from 'lucide-react'
+import { Images, Film, Heart } from 'lucide-react'
 import { AssetGallery } from '../components/AssetGallery'
 import { EmptyState } from '../components/EmptyState'
 import { PageHeading } from '../components/PageHeading'
 import { Button } from '../components/ui/Button'
-
-export function PhotosPage() {
-  const navigate = useNavigate()
-  return (
-    <AssetGallery
-      title="모든 사진"
-      filters={{}}
-      emptyTitle="사진이 없습니다"
-      emptyBody="설정에서 폴더를 라이브러리로 등록하면 원본은 그대로 둔 채 인덱스를 만들고 썸네일을 준비합니다."
-      emptyIcon={<ImagePlus size={20} />}
-      emptyAction={<Button onClick={() => navigate('/settings')}>라이브러리 추가</Button>}
-    />
-  )
-}
 
 export function VideosPage() {
   const navigate = useNavigate()
@@ -42,7 +28,7 @@ export function FavoritesPage() {
       emptyTitle="즐겨찾기가 비어 있습니다"
       emptyBody="사진 위에 마우스를 올리고 하트를 누르면 여기에 모입니다."
       emptyIcon={<Heart size={20} />}
-      emptyAction={<Button onClick={() => navigate('/')}>사진 보기</Button>}
+      emptyAction={<Button onClick={() => navigate('/')}>사진 모음 보기</Button>}
     />
   )
 }
