@@ -388,6 +388,20 @@ export function getTranslation(
   return { translation, segments: segmentsFor(db, translation.id) }
 }
 
+/**
+ * Every stored result for one file version, newest first. The track list needs
+ * the fingerprints but not the cues, so segments stay out of this query.
+ */
+export function listTranslations(db: Db, assetId: string, fileVersion: number): TranslationRecord[] {
+  return db
+    .query<TranslationRecord, Params>(
+      `SELECT ${TRANSLATION_COLUMNS} FROM translations
+       WHERE asset_id = ? AND file_version = ?
+       ORDER BY created_at DESC, id DESC`,
+    )
+    .all(assetId, fileVersion)
+}
+
 export function getTranslationByJob(db: Db, jobId: string): TranslationWithSegments | null {
   const translation =
     db

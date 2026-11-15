@@ -3,7 +3,9 @@ import { z } from 'zod'
 import {
   createTranslationJob,
   getAssetFileInfo,
+  isCurrentTranslation,
   latestTranslationJob,
+  listTranslations,
 } from '@mediavault/database'
 import { newId } from '@mediavault/shared'
 import type { AppContext } from '../context'
@@ -187,6 +189,28 @@ export function registerTranslationRoutes(app: FastifyInstance, ctx: AppContext)
     ]
     if (target) {
       tracks.push({ language: target, source: 'translation', ready: Boolean(stored) })
+    }
+
+    // A translation asked for a language other than the default target still
+    // serves its own VTT, so the track list has to name it. Newest first, one
+    // track per language, and only while it is what the VTT route would serve.
+    const listed = new Set(tracks.map((track) => track.language))
+    if (ctx.config.translation.enabled) {
+      const fingerprint = {
+        modelSha256: ctx.config.translation.modelSha256,
+        promptVersion: ctx.config.translation.promptVersion,
+        pipelineVersion: ctx.config.translation.pipelineVersion,
+      }
+      for (const translation of listTranslations(
+        ctx.db,
+        transcript.transcript.assetId,
+        transcript.transcript.fileVersion,
+      )) {
+        if (listed.has(translation.targetLanguage)) continue
+        if (!isCurrentTranslation(translation, transcript.transcript.id, fingerprint)) continue
+        tracks.push({ language: translation.targetLanguage, source: 'translation', ready: true })
+        listed.add(translation.targetLanguage)
+      }
     }
 
     reply.send({

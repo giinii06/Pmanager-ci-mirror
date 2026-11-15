@@ -9,6 +9,7 @@ import {
   completeTranslationJob,
   createAsrJob,
   createLibrary,
+  createTranslationJob,
   createUser,
   claimTranslationJob,
   insertAsset,
@@ -183,6 +184,59 @@ function worker(token = TR_TOKEN): Record<string, string> {
   return { 'x-worker-token': token }
 }
 
+interface StoredTranslation {
+  id: string
+  targetLanguage: string
+  modelSha256: string
+  text: string
+}
+
+/**
+ * Runs a translation job to completion and writes the cues file the worker
+ * would have produced, so a stored translation is both a row and a servable VTT.
+ */
+async function storeTranslation(h: Harness, input: StoredTranslation): Promise<void> {
+  const job = createTranslationJob(
+    h.db,
+    {
+      id: `${input.id}-job`,
+      sourceTranscriptId: 'transcript1',
+      assetId: 'asset1',
+      fileVersion: 1,
+      sourceLanguage: 'ko',
+      targetLanguage: input.targetLanguage,
+      modelId: 'IndexTeam/Index-Translate-9B-GGUF',
+      modelRevision: 'commit-sha',
+      modelSha256: input.modelSha256,
+      promptVersion: PROMPT,
+      pipelineVersion: TR_PIPELINE,
+    },
+    3_000,
+  )
+  claimTranslationJob(h.db, 'worker-a', 60_000, 3_100)
+  completeTranslationJob(
+    h.db,
+    {
+      jobId: job.id,
+      owner: 'worker-a',
+      translationId: input.id,
+      resultDir: `asset1/1/translations/transcript1/${input.targetLanguage}/fp`,
+      plainText: input.text,
+      segments: [
+        { seq: 0, startMs: 0, endMs: 2_000, text: 'それ、マジでやばくない？' },
+        { seq: 1, startMs: 2_000, endMs: 4_000, text: '本当に？' },
+      ],
+    },
+    3_200,
+  )
+  const dir = path.join(h.trDir, `asset1/1/translations/transcript1/${input.targetLanguage}/fp`)
+  await mkdir(dir, { recursive: true })
+  await writeFile(
+    path.join(dir, 'subtitles.vtt'),
+    `WEBVTT\n\n1\n00:00:00.000 --> 00:00:02.000\n${input.text}\n`,
+  )
+}
+
 describe('translation routes', () => {
   test('a non-Korean transcript offers a translation track that starts empty', async () => {
     const h = await harness('ja')
@@ -223,6 +277,59 @@ describe('translation routes', () => {
     })
     expect(created.statusCode).toBe(200)
     expect(created.json()).toEqual({ job: null, translation: null })
+    await h.app.close()
+  })
+
+  test('a Korean transcript with a current English translation lists both tracks', async () => {
+    const h = await harness('ko')
+    await storeTranslation(h, {
+      id: 'translation-en',
+      targetLanguage: 'en',
+      modelSha256: SHA,
+      text: 'Really?',
+    })
+
+    const tracks = await h.app.inject({
+      method: 'GET',
+      url: '/api/assets/asset1/subtitle-tracks',
+      headers: auth(h),
+    })
+    expect(tracks.json()).toEqual({
+      tracks: [
+        { language: 'ko', source: 'asr', ready: true },
+        { language: 'en', source: 'translation', ready: true },
+      ],
+      defaultLanguage: 'original',
+    })
+
+    const english = await h.app.inject({
+      method: 'GET',
+      url: '/api/assets/asset1/subtitles.vtt?lang=en',
+      headers: auth(h),
+    })
+    expect(english.statusCode).toBe(200)
+    expect(english.body).toContain('Really?')
+    await h.app.close()
+  })
+
+  test('a translation from an older model adds no track', async () => {
+    const h = await harness('ko')
+    await storeTranslation(h, {
+      id: 'translation-en',
+      targetLanguage: 'en',
+      modelSha256: 'sha-old',
+      text: 'Really?',
+    })
+
+    const tracks = await h.app.inject({
+      method: 'GET',
+      url: '/api/assets/asset1/subtitle-tracks',
+      headers: auth(h),
+    })
+    expect(tracks.json()).toEqual({
+      tracks: [{ language: 'ko', source: 'asr', ready: true }],
+      defaultLanguage: 'original',
+    })
     await h.app.close()
   })
 
