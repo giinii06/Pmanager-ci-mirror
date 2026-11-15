@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 from typing import Any
 
 import pytest
@@ -81,3 +82,11 @@ def test_a_release_failure_does_not_mask_the_stage_error(api: StubApi) -> None:
         pipeline._run_stage(
             ["bogus"], heartbeat, "job1", state="transcribing", stage="transcribing", low=10, high=55
         )
+
+
+def test_the_default_worker_id_is_scoped_to_the_host() -> None:
+    """Every container runs the worker as PID 1, so a pid-only id is asr-1 everywhere
+    and the lease treats two workers as one owner."""
+    config = load_config({"ASR_WORKER_TOKEN": "token-token-token"})
+
+    assert config.worker_id.startswith(socket.gethostname())

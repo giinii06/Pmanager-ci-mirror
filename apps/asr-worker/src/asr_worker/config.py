@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import socket
 from dataclasses import dataclass
 
 
@@ -53,7 +54,7 @@ def load_config(env: dict[str, str] | None = None) -> Config:
     return Config(
         api_base_url=source.get("API_BASE_URL", "http://127.0.0.1:8787").rstrip("/"),
         worker_token=token,
-        worker_id=source.get("ASR_WORKER_ID", "").strip() or f"asr-{os.getpid()}",
+        worker_id=source.get("ASR_WORKER_ID", "").strip() or f"{socket.gethostname()}-{os.getpid()}",
         model_dir=source.get("ASR_MODEL_DIR", "/models/asr"),
         aligner_dir=source.get("ALIGN_MODEL_DIR", "/models/aligner"),
         media_root=source.get("MEDIA_ROOT", "/media"),
