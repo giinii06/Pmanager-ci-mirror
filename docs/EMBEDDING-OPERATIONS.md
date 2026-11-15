@@ -174,7 +174,7 @@ HLS는 같은 영상(97.6초, 1080x1920)으로 두 경우를 쟀다.
 | 증상 | 원인 | 조치 |
 | --- | --- | --- |
 | `422 invalid_vector` | 벡터 길이가 `dimensions * 4`가 아니거나 NaN/Inf 포함 | worker 로그에서 차원을 확인하고 `EMBEDDING_DIMENSIONS`가 2560인지 맞춘다. API는 이 응답을 준 뒤 저장하지 않는다. |
-| `409 lease_lost` | heartbeat가 끊겨 다른 worker가 작업을 가져감 | worker가 llama-server를 종료했는지 확인한다. 남아 있으면 직접 종료한 뒤 재시작한다. |
+| `409 lease_lost` | heartbeat가 끊겨 다른 worker가 작업을 가져감 | worker는 임대가 끝나는 순간 스스로 llama-server를 종료한다. SIGKILL로 죽어 남긴 프로세스는 다음 작업이 시작할 때 `reap_stale_server`가 정리한다. 그래도 카드가 비지 않으면 `nvidia-smi`로 pid를 찾아 직접 종료한다. |
 | `GPU is busy with another job.` | ASR이나 번역이 GPU lease를 잡고 있음 | 그 작업이 끝날 때까지 기다린다. 10분을 넘기면 worker가 작업을 실패로 기록한다. |
 | `embedding model ... is missing` | 모델 init을 건너뜀 | 2절의 모델 다운로드를 먼저 실행한다. |
 | `/related`가 계속 `basis: folder` | 저장된 벡터가 없음 | 5절의 backfill을 돌리고 worker가 도는지 확인한다. |
