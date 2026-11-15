@@ -14,13 +14,12 @@ FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/src \
     LD_LIBRARY_PATH=/opt/llama
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.12 \
-        python3.12-venv \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -29,12 +28,7 @@ COPY --from=llama /app/*.so /opt/llama/
 ENV PATH=/opt/llama:$PATH \
     LLAMA_SERVER=/opt/llama/llama-server
 
-RUN python3.12 -m venv /opt/venv
-ENV PATH=/opt/venv/bin:$PATH
-
 WORKDIR /app
-COPY apps/translation-worker/pyproject.toml /app/pyproject.toml
 COPY apps/translation-worker/src /app/src
-RUN pip install --upgrade pip && pip install /app
 
-CMD ["python", "-m", "translation_worker.main"]
+CMD ["python3.12", "-m", "translation_worker.main"]
