@@ -36,6 +36,8 @@ docker compose -f compose.yaml -f compose.embedding.models.yaml -f compose.embed
 
 `embedding-worker`는 `embedding-model-init`이 성공한 뒤에 시작한다. worker는 llama-server를 직접 띄우고 작업이 끝나면 종료한다. 상시 실행되는 llama-server 컨테이너는 두지 않는다. 8GB 카드에서 ASR과 번역, 임베딩이 동시에 VRAM을 잡지 않게 하려는 선택이다.
 
+같은 카드로 HLS를 NVENC로 인코딩하려면 `compose.gpu.yaml`도 함께 올린다. 이 오버레이는 worker에 GPU 장치와 `NVIDIA_DRIVER_CAPABILITIES=all`을 준다. 기본 capability는 `libcuda`만 마운트하고 `libnvidia-encode`는 빼기 때문에, 없으면 NVENC가 매번 실패하고 CPU로 넘어간다.
+
 로그에서 다음 두 줄을 확인한다.
 
 ```bash
@@ -124,6 +126,32 @@ sqlite3 data/mediavault.db "SELECT kind, count(*) FROM video_embeddings GROUP BY
 
 한국어 영상끼리는 0.84로 확실히 갈리고, 한국어와 영어가 같은 주제인 경우는 0.44로 중간에 놓인다. 언어가 섞인 라이브러리에서 컷을 0.5 근처로 잡으면 영어 영상이 일부 빠진다.
 
+### 7.1 이 머신에서 끝까지 돌린 결과
+
+WSL2, 8GB 카드, `compose.asr.*` + `compose.translation.*` + `compose.embedding.*` + `compose.gpu.yaml`을 모두 올린 상태에서 2026-11-15에 측정했다.
+
+| 항목 | 값 |
+| --- | --- |
+| backfill이 큐에 넣은 영상 | 7개 중 7개 (6개는 전사 없이 파일명만) |
+| 완료한 임베딩 작업 | 7개 |
+| 저장된 벡터 | 8개 (모두 2560차원, 10240바이트) |
+| 작업 하나당 시간 | 약 2초 (매 작업마다 모델을 새로 올림) |
+| `/related` 응답 | 7개 모두 `basis: semantic` |
+| 순위 | `coast-drive`와 `forest-walk`가 서로 1위 |
+| 폴더 기준 순위 | 7개 모두 자기 자신이 1위 |
+
+GPU lease는 400ms 간격으로 샘플링했다. `asr-1 asr` → `free` → `<worker>-1 embedding` → `free` 순서로만 바뀌었고 두 작업이 겹친 구간은 없었다.
+
+HLS는 같은 영상(97.6초, 1080x1920)으로 두 경우를 쟀다.
+
+| 카드 상태 | 인코더 | 전체 시간 | lease |
+| --- | --- | --- | --- |
+| 비어 있음 | `h264_nvenc` | 6.32초 | worker가 0.31초에 잡고 6.26초에 놓음 |
+| 다른 작업이 잡고 있음 | `libx264` | 15.32초 | 남의 lease를 건드리지 않음. 5.0초 기다린 뒤 CPU로 인코딩(9.7초) |
+
+`compose.gpu.yaml` 없이 worker를 올리면 `h264_nvenc`가 `Cannot load libcuda.so.1`로 실패하고 조용히 CPU로 넘어간다. 이 경우 전체 10.1초가 걸린다. 지금은 실패 이유를 worker 로그에 `[hls] nvenc failed, encoding on the cpu: ...`로 남긴다.
+
+
 ## 8. 장애 대응
 
 | 증상 | 원인 | 조치 |
@@ -136,6 +164,7 @@ sqlite3 data/mediavault.db "SELECT kind, count(*) FROM video_embeddings GROUP BY
 | 임베딩이 계속 `queued` | worker가 실행 중이 아님, 토큰 불일치 | `EMBEDDING_WORKER_TOKEN`이 API와 worker에서 같은지 확인한다. |
 | llama-server가 곧바로 종료됨 | VRAM 부족, 잘못된 모델 경로, CUDA 라이브러리 불일치 | worker 로그의 마지막 stderr를 읽고 `LLAMA_CTX`와 `LLAMA_GPU_LAYERS`를 낮춘다. |
 | 모델을 바꿨는데 순위가 그대로 | 지문이 바뀌어 작업은 다시 돌지만 예전 벡터가 남아 있음 | `video_embeddings`의 `model_sha256`이 새 값인지 확인한다. 새 작업이 완료되면 그 영상의 예전 벡터는 지워진다. |
+| worker 로그에 `[hls] nvenc failed, encoding on the cpu` | worker가 카드를 못 봄. `compose.gpu.yaml` 누락, 또는 `NVIDIA_DRIVER_CAPABILITIES`에 `video` 없음 | `docker exec <worker> printenv NVIDIA_DRIVER_CAPABILITIES`가 `all`인지 보고, 아니면 3절대로 오버레이를 붙여 다시 올린다. |
 
 ## 9. 되돌리기
 
@@ -162,12 +191,15 @@ sqlite3 data/mediavault.db "DELETE FROM embedding_jobs WHERE asset_id = '<assetI
 - 벡터를 base64 float32로 주고받고, 차원이 틀리거나 NaN이면 API가 422로 거부하는지
 - backfill 스크립트가 전사가 없는 영상까지 전부 큐에 넣는지. 실제 DB 사본에 API를 띄워 7개 영상 중 6개가 전사 없이 `queued`가 되는 것과, 두 번 실행해도 작업 행이 7개로 유지되는 것을 확인했다.
 - 순위: 벡터 3개를 심어 두고 정렬, 자기 자신 제외, 같은 파일 제외가 맞는지
+- 다른 `file_version`의 벡터가 순위에 끼지 않는지. 고치기 전에는 실패하고 고친 뒤 통과하는 것을 확인했다.
+- CUDA 이미지 빌드와 실제 컨테이너 기동, 실제 모델로 7개 영상 임베딩. 7.1절의 값이 그 결과다.
+- 실제 GPU에서 ASR과 임베딩이 lease로 직렬화되는지. 400ms 샘플링으로 두 작업이 겹치지 않는 것을 확인했다.
+- 카드가 비었을 때와 남이 잡고 있을 때 HLS가 각각 NVENC와 CPU로 가는지, 남의 lease를 건드리지 않는지
 
 확인하지 못함:
 
-- 실제 Qwen3-Embedding-4B의 순위 품질과 7절의 값 재현. 7절은 한 번의 probe 결과이고 테스트가 다시 재지 않는다.
-- CUDA 이미지 빌드와 실제 컨테이너 기동
-- 실제 GPU에서 ASR, 번역, 임베딩이 lease로 직렬화되는지 (테스트는 가짜 HTTP 서버까지다)
+- 7절의 cosine 값 재현. 그 표는 한 번의 probe 결과이고 테스트가 다시 재지 않는다.
+- ASR과 번역이 동시에 도는 상황에서의 lease 경합. 임베딩과 ASR 조합만 샘플링했다.
 - macOS M5 Metal에서의 처리 속도
 
 이 항목은 실기기에서 6절의 검증 명령과 8절의 로그를 남긴 뒤 판단한다.
