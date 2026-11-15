@@ -133,6 +133,24 @@ export function relatedAssets(
   return rows.map(mapAsset)
 }
 
+/**
+ * Hydrates the given ids. A caller that ranked them keeps its own order, so the
+ * rows come back unordered and the caller re-sorts.
+ */
+export function assetsByIds(db: Db, userId: string, ids: string[]): AssetRecord[] {
+  if (ids.length === 0) return []
+  const placeholders = ids.map(() => '?').join(', ')
+  const rows = db
+    .query<AssetRow, Params>(
+      `SELECT ${COLUMNS},
+        EXISTS (SELECT 1 FROM favorites f WHERE f.asset_id = a.id AND f.user_id = ?) AS favorite
+       FROM assets a
+       WHERE a.id IN (${placeholders}) AND a.deleted_at IS NULL`,
+    )
+    .all(userId, ...ids)
+  return rows.map(mapAsset)
+}
+
 export function getAssetFileInfo(db: Db, id: string): AssetFileInfo | null {
   return (
     db

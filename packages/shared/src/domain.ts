@@ -233,6 +233,16 @@ export type TranslationJobState =
 
 export type TranslationStage = 'queued' | 'starting' | 'translating' | 'writing' | 'completed'
 
+export type EmbeddingJobState =
+  | 'queued'
+  | 'embedding'
+  | 'writing'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+
+export type EmbeddingStage = 'queued' | 'starting' | 'embedding' | 'writing' | 'completed'
+
 export interface TranslationJobDTO {
   id: string
   assetId: string

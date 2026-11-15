@@ -2,6 +2,8 @@ import type {
   AsrJobState,
   AsrStage,
   AssetKind,
+  EmbeddingJobState,
+  EmbeddingStage,
   JobKind,
   JobState,
   ScanState,
@@ -219,6 +221,56 @@ export interface GpuLeaseRecord {
   taskKind: string
   leaseExpiresAt: number
   updatedAt: number
+}
+
+export interface EmbeddingJobRecord {
+  id: string
+  assetId: string
+  fileVersion: number
+  /** Null when the asset had no transcript, so the filename alone is embedded. */
+  sourceTranscriptId: string | null
+  state: EmbeddingJobState
+  stage: EmbeddingStage
+  progress: number
+  attempts: number
+  maxAttempts: number
+  leaseOwner: string | null
+  leaseExpiresAt: number | null
+  runAfter: number
+  modelId: string
+  modelRevision: string
+  modelSha256: string
+  pipelineVersion: string
+  dimensions: number
+  errorMessage: string | null
+  startedAt: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface VideoEmbeddingRecord {
+  id: string
+  jobId: string
+  assetId: string
+  fileVersion: number
+  sourceTranscriptId: string | null
+  kind: 'title' | 'chunk'
+  chunkIndex: number
+  startMs: number | null
+  endMs: number | null
+  text: string
+  modelSha256: string
+  pipelineVersion: string
+  dimensions: number
+  vector: Float32Array
+  createdAt: number
+}
+
+/** Everything that makes a stored vector stale when it changes. */
+export interface EmbeddingFingerprint {
+  modelSha256: string
+  pipelineVersion: string
+  dimensions: number
 }
 
 export interface ReviewRecord {

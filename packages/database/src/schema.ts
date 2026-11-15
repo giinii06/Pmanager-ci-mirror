@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 6
+export const SCHEMA_VERSION = 7
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -236,6 +236,57 @@ CREATE INDEX IF NOT EXISTS idx_asset_reviews_asset
   ON asset_reviews(asset_id, updated_at DESC);
 `
 
+export const EMBEDDING_SQL = `
+CREATE TABLE IF NOT EXISTS embedding_jobs (
+  id TEXT PRIMARY KEY,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  source_transcript_id TEXT REFERENCES transcripts(id) ON DELETE CASCADE,
+  state TEXT NOT NULL CHECK (state IN ('queued','embedding','writing','completed','failed','canceled')),
+  stage TEXT NOT NULL DEFAULT 'queued' CHECK (stage IN ('queued','starting','embedding','writing','completed')),
+  progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  lease_owner TEXT,
+  lease_expires_at INTEGER,
+  run_after INTEGER NOT NULL DEFAULT 0,
+  model_id TEXT NOT NULL,
+  model_revision TEXT NOT NULL,
+  model_sha256 TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  error_message TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  started_at INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_embedding_jobs_active
+  ON embedding_jobs(asset_id, file_version)
+  WHERE state IN ('queued','embedding','writing');
+CREATE INDEX IF NOT EXISTS idx_embedding_jobs_claim ON embedding_jobs(state, run_after, created_at);
+CREATE INDEX IF NOT EXISTS idx_embedding_jobs_lease ON embedding_jobs(state, lease_expires_at);
+
+CREATE TABLE IF NOT EXISTS video_embeddings (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES embedding_jobs(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  source_transcript_id TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('title','chunk')),
+  chunk_index INTEGER NOT NULL DEFAULT 0,
+  start_ms INTEGER,
+  end_ms INTEGER,
+  text TEXT NOT NULL,
+  model_sha256 TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  vector BLOB NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_video_embeddings_asset
+  ON video_embeddings(asset_id, file_version, kind, chunk_index);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -249,4 +300,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
     exec('ALTER TABLE translation_jobs ADD COLUMN started_at INTEGER')
   },
   (exec) => exec(REVIEW_SQL),
+  (exec) => exec(EMBEDDING_SQL),
 ]
