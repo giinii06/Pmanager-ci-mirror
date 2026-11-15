@@ -203,9 +203,10 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
           limit,
         )
       : []
+    const basis = ranked.length > 0 ? 'semantic' : 'folder'
     const items =
-      ranked.length > 0 ? ranked : relatedAssets(ctx.db, request.user!.id, params.id, limit)
-    reply.send({ items: items.map(toAssetDTO) })
+      basis === 'semantic' ? ranked : relatedAssets(ctx.db, request.user!.id, params.id, limit)
+    reply.send({ items: items.map(toAssetDTO), basis })
   })
 
   app.post('/api/assets/:id/embedding', async (request, reply) => {

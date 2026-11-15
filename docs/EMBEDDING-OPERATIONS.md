@@ -99,7 +99,7 @@ curl -X POST http://127.0.0.1:8787/api/assets/<assetId>/embedding \
 curl -s 'http://127.0.0.1:8787/api/assets/<assetId>/related?limit=8' -b 'mv_session=<token>'
 ```
 
-`/related`의 응답은 저장된 벡터로 정렬된다. 벡터가 아직 없는 영상만 폴더 기준으로 답한다.
+`/related`의 응답에는 `basis`가 붙는다. `semantic`이면 저장된 벡터로 정렬한 것이고, `folder`면 아직 벡터가 없어 폴더 기준으로 답한 것이다. 영상에 벡터가 하나라도 쌓이면 그 영상의 응답은 `semantic`으로 바뀐다.
 
 작업 상태는 큐 화면의 `embedding` 레인에서 본다. 저장된 벡터 수는 다음으로 확인한다.
 
@@ -132,7 +132,7 @@ sqlite3 data/mediavault.db "SELECT kind, count(*) FROM video_embeddings GROUP BY
 | `409 lease_lost` | heartbeat가 끊겨 다른 worker가 작업을 가져감 | worker가 llama-server를 종료했는지 확인한다. 남아 있으면 직접 종료한 뒤 재시작한다. |
 | `GPU is busy with another job.` | ASR이나 번역이 GPU lease를 잡고 있음 | 그 작업이 끝날 때까지 기다린다. 10분을 넘기면 worker가 작업을 실패로 기록한다. |
 | `embedding model ... is missing` | 모델 init을 건너뜀 | 2절의 모델 다운로드를 먼저 실행한다. |
-| `/related`가 계속 폴더 기준으로 나옴 | 저장된 벡터가 없음 | 5절의 backfill을 돌리고 worker가 도는지 확인한다. |
+| `/related`가 계속 `basis: folder` | 저장된 벡터가 없음 | 5절의 backfill을 돌리고 worker가 도는지 확인한다. |
 | 임베딩이 계속 `queued` | worker가 실행 중이 아님, 토큰 불일치 | `EMBEDDING_WORKER_TOKEN`이 API와 worker에서 같은지 확인한다. |
 | llama-server가 곧바로 종료됨 | VRAM 부족, 잘못된 모델 경로, CUDA 라이브러리 불일치 | worker 로그의 마지막 stderr를 읽고 `LLAMA_CTX`와 `LLAMA_GPU_LAYERS`를 낮춘다. |
 | 모델을 바꿨는데 순위가 그대로 | 지문이 바뀌어 작업은 다시 돌지만 예전 벡터가 남아 있음 | `video_embeddings`의 `model_sha256`이 새 값인지 확인한다. 새 작업이 완료되면 그 영상의 예전 벡터는 지워진다. |

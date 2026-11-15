@@ -112,7 +112,9 @@ export const api = {
     request<void>(`/api/assets/${id}/favorite`, { method: favorite ? 'POST' : 'DELETE' }),
 
   related: (id: string, limit = 8) =>
-    request<{ items: AssetDTO[] }>(`/api/assets/${id}/related?limit=${limit}`),
+    request<{ items: AssetDTO[]; basis: 'semantic' | 'folder' }>(
+      `/api/assets/${id}/related?limit=${limit}`,
+    ),
   review: (id: string) => request<{ review: ReviewDTO | null }>(`/api/assets/${id}/review`),
   saveReview: (id: string, input: { rating: number; body: string }) =>
     request<ReviewDTO>(`/api/assets/${id}/review`, {

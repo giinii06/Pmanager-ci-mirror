@@ -292,6 +292,7 @@ describe('embedding worker routes', () => {
       headers: { cookie: h.cookie },
     })
     expect(related.statusCode).toBe(200)
+    expect(related.json().basis).toBe('semantic')
     expect(related.json().items.map((item: { id: string }) => item.id)).toEqual([
       'asset2',
       'asset3',
@@ -375,6 +376,7 @@ describe('embedding worker routes', () => {
       headers: { cookie: h.cookie },
     })
     expect(related.statusCode).toBe(200)
+    expect(related.json().basis).toBe('folder')
     expect(related.json().items.map((item: { id: string }) => item.id).sort()).toEqual([
       'asset2',
       'asset3',
