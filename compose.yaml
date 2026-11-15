@@ -10,6 +10,7 @@ services:
       MEDIA_ACCEL: nginx
       AUTH_SECRET: ${AUTH_SECRET:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      GPU_RESOURCE: ${GPU_RESOURCE:-gpu:0}
     volumes:
       - ${MEDIA_ROOT:-./sample-media}:/media:ro
       - mediavault-data:/data
@@ -32,6 +33,7 @@ services:
     restart: unless-stopped
     environment:
       HWACCEL: ${HWACCEL:-}
+      GPU_RESOURCE: ${GPU_RESOURCE:-gpu:0}
     volumes:
       - ${MEDIA_ROOT:-./sample-media}:/media:ro
       - mediavault-data:/data
