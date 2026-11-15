@@ -47,6 +47,7 @@ export function toFolderDTO(folder: FolderRecord): FolderDTO {
     relativePath: folder.relativePath,
     depth: folder.depth,
     assetCount: folder.assetCount,
+    directImageCount: folder.directImageCount,
     coverAssetId: folder.coverAssetId,
   }
 }

@@ -17,7 +17,9 @@ export interface UpsertFolderInput {
 const FOLDER_SELECT = `
   f.id, f.library_id AS libraryId, f.parent_id AS parentId, f.name,
   f.relative_path AS relativePath, f.depth, f.asset_count AS assetCount,
-  f.cover_asset_id AS coverAssetId
+  f.cover_asset_id AS coverAssetId,
+  (SELECT COUNT(*) FROM assets a
+   WHERE a.folder_id = f.id AND a.deleted_at IS NULL AND a.kind = 'image') AS directImageCount
 `
 
 export function upsertFolder(db: Db, input: UpsertFolderInput): string {

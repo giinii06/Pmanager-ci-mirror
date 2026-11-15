@@ -36,6 +36,8 @@ export interface FolderDTO {
   relativePath: string
   depth: number
   assetCount: number
+  /** Images in this folder only, so a collection card matches the gallery it opens. */
+  directImageCount: number
   coverAssetId: string | null
 }
 

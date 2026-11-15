@@ -21,6 +21,7 @@ export interface FolderRecord {
   relativePath: string
   depth: number
   assetCount: number
+  directImageCount: number
   coverAssetId: string | null
 }
 
