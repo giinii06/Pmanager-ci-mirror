@@ -11,9 +11,9 @@ _SILENCE_START = re.compile(r"silence_start:\s*(-?\d+(?:\.\d+)?)")
 _SILENCE_END = re.compile(r"silence_end:\s*(-?\d+(?:\.\d+)?)")
 
 
-def run_ffmpeg(args: list[str], timeout: int = 3600) -> str:
+def run_ffmpeg(args: list[str], timeout: int = 3600, loglevel: str = "error") -> str:
     result = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-nostdin", "-v", "error", *args],
+        ["ffmpeg", "-hide_banner", "-nostdin", "-v", loglevel, *args],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -107,6 +107,7 @@ def extract_audio(source: Path, target: Path) -> None:
 def detect_silences(wav: Path, noise_db: int = -35, min_silence_s: float = 0.35) -> list[tuple[int, int]]:
     stderr = run_ffmpeg(
         [
+            "-nostats",
             "-i",
             str(wav),
             "-af",
@@ -114,7 +115,8 @@ def detect_silences(wav: Path, noise_db: int = -35, min_silence_s: float = 0.35)
             "-f",
             "null",
             "-",
-        ]
+        ],
+        loglevel="info",
     )
     silences: list[tuple[int, int]] = []
     open_start: int | None = None
