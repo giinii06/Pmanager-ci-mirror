@@ -74,7 +74,7 @@ export function Topbar() {
               if (location.pathname === '/search') navigate('/')
             }
           }}
-          placeholder="파일 이름으로 검색"
+          placeholder="장면, 대사, 파일 이름 검색"
           className="h-8 w-full rounded-lg border border-line bg-panel-2 pl-8 pr-14 text-[12.5px] text-ink placeholder:text-faint transition-colors hover:border-line-strong focus:border-accent/50 focus:outline-none"
         />
         <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line px-1.5 py-0.5 text-[10px] text-faint">

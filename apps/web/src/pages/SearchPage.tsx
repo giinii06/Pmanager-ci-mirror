@@ -33,6 +33,15 @@ function thumbnailFor(hit: SemanticHitDTO): string {
   return hit.thumbnailUrl ?? `/api/assets/${hit.assetId}/thumbnail`
 }
 
+/** Why this row matched, when the row has no dialogue line to quote. */
+function subtitleFor(hit: SemanticHitDTO): string {
+  if (hit.kind === 'dialogue') return hit.text
+  if (hit.source === 'title') return '파일 이름이 일치합니다'
+  if (hit.source === 'audio') return '소리가 비슷한 구간'
+  if (hit.source === 'av') return '화면과 소리가 비슷한 구간'
+  return '화면이 비슷한 구간'
+}
+
 export function SearchPage({ query }: { query: string }) {
   const toast = useUi((state) => state.toast)
   const openViewer = useViewer((state) => state.open)
@@ -136,7 +145,7 @@ export function SearchPage({ query }: { query: string }) {
                       ) : null}
                     </span>
                     <span className="mt-0.5 block truncate text-[12px] text-muted">
-                      {hit.kind === 'dialogue' && hit.text ? hit.text : hit.asset.filename}
+                      {subtitleFor(hit)}
                     </span>
                   </span>
                 </button>
