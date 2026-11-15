@@ -104,10 +104,19 @@ def build_segments(
 
 
 def to_vtt(segments: Iterable[Segment]) -> str:
+    """
+    WebVTT has no way to keep a cue on screen past its end, so the player drops
+    the line in every silence. A cue end is exclusive, so ending each cue where
+    the next one starts keeps the previous line visible with no overlap.
+    """
+    cues = list(segments)
     blocks = ["WEBVTT", ""]
-    for index, segment in enumerate(segments, start=1):
-        blocks.append(str(index))
-        blocks.append(f"{vtt_timestamp(segment.start_ms)} --> {vtt_timestamp(segment.end_ms)}")
+    for index, segment in enumerate(cues):
+        end = segment.end_ms
+        if index + 1 < len(cues) and cues[index + 1].start_ms > end:
+            end = cues[index + 1].start_ms
+        blocks.append(str(index + 1))
+        blocks.append(f"{vtt_timestamp(segment.start_ms)} --> {vtt_timestamp(end)}")
         blocks.append(segment.text)
         blocks.append("")
     return "\n".join(blocks)
