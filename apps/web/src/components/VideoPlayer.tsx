@@ -17,6 +17,7 @@ export function VideoPlayer({
   onSelectLanguage,
   videoRef: externalRef,
   fill = false,
+  startMs = null,
 }: {
   asset: AssetDTO
   subtitleUrl?: string | null
@@ -26,6 +27,8 @@ export function VideoPlayer({
   videoRef?: RefObject<HTMLVideoElement | null>
   /** Fills a caller-provided frame instead of sizing itself against the viewport. */
   fill?: boolean
+  /** A search hit's second, which wins over the saved resume position. */
+  startMs?: number | null
 }) {
   const localRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -38,10 +41,15 @@ export function VideoPlayer({
   const [fullscreen, setFullscreen] = useState(false)
   const [nativeFullscreen, setNativeFullscreen] = useState(false)
   const [captionFontSize, setCaptionFontSize] = useState(16)
-  const startAt = useRef(0)
+  const startAt = useRef(startMs && startMs > 0 ? startMs / 1000 : 0)
   const lastSave = useRef(0)
 
   useEffect(() => {
+    if (startMs && startMs > 0) startAt.current = startMs / 1000
+  }, [startMs, asset.id])
+
+  useEffect(() => {
+    if (startMs && startMs > 0) return
     let cancelled = false
     api
       .progress(asset.id)
@@ -54,7 +62,7 @@ export function VideoPlayer({
     return () => {
       cancelled = true
     }
-  }, [asset.id])
+  }, [asset.id, startMs])
 
   useEffect(() => {
     if (!useHls) return

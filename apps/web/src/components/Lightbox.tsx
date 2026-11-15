@@ -55,6 +55,7 @@ function IconButton({
 export function Lightbox() {
   const items = useViewer((state) => state.items)
   const index = useViewer((state) => state.index)
+  const startMs = useViewer((state) => state.startMs)
   const close = useViewer((state) => state.close)
   const next = useViewer((state) => state.next)
   const prev = useViewer((state) => state.prev)
@@ -197,6 +198,7 @@ export function Lightbox() {
               onCloseTranscript={() => setShowTranscript(false)}
               infoSignal={infoPulse}
               closeRef={closeRef}
+              startMs={startMs}
             />
           </motion.div>
         ) : (

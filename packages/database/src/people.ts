@@ -574,10 +574,11 @@ export function personFaces(
 export function personAssets(db: Db, personId: string): PersonAssetRecord[] {
   return db
     .query<PersonAssetRecord, Params>(
-      `SELECT person_id AS personId, asset_id AS assetId, face_count AS faceCount,
-              best_detection_id AS bestDetectionId
-       FROM person_assets WHERE person_id = ?
-       ORDER BY face_count DESC, asset_id ASC`,
+      `SELECT pa.person_id AS personId, pa.asset_id AS assetId, pa.face_count AS faceCount,
+              pa.best_detection_id AS bestDetectionId, a.filename, a.duration_ms AS durationMs
+       FROM person_assets pa JOIN assets a ON a.id = pa.asset_id
+       WHERE pa.person_id = ?
+       ORDER BY pa.face_count DESC, pa.asset_id ASC`,
     )
     .all(personId)
 }

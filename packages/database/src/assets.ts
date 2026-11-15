@@ -336,7 +336,13 @@ export function getStats(db: Db, userId: string): StatsDTO {
       .get(userId)?.n ?? 0
   const libraries = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM libraries').get()?.n ?? 0
   const folders = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM folders').get()?.n ?? 0
-  return { ...counts, favorites, libraries, folders }
+  const people =
+    db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM people WHERE state = 'approved'").get()
+      ?.n ?? 0
+  const peopleCandidates =
+    db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM people WHERE state = 'candidate'").get()
+      ?.n ?? 0
+  return { ...counts, favorites, libraries, folders, people, peopleCandidates }
 }
 
 export function addFavorite(db: Db, userId: string, assetId: string, now: number): void {

@@ -34,6 +34,7 @@ export function WatchPage({
   onCloseTranscript,
   infoSignal,
   closeRef,
+  startMs = null,
 }: {
   asset: AssetDTO
   libraryName?: string
@@ -51,6 +52,7 @@ export function WatchPage({
   /** Bumped by the `i` shortcut so the description can scroll into view. */
   infoSignal: number
   closeRef: RefObject<HTMLButtonElement | null>
+  startMs?: number | null
 }) {
   const toast = useUi((state) => state.toast)
   const [copied, setCopied] = useState(false)
@@ -152,6 +154,7 @@ export function WatchPage({
                 language={language}
                 onSelectLanguage={onSelectLanguage}
                 videoRef={videoRef}
+                startMs={startMs}
               />
             </div>
 

@@ -15,7 +15,9 @@ import { Spinner } from './components/ui/Spinner'
 import { Button } from './components/ui/Button'
 import { LoginPage, SetupPage } from './pages/AuthPages'
 import { FolderPage, FoldersPage } from './pages/FolderPages'
-import { FavoritesPage, SearchPage, VideosPage } from './pages/GalleryPages'
+import { FavoritesPage, VideosPage } from './pages/GalleryPages'
+import { PeoplePage } from './pages/PeoplePage'
+import { SearchPage } from './pages/SearchPage'
 import { SettingsPage } from './pages/SettingsPage'
 
 function Splash() {
@@ -77,6 +79,7 @@ export function App() {
           <Route index element={<FoldersPage />} />
           <Route path="videos" element={<VideosPage />} />
           <Route path="favorites" element={<FavoritesPage />} />
+          <Route path="people" element={<PeoplePage />} />
           <Route path="folders" element={<Navigate to="/" replace />} />
           <Route path="folders/:folderId" element={<FolderPage />} />
           <Route path="search" element={<SearchRoute />} />

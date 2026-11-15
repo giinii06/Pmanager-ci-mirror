@@ -93,6 +93,8 @@ export function registerPeopleRoutes(app: FastifyInstance, ctx: AppContext): voi
     reply.send({
       assets: personAssets(ctx.db, person.id).map((asset) => ({
         assetId: asset.assetId,
+        filename: asset.filename,
+        durationMs: asset.durationMs,
         faceCount: asset.faceCount,
         bestDetectionId: asset.bestDetectionId,
         thumbnailUrl: asset.bestDetectionId

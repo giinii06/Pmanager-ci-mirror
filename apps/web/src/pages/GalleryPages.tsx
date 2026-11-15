@@ -1,12 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Images, Film, Heart } from 'lucide-react'
+import { Film, Heart } from 'lucide-react'
 import { api } from '../lib/api'
 import { useUi } from '../store/ui'
 import { useViewer } from '../store/viewer'
 import { AssetGallery } from '../components/AssetGallery'
-import { EmptyState } from '../components/EmptyState'
-import { PageHeading } from '../components/PageHeading'
 import { Button } from '../components/ui/Button'
 
 export function VideosPage() {
@@ -59,30 +57,6 @@ export function FavoritesPage() {
       emptyBody="사진 위에 마우스를 올리고 하트를 누르면 여기에 모입니다."
       emptyIcon={<Heart size={20} />}
       emptyAction={<Button onClick={() => navigate('/')}>사진 모음 보기</Button>}
-    />
-  )
-}
-
-export function SearchPage({ query }: { query: string }) {
-  if (!query) {
-    return (
-      <div className="px-6 pb-24">
-        <PageHeading title="검색" />
-        <EmptyState
-          title="검색어를 입력하세요"
-          body="상단 검색창에 파일 이름의 일부를 입력하면 바로 찾습니다."
-          icon={<Images size={20} />}
-        />
-      </div>
-    )
-  }
-  return (
-    <AssetGallery
-      title={`검색: ${query}`}
-      filters={{ q: query }}
-      emptyTitle="검색 결과가 없습니다"
-      emptyBody="다른 파일 이름으로 다시 찾아보세요."
-      emptyIcon={<Images size={20} />}
     />
   )
 }

@@ -6,8 +6,12 @@ import type {
   JobSummaryDTO,
   LibraryDTO,
   Page,
+  PersonAssetDTO,
+  PersonDTO,
+  PersonDetailDTO,
   PlaybackProgressDTO,
   ReviewDTO,
+  SemanticSearchDTO,
   StatsDTO,
   SubtitleTracksDTO,
   TranscriptDTO,
@@ -134,6 +138,46 @@ export const api = {
   stats: () => request<StatsDTO>('/api/stats'),
   jobs: () => request<JobSummaryDTO>('/api/jobs'),
   workQueue: () => request<WorkQueueDTO>('/api/queue'),
+
+  semanticSearch: (q: string, limit = 30) =>
+    request<SemanticSearchDTO>(
+      `/api/search/semantic?q=${encodeURIComponent(q)}&limit=${limit}`,
+    ),
+  runIndex: () =>
+    request<{ considered: number; scenes: number; faces: number }>('/api/index/run', {
+      method: 'POST',
+    }),
+
+  people: (state: 'approved' | 'candidate' | 'excluded' | 'all' = 'approved', limit = 200) =>
+    request<{
+      people: PersonDTO[]
+      counts: { approved: number; candidate: number; excluded: number }
+    }>(`/api/people?state=${state}&limit=${limit}`),
+  person: (id: string) => request<PersonDetailDTO>(`/api/people/${id}`),
+  personAssets: (id: string) => request<{ assets: PersonAssetDTO[] }>(`/api/people/${id}/assets`),
+  approvePerson: (id: string) =>
+    request<{ person: PersonDTO }>(`/api/people/${id}/approve`, { method: 'POST' }),
+  excludePerson: (id: string) =>
+    request<{ person: PersonDTO }>(`/api/people/${id}/exclude`, { method: 'POST' }),
+  renamePerson: (id: string, name: string) =>
+    request<{ person: PersonDTO }>(`/api/people/${id}/rename`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  mergePeople: (id: string, sourceId: string) =>
+    request<{ person: PersonDTO }>(`/api/people/${id}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ sourceId }),
+    }),
+  splitPerson: (id: string, detectionIds: string[], name?: string) =>
+    request<{ person: PersonDTO }>(`/api/people/${id}/split`, {
+      method: 'POST',
+      body: JSON.stringify({ detectionIds, ...(name ? { name } : {}) }),
+    }),
+  rescanPeople: () =>
+    request<{ dropped: number; counts: { candidate: number } }>('/api/people/rescan', {
+      method: 'POST',
+    }),
 
   transcriptionStatus: (id: string) =>
     request<TranscriptionStatusDTO>(`/api/assets/${id}/transcription/status`),

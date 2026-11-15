@@ -382,6 +382,10 @@ export interface StatsDTO {
   favorites: number
   libraries: number
   folders: number
+  /** Approved people, the only ones the library lists as a face. */
+  people: number
+  /** Candidate groups waiting for a decision. */
+  peopleCandidates: number
 }
 
 export interface PlaybackProgressDTO {

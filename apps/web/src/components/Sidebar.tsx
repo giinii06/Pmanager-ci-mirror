@@ -8,6 +8,7 @@ import {
   Heart,
   Loader2,
   Settings2,
+  Users,
   X,
 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -20,6 +21,7 @@ const navItems = [
   { to: '/', label: '사진 모음', icon: FolderTreeIcon, count: null, end: true },
   { to: '/videos', label: '동영상', icon: Film, count: 'videos' as const, end: false },
   { to: '/favorites', label: '즐겨찾기', icon: Heart, count: 'favorites' as const, end: false },
+  { to: '/people', label: '인물', icon: Users, count: 'people' as const, end: false },
 ]
 
 export function Sidebar() {
@@ -93,6 +95,12 @@ export function Sidebar() {
                 <>
                   <Icon size={15} className={isActive ? 'text-accent' : 'text-faint'} />
                   <span className="flex-1">{item.label}</span>
+                  {item.to === '/people' && (stats.data?.peopleCandidates ?? 0) > 0 ? (
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-accent"
+                      title={`검토 대기 ${stats.data?.peopleCandidates}명`}
+                    />
+                  ) : null}
                   {typeof count === 'number' && count > 0 ? (
                     <span className="text-[10.5px] tabular-nums text-faint">
                       {formatCount(count)}

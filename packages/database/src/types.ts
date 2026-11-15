@@ -419,4 +419,6 @@ export interface PersonAssetRecord {
   assetId: string
   faceCount: number
   bestDetectionId: string | null
+  filename: string
+  durationMs: number | null
 }
