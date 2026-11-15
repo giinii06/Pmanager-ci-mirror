@@ -1,0 +1,43 @@
+# WSL2 / Linux NVIDIA worker for scene indexing. PE-AV Base 16-frame runs one
+# window at a time in a child process, so the card is back to the other workers
+# the moment the child exits. The weights arrive through the scene-model-init
+# service and are mounted read-only.
+#
+#   docker compose --env-file .env --env-file .env.scene \
+#     -f compose.yaml -f compose.scene.models.yaml \
+#     -f compose.scene.cuda.yaml up -d --build
+#
+# transformers 5.23.0 is required: the checkpoint's `PeAudioVideoModel` does not
+# exist in 4.x. torchcodec decodes the window clips, and its wheel needs the
+# FFmpeg shared libraries from the ffmpeg package.
+FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/src
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.12 \
+        python3.12-venv \
+        ffmpeg \
+        libsndfile1 \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3.12 -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+WORKDIR /app
+COPY apps/scene-worker/requirements.lock /app/requirements.lock
+RUN pip install --upgrade pip \
+    && pip install -r /app/requirements.lock \
+    && python -c "import torch; assert torch.version.cuda, 'torch wheel has no CUDA support'; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+
+COPY apps/scene-worker/src /app/src
+
+RUN mkdir -p /scene-tmp
+ENV SCENE_TEMP_DIR=/scene-tmp
+
+CMD ["python", "-m", "scene_worker.main"]

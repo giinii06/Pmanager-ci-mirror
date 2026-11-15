@@ -1,0 +1,19 @@
+# One-shot download of the PE-AV checkpoint. Weights live on the host in
+# ./models/scene in the Hugging Face cache layout the worker reads offline.
+#
+#   docker compose --env-file .env --env-file .env.scene \
+#     -f compose.yaml -f compose.scene.models.yaml run --rm scene-model-init
+#
+# Pinning a commit SHA keeps the revision stable across upstream updates.
+services:
+  scene-model-init:
+    build:
+      context: .
+      dockerfile: apps/scene-model-init/Dockerfile
+    restart: "no"
+    environment:
+      SCENE_MODEL_ID: ${SCENE_MODEL_ID:-facebook/pe-av-base-16-frame}
+      SCENE_MODEL_REVISION: ${SCENE_MODEL_REVISION:?set SCENE_MODEL_REVISION to a commit SHA}
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - ./models:/models

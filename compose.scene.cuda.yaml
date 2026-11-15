@@ -1,0 +1,67 @@
+# WSL2 / Linux: scene indexing on the NVIDIA GPU and the CPU text encoder.
+#
+#   docker compose --env-file .env --env-file .env.scene \
+#     -f compose.yaml -f compose.scene.models.yaml \
+#     -f compose.scene.cuda.yaml up -d --build
+#
+# The indexer takes the shared GPU lease, so it never overlaps ASR, translation
+# or embedding. The query encoder runs on the CPU and answers while the card is
+# busy, which is what lets a search box stay responsive during a long job.
+services:
+  api:
+    environment:
+      SCENE_WORKER_TOKEN: ${SCENE_WORKER_TOKEN:?set SCENE_WORKER_TOKEN to a long random string}
+      SCENE_MODEL_ID: ${SCENE_MODEL_ID:-facebook/pe-av-base-16-frame}
+      SCENE_MODEL_REVISION: ${SCENE_MODEL_REVISION:?set SCENE_MODEL_REVISION to a commit SHA}
+      SCENE_PIPELINE_VERSION: ${SCENE_PIPELINE_VERSION:-1}
+      SCENE_WINDOW_SECONDS: ${SCENE_WINDOW_SECONDS:-10}
+      SCENE_OVERLAP_SECONDS: ${SCENE_OVERLAP_SECONDS:-2}
+      SCENE_QUERY_URL: http://scene-query:8091
+
+  scene-worker:
+    build:
+      context: .
+      dockerfile: apps/scene-worker/Dockerfile.cuda
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://api:8787
+      SCENE_WORKER_TOKEN: ${SCENE_WORKER_TOKEN:?set SCENE_WORKER_TOKEN to a long random string}
+      SCENE_MODEL_DIR: /models/scene
+      SCENE_MODEL_ID: ${SCENE_MODEL_ID:-facebook/pe-av-base-16-frame}
+      SCENE_MODEL_REVISION: ${SCENE_MODEL_REVISION:?set SCENE_MODEL_REVISION to a commit SHA}
+      SCENE_TEMP_DIR: /scene-tmp
+      SCENE_CACHE_DIR: /cache
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ${MEDIA_ROOT:-./sample-media}:/media:ro
+      - ./models:/models:ro
+      - mediavault-cache:/cache
+    depends_on:
+      api:
+        condition: service_healthy
+      scene-model-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  scene-query:
+    build:
+      context: .
+      dockerfile: apps/scene-worker/Dockerfile.cuda
+    restart: unless-stopped
+    command: ["python", "-m", "scene_worker.query"]
+    environment:
+      SCENE_MODEL_DIR: /models/scene
+      SCENE_MODEL_ID: ${SCENE_MODEL_ID:-facebook/pe-av-base-16-frame}
+      SCENE_QUERY_PORT: "8091"
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ./models:/models:ro
+    depends_on:
+      scene-model-init:
+        condition: service_completed_successfully
