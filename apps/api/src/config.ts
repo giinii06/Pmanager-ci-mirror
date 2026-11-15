@@ -122,7 +122,7 @@ function resolveAsr(env: Record<string, string | undefined>): AsrConfig {
     resultDir: path.resolve(env.ASR_RESULT_DIR ?? 'asr-results'),
     modelRevision: env.ASR_MODEL_REVISION?.trim() || 'main',
     alignerRevision: env.ALIGN_MODEL_REVISION?.trim() || 'main',
-    pipelineVersion: env.ASR_PIPELINE_VERSION?.trim() || '1',
+    pipelineVersion: env.ASR_PIPELINE_VERSION?.trim() || '2',
   }
 }
 

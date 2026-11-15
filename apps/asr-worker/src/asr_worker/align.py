@@ -7,8 +7,8 @@ from typing import Any, Callable
 
 from .device import empty_cache, load_model
 from .jsonio import write_json_atomic
+from .language import language_hint
 from .timeline import attach_source_text, clean_words
-from .transcribe import language_name
 
 log = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ def run(
     asr_path: Path,
     aligner_dir: str,
     device: str,
-    language: str,
+    language: str | None,
     output_path: Path,
     progress: Callable[[float], None] = lambda _fraction: None,
 ) -> dict[str, Any]:
@@ -25,7 +25,7 @@ def run(
 
     payload = json.loads(asr_path.read_text(encoding="utf-8"))
     chunks: list[dict[str, Any]] = payload["chunks"]
-    lang = language_name(language)
+    lang = language_hint(language) or "Korean"
 
     model = load_model(Qwen3ForcedAligner.from_pretrained, aligner_dir, device, "aligner")
 

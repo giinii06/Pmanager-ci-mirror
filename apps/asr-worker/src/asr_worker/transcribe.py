@@ -7,21 +7,16 @@ from typing import Any, Callable
 
 from .device import empty_cache, load_model
 from .jsonio import write_json_atomic
+from .language import language_hint
 
 log = logging.getLogger(__name__)
-
-LANGUAGE_NAMES = {"ko": "Korean", "en": "English", "ja": "Japanese", "zh": "Chinese"}
-
-
-def language_name(code: str) -> str:
-    return LANGUAGE_NAMES.get(code.lower(), "Korean")
 
 
 def run(
     chunks_path: Path,
     model_dir: str,
     device: str,
-    language: str,
+    language: str | None,
     output_path: Path,
     progress: Callable[[float], None] = lambda _fraction: None,
 ) -> dict[str, Any]:
@@ -29,7 +24,9 @@ def run(
 
     plan = json.loads(chunks_path.read_text(encoding="utf-8"))
     chunks: list[dict[str, Any]] = plan["chunks"]
-    lang = language_name(language)
+    # An empty hint lets the model detect the language per chunk, which is what
+    # keeps an English file from being labelled Korean.
+    lang = language_hint(language)
 
     model = load_model(Qwen3ASRModel.from_pretrained, model_dir, device, "asr")
     payload: dict[str, Any] = {

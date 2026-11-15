@@ -17,6 +17,7 @@ from . import audio
 from .client import FatalError, LeaseLost, WorkerClient
 from .config import Config
 from .jsonio import write_json_atomic
+from .language import detect_language
 from .stage_pid import reap_stale_stage, stage_pid_file
 from .subtitles import build_segments, to_srt, to_txt, to_vtt
 
@@ -242,6 +243,13 @@ class Pipeline:
             )
 
             aligned_path = workdir / "aligned.json"
+            # The hint only nudges the model; the chunks say what was actually
+            # spoken, and that is what the aligner and the transcript use.
+            detected = detect_language(
+                json.loads(asr_path.read_text(encoding="utf-8")).get("chunks", [])
+            )
+            if not detected:
+                raise RuntimeError("No speech in a language the model recognises was found.")
             self._run_stage(
                 [
                     "align",
@@ -254,7 +262,7 @@ class Pipeline:
                     "--device",
                     self._device(),
                     "--language",
-                    self.config.language,
+                    detected,
                 ],
                 heartbeat,
                 job_id,
@@ -266,7 +274,7 @@ class Pipeline:
 
             self._report(job_id, "writing", "writing", 88)
             aligned = json.loads(aligned_path.read_text(encoding="utf-8"))
-            self._write_results(job_id, aligned, duration_ms, file_version, asset_id)
+            self._write_results(job_id, aligned, duration_ms, file_version, asset_id, detected)
         finally:
             if not self.config.keep_workdir:
                 _remove_tree(workdir)
@@ -387,6 +395,7 @@ class Pipeline:
         duration_ms: int,
         file_version: int,
         asset_id: str,
+        language: str,
     ) -> None:
         chunks = aligned.get("chunks", [])
         segments = build_segments(chunks)
@@ -413,7 +422,7 @@ class Pipeline:
         transcript = {
             "assetId": asset_id,
             "fileVersion": file_version,
-            "language": self.config.language,
+            "language": language,
             "modelId": self.config.model_id,
             "modelRevision": self.config.model_revision,
             "alignerId": self.config.aligner_id,
@@ -438,7 +447,7 @@ class Pipeline:
                 "transcriptId": f"{safe_segment(asset_id, 32)}-{uuid.uuid4().hex[:12]}",
                 "resultDir": relative,
                 "plainText": plain_text,
-                "language": self.config.language,
+                "language": language,
                 "segments": [
                     {"startMs": segment.start_ms, "endMs": segment.end_ms, "text": segment.text}
                     for segment in segments

@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     asr.add_argument("--output", required=True)
     asr.add_argument("--model-dir", required=True)
     asr.add_argument("--device", required=True)
-    asr.add_argument("--language", default="ko")
+    asr.add_argument("--language", default="", help="hint; empty detects per chunk")
     asr.add_argument("--pid-file", required=True)
 
     forced = sub.add_parser("align", help="align an ASR checkpoint")
@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     forced.add_argument("--output", required=True)
     forced.add_argument("--aligner-dir", required=True)
     forced.add_argument("--device", required=True)
-    forced.add_argument("--language", default="ko")
+    forced.add_argument("--language", default="", help="the language the ASR stage detected")
     forced.add_argument("--pid-file", required=True)
     return parser
 

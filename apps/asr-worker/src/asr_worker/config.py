@@ -61,7 +61,9 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         result_dir=source.get("RESULT_DIR", "/asr-results"),
         temp_dir=source.get("ASR_TEMP_DIR", ""),
         device=source.get("ASR_DEVICE", "auto").strip().lower(),
-        language=source.get("ASR_LANGUAGE", "ko").strip() or "ko",
+        # An optional hint, not the stored language: the transcript keeps what
+        # the model heard, so an English file is not labelled Korean.
+        language=source.get("ASR_LANGUAGE", "").strip(),
         model_id=source.get("ASR_MODEL_ID", "TeamUNIVA/qwen3_asr_1.7b_ko"),
         aligner_id=source.get("ALIGN_MODEL_ID", "Qwen/Qwen3-ForcedAligner-0.6B"),
         model_revision=source.get("ASR_MODEL_REVISION", "main"),
