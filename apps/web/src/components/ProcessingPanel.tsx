@@ -43,7 +43,7 @@ function laneEta(lane: WorkPipelineDTO): { text: string; known: boolean } | null
   if (lane.basis === 'history' && lane.etaSeconds !== null && lane.etaSeconds > 0) {
     return { text: `약 ${formatEta(lane.etaSeconds)}`, known: true }
   }
-  if (lane.running > lane.stalled) return { text: '계산 중', known: false }
+  if (lane.running > 0) return { text: '계산 중', known: false }
   if (lane.queued > 0 || lane.stalled > 0) return { text: '미정', known: false }
   return null
 }
@@ -52,8 +52,6 @@ function overallEta(queue: WorkQueueDTO): { text: string; known: boolean } {
   if (queue.basis === 'history' && queue.etaSeconds !== null && queue.etaSeconds > 0) {
     return { text: `약 ${formatEta(queue.etaSeconds)} 남음`, known: true }
   }
-  // A stalled job still counts in the lane's running total, so ask the live
-  // list instead. It is capped at 50 but never empty while a job runs.
   const running = queue.running.length > 0
   return running
     ? { text: '남은 시간 계산 중', known: false }
@@ -171,15 +169,9 @@ function StalledRow({ item }: { item: WorkItemDTO }) {
   )
 }
 
-/** The API counts a stalled job in its lane's running total, so split it out. */
-function liveCount(lane: WorkPipelineDTO): number {
-  return Math.max(0, lane.running - lane.stalled)
-}
-
 function LaneCounts({ lane }: { lane: WorkPipelineDTO }) {
   const parts: { text: string; danger?: boolean }[] = []
-  const live = liveCount(lane)
-  if (live > 0) parts.push({ text: `처리 중 ${formatCount(live)}` })
+  if (lane.running > 0) parts.push({ text: `처리 중 ${formatCount(lane.running)}` })
   if (lane.queued > 0) parts.push({ text: `대기 ${formatCount(lane.queued)}` })
   if (lane.stalled > 0) parts.push({ text: `응답 없음 ${formatCount(lane.stalled)}`, danger: true })
 
@@ -267,7 +259,7 @@ export function ProcessingPanel() {
 
   const data = queue.data
   const hero = data && data.running.length === 1 ? (data.running[0] ?? null) : null
-  const runningTotal = data?.pipelines.reduce((sum, lane) => sum + liveCount(lane), 0) ?? 0
+  const runningTotal = data?.pipelines.reduce((sum, lane) => sum + lane.running, 0) ?? 0
   const hasWork = Boolean(
     data && (data.remaining > 0 || data.running.length > 0 || data.stalled.length > 0),
   )
