@@ -112,7 +112,11 @@ export function Lightbox() {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
-      if (event.key === 'Escape') close()
+      if (event.key === 'Escape') {
+        // The same keypress that leaves fullscreen must not also close the viewer.
+        if (document.fullscreenElement) return
+        close()
+      }
       else if (event.key === 'ArrowRight') next()
       else if (event.key === 'ArrowLeft') prev()
       else if (event.key.toLowerCase() === 'f' && asset)

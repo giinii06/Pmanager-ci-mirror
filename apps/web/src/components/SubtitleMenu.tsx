@@ -80,7 +80,7 @@ export function SubtitleMenu({
     cn('shrink-0', active ? 'text-accent' : 'invisible')
 
   return (
-    <div ref={root} className="absolute right-2 top-2 z-20">
+    <div ref={root} className="relative">
       <button
         type="button"
         aria-haspopup="menu"

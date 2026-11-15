@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import Hls from 'hls.js'
+import { Maximize, Minimize } from 'lucide-react'
 import type { AssetDTO, SubtitleTrackDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
+import { cn } from '../lib/cn'
 import { Spinner } from './ui/Spinner'
 import { SubtitleMenu, languageName, trackLabel } from './SubtitleMenu'
 
@@ -23,12 +25,14 @@ export function VideoPlayer({
   videoRef?: RefObject<HTMLVideoElement | null>
 }) {
   const localRef = useRef<HTMLVideoElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const videoRef = externalRef ?? localRef
   const [useHls, setUseHls] = useState(asset.playback === 'hls')
   const [hlsState, setHlsState] = useState<HlsState>(asset.playback === 'hls' ? 'preparing' : 'idle')
   const [failure, setFailure] = useState<string | null>(null)
   const [caption, setCaption] = useState<string | null>(null)
   const [controlsVisible, setControlsVisible] = useState(true)
+  const [fullscreen, setFullscreen] = useState(false)
   const [nativeFullscreen, setNativeFullscreen] = useState(false)
   const [captionFontSize, setCaptionFontSize] = useState(16)
   const startAt = useRef(0)
@@ -245,11 +249,12 @@ export function VideoPlayer({
     if (!video) return
 
     const sync = () => {
-      const fullscreen =
+      const element =
         document.fullscreenElement ??
         (document as Document & { webkitFullscreenElement?: Element | null })
           .webkitFullscreenElement
-      setNativeFullscreen(fullscreen === video)
+      setFullscreen(element !== null && element === containerRef.current)
+      setNativeFullscreen(element !== null && element === video)
     }
 
     sync()
@@ -260,6 +265,23 @@ export function VideoPlayer({
       document.removeEventListener('webkitfullscreenchange', sync)
     }
   }, [videoRef])
+
+  const toggleFullscreen = () => {
+    const container = containerRef.current
+    const video = videoRef.current
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined)
+      return
+    }
+    if (container?.requestFullscreen) {
+      void container.requestFullscreen().catch(() => undefined)
+      return
+    }
+    // iOS has no element fullscreen, only the native player, which draws its
+    // own cues and is handled by the nativeFullscreen branch.
+    const legacy = video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
+    legacy?.webkitEnterFullscreen?.()
+  }
 
   if (failure) {
     return (
@@ -279,13 +301,25 @@ export function VideoPlayer({
   const preparing = useHls && hlsState !== 'ready'
 
   return (
-    <div className="relative flex max-h-full max-w-full items-center justify-center">
+    <div
+      ref={containerRef}
+      className={cn(
+        'relative flex max-h-full max-w-full items-center justify-center',
+        fullscreen && 'h-screen w-screen bg-black',
+      )}
+    >
       <video
         ref={videoRef}
         controls
+        controlsList="nofullscreen"
         playsInline
         poster={asset.thumbnails.medium}
-        className="max-h-[calc(100vh-170px)] max-w-[calc(100vw-140px)] rounded-lg bg-black shadow-2xl"
+        className={cn(
+          'bg-black',
+          fullscreen
+            ? 'h-full w-full object-contain'
+            : 'max-h-[calc(100vh-170px)] max-w-[calc(100vw-140px)] rounded-lg shadow-2xl',
+        )}
       >
         {subtitleUrl && language ? (
           <track
@@ -298,16 +332,27 @@ export function VideoPlayer({
         ) : null}
       </video>
       {!preparing ? (
-        <SubtitleMenu tracks={tracks} language={language} onSelect={onSelectLanguage} />
+        <div className="absolute right-2 top-2 z-20 flex items-center gap-1.5">
+          <button
+            type="button"
+            aria-label={fullscreen ? '전체 화면 종료' : '전체 화면'}
+            onClick={toggleFullscreen}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/85 backdrop-blur-sm transition-colors hover:bg-black/75 hover:text-white"
+          >
+            {fullscreen ? <Minimize size={13} /> : <Maximize size={13} />}
+          </button>
+          <SubtitleMenu tracks={tracks} language={language} onSelect={onSelectLanguage} />
+        </div>
       ) : null}
       {/*
-        Native fullscreen promotes the video into the top layer, where this sibling overlay
-        is not painted, so the track renderer draws the captions there instead.
+        The container is the fullscreen element, so this overlay stays in the top
+        layer. The native renderer would sit under the fullscreen controls, which
+        is why the offset grows with the control bar instead of using it.
       */}
       {!nativeFullscreen && caption ? (
         <div
           className="pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3"
-          style={{ bottom: controlsVisible ? 64 : 24 }}
+          style={{ bottom: controlsVisible ? (fullscreen ? 96 : 64) : fullscreen ? 32 : 24 }}
         >
           <span
             className="max-w-[86%] rounded-md bg-black/75 px-3 py-1.5 text-center font-medium leading-[1.4] whitespace-pre-line text-white [overflow-wrap:anywhere] [word-break:keep-all]"
