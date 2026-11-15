@@ -22,9 +22,16 @@ import type { AppContext } from '../context'
 import { toUserDTO } from '../dto'
 import { parseInput } from '../validate'
 
-const credentials = z.object({
+const setupCredentials = z.object({
   username: z.string().trim().min(2, 'Use at least 2 characters.').max(64),
   password: z.string().min(8, 'Use at least 8 characters.').max(200),
+})
+
+// Sign-in trusts the stored hash. A password shorter than the setup minimum can
+// already exist, so only an empty one is rejected here.
+const loginCredentials = z.object({
+  username: z.string().trim().min(2, 'Use at least 2 characters.').max(64),
+  password: z.string().min(1, 'Enter your password.').max(200),
 })
 
 export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -45,7 +52,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void 
       reply.code(409).send({ error: 'already_initialized', message: 'An account already exists.' })
       return
     }
-    const body = parseInput(credentials, request.body, reply)
+    const body = parseInput(setupCredentials, request.body, reply)
     if (!body) return
 
     const user: UserRecord = {
@@ -63,7 +70,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void 
   })
 
   app.post('/api/auth/login', async (request, reply) => {
-    const body = parseInput(credentials, request.body, reply)
+    const body = parseInput(loginCredentials, request.body, reply)
     if (!body) return
 
     const user = findUserByUsername(ctx.db, body.username)
