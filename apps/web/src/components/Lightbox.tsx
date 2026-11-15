@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import {
+  Captions,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -17,6 +18,7 @@ import { formatBytes, formatDate, formatDuration } from '../lib/format'
 import { cn } from '../lib/cn'
 import { useFavorite } from '../lib/useFavorite'
 import { useViewer } from '../store/viewer'
+import { TranscriptPanel } from './TranscriptPanel'
 import { VideoPlayer } from './VideoPlayer'
 import { Spinner } from './ui/Spinner'
 
@@ -59,16 +61,30 @@ export function Lightbox() {
 
   const asset = items[index]
   const [showInfo, setShowInfo] = useState(false)
+  const [showTranscript, setShowTranscript] = useState(false)
   const [fullRes, setFullRes] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const closeRef = useRef<HTMLButtonElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   const libraries = useQuery({ queryKey: ['libraries'], queryFn: api.libraries })
   const libraryName = libraries.data?.find((library) => library.id === asset?.libraryId)?.name
   const open = Boolean(asset)
 
+  const transcription = useQuery({
+    queryKey: ['transcription', asset?.id],
+    queryFn: () => api.transcriptionStatus(asset!.id),
+    enabled: open && asset?.kind === 'video',
+    staleTime: 30_000,
+  })
+  const subtitleUrl =
+    asset?.kind === 'video' && transcription.data?.transcript
+      ? api.vttUrl(asset.id, asset.fileVersion)
+      : null
+
   useEffect(() => {
     setShowInfo(false)
+    setShowTranscript(false)
     setFullRes(false)
     setLoaded(false)
   }, [asset?.id])
@@ -84,6 +100,8 @@ export function Lightbox() {
       else if (event.key.toLowerCase() === 'f' && asset)
         favorite.mutate({ id: asset.id, favorite: !asset.favorite })
       else if (event.key.toLowerCase() === 'i') setShowInfo((value) => !value)
+      else if (event.key.toLowerCase() === 'c' && asset.kind === 'video')
+        setShowTranscript((value) => !value)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -167,11 +185,25 @@ export function Lightbox() {
                 >
                   {fullRes ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
                 </IconButton>
-              ) : null}
+              ) : (
+                <IconButton
+                  label={showTranscript ? 'AI 자막 닫기' : 'AI 자막'}
+                  active={showTranscript}
+                  onClick={() => {
+                    setShowTranscript((value) => !value)
+                    setShowInfo(false)
+                  }}
+                >
+                  <Captions size={17} />
+                </IconButton>
+              )}
               <IconButton
                 label="정보"
                 active={showInfo}
-                onClick={() => setShowInfo((value) => !value)}
+                onClick={() => {
+                  setShowInfo((value) => !value)
+                  setShowTranscript(false)
+                }}
               >
                 <Info size={17} />
               </IconButton>
@@ -200,7 +232,7 @@ export function Lightbox() {
             ) : null}
 
             {asset.kind === 'video' ? (
-              <VideoPlayer key={asset.id} asset={asset} />
+              <VideoPlayer key={asset.id} asset={asset} subtitleUrl={subtitleUrl} videoRef={videoRef} />
             ) : (
               <div className="relative flex h-full w-full items-center justify-center">
                 <img
@@ -293,6 +325,25 @@ export function Lightbox() {
                     </div>
                   </dl>
                 </motion.aside>
+              ) : null}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {showTranscript && asset.kind === 'video' ? (
+                <motion.div
+                  key="transcript"
+                  initial={{ x: 24, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: 24, opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="absolute bottom-0 right-0 top-0 z-30 w-[340px] max-w-[88vw]"
+                >
+                  <TranscriptPanel
+                    asset={asset}
+                    videoRef={videoRef}
+                    onClose={() => setShowTranscript(false)}
+                  />
+                </motion.div>
               ) : null}
             </AnimatePresence>
           </div>

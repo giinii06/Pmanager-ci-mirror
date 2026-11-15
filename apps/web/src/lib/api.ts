@@ -8,6 +8,9 @@ import type {
   Page,
   PlaybackProgressDTO,
   StatsDTO,
+  TranscriptDTO,
+  TranscriptSearchDTO,
+  TranscriptionStatusDTO,
   UserDTO,
 } from '@mediavault/shared'
 
@@ -105,4 +108,19 @@ export const api = {
 
   stats: () => request<StatsDTO>('/api/stats'),
   jobs: () => request<JobSummaryDTO>('/api/jobs'),
+
+  transcriptionStatus: (id: string) =>
+    request<TranscriptionStatusDTO>(`/api/assets/${id}/transcription/status`),
+  createTranscription: (id: string, force = false) =>
+    request<{ job: unknown; transcript: unknown }>(`/api/assets/${id}/transcribe`, {
+      method: 'POST',
+      body: JSON.stringify({ force }),
+    }),
+  transcript: (id: string) => request<TranscriptDTO>(`/api/assets/${id}/transcription`),
+  searchTranscript: (id: string, q: string) =>
+    request<TranscriptSearchDTO>(
+      `/api/assets/${id}/transcript/search?q=${encodeURIComponent(q)}`,
+    ),
+  vttUrl: (id: string, version: number) => `/api/assets/${id}/subtitles.vtt?v=${version}`,
+  srtUrl: (id: string, version: number) => `/api/assets/${id}/subtitles.srt?v=${version}`,
 }

@@ -2,6 +2,15 @@ import path from 'node:path'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 
+export interface AsrConfig {
+  enabled: boolean
+  workerToken: string
+  resultDir: string
+  modelRevision: string
+  alignerRevision: string
+  pipelineVersion: string
+}
+
 export interface ApiConfig {
   port: number
   host: string
@@ -12,6 +21,7 @@ export interface ApiConfig {
   accel: boolean
   hwaccel: 'nvenc' | null
   secureCookies: boolean
+  asr: AsrConfig
 }
 
 async function resolveSecret(dataDir: string, fromEnv: string | undefined): Promise<string> {
@@ -30,6 +40,23 @@ async function resolveSecret(dataDir: string, fromEnv: string | undefined): Prom
   return secret
 }
 
+function resolveAsr(env: Record<string, string | undefined>): AsrConfig {
+  const token = env.ASR_WORKER_TOKEN?.trim() ?? ''
+  const enabled = env.ASR_ENABLED ? env.ASR_ENABLED === '1' : token.length > 0
+  if (enabled && token.length < 16) {
+    throw new Error('ASR_WORKER_TOKEN must be at least 16 characters when ASR is enabled.')
+  }
+
+  return {
+    enabled,
+    workerToken: token,
+    resultDir: path.resolve(env.ASR_RESULT_DIR ?? 'asr-results'),
+    modelRevision: env.ASR_MODEL_REVISION?.trim() || 'main',
+    alignerRevision: env.ALIGN_MODEL_REVISION?.trim() || 'main',
+    pipelineVersion: env.ASR_PIPELINE_VERSION?.trim() || '1',
+  }
+}
+
 export async function loadConfig(
   env: Record<string, string | undefined> = process.env,
 ): Promise<ApiConfig> {
@@ -38,6 +65,9 @@ export async function loadConfig(
   const mediaRoot = path.resolve(env.MEDIA_ROOT ?? 'sample-media')
   await mkdir(dataDir, { recursive: true })
   await mkdir(cacheDir, { recursive: true })
+
+  const asr = resolveAsr(env)
+  if (asr.enabled) await mkdir(asr.resultDir, { recursive: true })
 
   return {
     port: Number(env.PORT ?? 8787),
@@ -49,5 +79,6 @@ export async function loadConfig(
     accel: env.MEDIA_ACCEL === 'nginx',
     hwaccel: env.HWACCEL === 'nvenc' ? 'nvenc' : null,
     secureCookies: env.COOKIE_SECURE === '1',
+    asr,
   }
 }

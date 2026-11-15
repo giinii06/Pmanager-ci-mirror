@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -97,7 +97,60 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_jobs_active ON jobs(dedupe_key) WHERE state
 CREATE INDEX IF NOT EXISTS idx_jobs_pick ON jobs(state, priority, run_after, id);
 `
 
+export const ASR_SQL = `
+CREATE TABLE IF NOT EXISTS asr_jobs (
+  id TEXT PRIMARY KEY,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('queued','transcribing','aligning','writing','completed','failed','canceled')),
+  stage TEXT NOT NULL DEFAULT 'queued' CHECK (stage IN ('queued','extracting','chunking','transcribing','aligning','writing','completed')),
+  progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  lease_owner TEXT,
+  lease_expires_at INTEGER,
+  run_after INTEGER NOT NULL DEFAULT 0,
+  model_revision TEXT NOT NULL,
+  aligner_revision TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  error_message TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_asr_jobs_active
+  ON asr_jobs(asset_id, file_version)
+  WHERE state IN ('queued','transcribing','aligning','writing');
+CREATE INDEX IF NOT EXISTS idx_asr_jobs_claim ON asr_jobs(state, run_after, created_at);
+CREATE INDEX IF NOT EXISTS idx_asr_jobs_lease ON asr_jobs(state, lease_expires_at);
+
+CREATE TABLE IF NOT EXISTS transcripts (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL UNIQUE REFERENCES asr_jobs(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  language TEXT NOT NULL DEFAULT 'ko',
+  result_dir TEXT NOT NULL,
+  plain_text TEXT NOT NULL,
+  model_revision TEXT NOT NULL,
+  aligner_revision TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(asset_id, file_version, model_revision, aligner_revision, pipeline_version)
+);
+CREATE INDEX IF NOT EXISTS idx_transcripts_asset ON transcripts(asset_id, file_version, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS transcript_segments (
+  transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  start_ms INTEGER NOT NULL CHECK (start_ms >= 0),
+  end_ms INTEGER NOT NULL CHECK (end_ms >= start_ms),
+  text TEXT NOT NULL,
+  PRIMARY KEY (transcript_id, seq)
+);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
+  (exec) => exec(ASR_SQL),
 ]

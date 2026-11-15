@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import Hls from 'hls.js'
 import type { AssetDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
@@ -6,8 +6,17 @@ import { Spinner } from './ui/Spinner'
 
 type HlsState = 'idle' | 'preparing' | 'ready' | 'error'
 
-export function VideoPlayer({ asset }: { asset: AssetDTO }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+export function VideoPlayer({
+  asset,
+  subtitleUrl,
+  videoRef: externalRef,
+}: {
+  asset: AssetDTO
+  subtitleUrl?: string | null
+  videoRef?: RefObject<HTMLVideoElement | null>
+}) {
+  const localRef = useRef<HTMLVideoElement>(null)
+  const videoRef = externalRef ?? localRef
   const [useHls, setUseHls] = useState(asset.playback === 'hls')
   const [hlsState, setHlsState] = useState<HlsState>(asset.playback === 'hls' ? 'preparing' : 'idle')
   const [failure, setFailure] = useState<string | null>(null)
@@ -132,6 +141,18 @@ export function VideoPlayer({ asset }: { asset: AssetDTO }) {
     }
   }, [asset.id, useHls])
 
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !subtitleUrl) return
+    const show = () => {
+      const track = video.textTracks[0]
+      if (track) track.mode = 'showing'
+    }
+    show()
+    const timer = window.setTimeout(show, 300)
+    return () => window.clearTimeout(timer)
+  }, [subtitleUrl, videoRef])
+
   if (failure) {
     return (
       <div className="flex max-w-sm flex-col items-center gap-3 text-center text-[13px] text-muted">
@@ -154,7 +175,22 @@ export function VideoPlayer({ asset }: { asset: AssetDTO }) {
         playsInline
         poster={asset.thumbnails.medium}
         className="max-h-[calc(100vh-170px)] max-w-[calc(100vw-140px)] rounded-lg bg-black shadow-2xl"
-      />
+      >
+        {subtitleUrl ? (
+          <track
+            key={subtitleUrl}
+            kind="subtitles"
+            src={subtitleUrl}
+            srcLang="ko"
+            label="한국어 (AI)"
+            default
+            onLoad={(event) => {
+              const track = event.currentTarget.track
+              if (track) track.mode = 'showing'
+            }}
+          />
+        ) : null}
+      </video>
       {useHls && hlsState !== 'ready' ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/70 text-center">
           <Spinner className="text-accent" />

@@ -1,0 +1,53 @@
+# WSL2 / Linux: run the ASR worker on the NVIDIA GPU.
+#
+#   docker compose -f compose.yaml -f compose.asr.models.yaml \
+#     -f compose.asr.cuda.yaml up -d --build
+#
+# One ASR job runs at a time, and the worker exits its model process between
+# transcription and alignment so an 8 GB card never holds both models.
+services:
+  api:
+    environment:
+      ASR_WORKER_TOKEN: ${ASR_WORKER_TOKEN:?set ASR_WORKER_TOKEN to a long random string}
+      ASR_RESULT_DIR: /asr-results
+      ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:?set ASR_MODEL_REVISION to a commit SHA}
+      ALIGN_MODEL_REVISION: ${ALIGN_MODEL_REVISION:?set ALIGN_MODEL_REVISION to a commit SHA}
+      ASR_PIPELINE_VERSION: ${ASR_PIPELINE_VERSION:-1}
+    volumes:
+      - ./asr-results:/asr-results
+
+  asr-worker:
+    build:
+      context: .
+      dockerfile: apps/asr-worker/Dockerfile.cuda
+    restart: unless-stopped
+    environment:
+      ASR_DEVICE: cuda
+      API_BASE_URL: http://api:8787
+      ASR_MODEL_DIR: /models/asr
+      ALIGN_MODEL_DIR: /models/aligner
+      ASR_MODEL_ID: ${ASR_MODEL_ID:-TeamUNIVA/qwen3_asr_1.7b_ko}
+      ALIGN_MODEL_ID: ${ALIGN_MODEL_ID:-Qwen/Qwen3-ForcedAligner-0.6B}
+      ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:?set ASR_MODEL_REVISION to a commit SHA}
+      ALIGN_MODEL_REVISION: ${ALIGN_MODEL_REVISION:?set ALIGN_MODEL_REVISION to a commit SHA}
+      ASR_PIPELINE_VERSION: ${ASR_PIPELINE_VERSION:-1}
+      ASR_WORKER_TOKEN: ${ASR_WORKER_TOKEN:?set ASR_WORKER_TOKEN to a long random string}
+      MEDIA_ROOT: /media
+      RESULT_DIR: /asr-results
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ${MEDIA_ROOT:-./sample-media}:/media:ro
+      - ./models:/models:ro
+      - ./asr-results:/asr-results
+    depends_on:
+      api:
+        condition: service_healthy
+      asr-model-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

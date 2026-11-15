@@ -8,7 +8,12 @@ dist
 data
 cache
 sample-media
+models
+asr-results
 .audit
 .playwright-cli
 *.log
 *.tsbuildinfo
+apps/asr-worker/.venv
+**/__pycache__
+**/.pytest_cache

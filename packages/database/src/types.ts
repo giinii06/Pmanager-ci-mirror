@@ -1,4 +1,11 @@
-import type { AssetKind, JobKind, JobState, ScanState } from '@mediavault/shared'
+import type {
+  AsrJobState,
+  AsrStage,
+  AssetKind,
+  JobKind,
+  JobState,
+  ScanState,
+} from '@mediavault/shared'
 
 export interface LibraryRecord {
   id: string
@@ -98,4 +105,50 @@ export interface PlaybackRecord {
   positionMs: number
   durationMs: number
   updatedAt: number
+}
+
+export interface AsrJobRecord {
+  id: string
+  assetId: string
+  fileVersion: number
+  state: AsrJobState
+  stage: AsrStage
+  progress: number
+  attempts: number
+  maxAttempts: number
+  leaseOwner: string | null
+  leaseExpiresAt: number | null
+  runAfter: number
+  modelRevision: string
+  alignerRevision: string
+  pipelineVersion: string
+  errorMessage: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface TranscriptRecord {
+  id: string
+  jobId: string
+  assetId: string
+  fileVersion: number
+  language: string
+  resultDir: string
+  plainText: string
+  modelRevision: string
+  alignerRevision: string
+  pipelineVersion: string
+  createdAt: number
+}
+
+export interface TranscriptSegmentRecord {
+  seq: number
+  startMs: number
+  endMs: number
+  text: string
+}
+
+export interface TranscriptWithSegments {
+  transcript: TranscriptRecord
+  segments: TranscriptSegmentRecord[]
 }

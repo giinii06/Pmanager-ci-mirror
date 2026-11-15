@@ -1,0 +1,21 @@
+# One-shot model download. Weights live on the host in ./models so image
+# rebuilds and container replacements never re-download several gigabytes.
+#
+#   docker compose -f compose.yaml -f compose.asr.models.yaml \
+#     run --rm asr-model-init
+#
+# Pinning a commit SHA keeps the revision stable across upstream updates.
+services:
+  asr-model-init:
+    build:
+      context: .
+      dockerfile: apps/asr-model-init/Dockerfile
+    restart: "no"
+    environment:
+      ASR_MODEL_ID: ${ASR_MODEL_ID:-TeamUNIVA/qwen3_asr_1.7b_ko}
+      ALIGN_MODEL_ID: ${ALIGN_MODEL_ID:-Qwen/Qwen3-ForcedAligner-0.6B}
+      ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:?set ASR_MODEL_REVISION to a commit SHA}
+      ALIGN_MODEL_REVISION: ${ALIGN_MODEL_REVISION:?set ALIGN_MODEL_REVISION to a commit SHA}
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - ./models:/models

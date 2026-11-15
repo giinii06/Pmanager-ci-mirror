@@ -1,0 +1,41 @@
+# WSL2 / Linux NVIDIA worker. The image carries Python, ffmpeg and a CUDA build
+# of PyTorch; the weights arrive through the asr-model-init service and are
+# mounted read-only.
+#
+#   docker compose -f compose.yaml -f compose.asr.models.yaml \
+#     -f compose.asr.cuda.yaml up -d --build
+#
+# RTX 50 series needs a CUDA 12.8+ runtime, which the base image and the PyPI
+# torch wheel both provide. Validate torch.cuda.is_available() on the host
+# before trusting throughput numbers.
+FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/src
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.12 \
+        python3.12-venv \
+        ffmpeg \
+        libsndfile1 \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3.12 -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+WORKDIR /app
+COPY apps/asr-worker/requirements.lock /app/requirements.lock
+RUN pip install --upgrade pip \
+    && pip install -r /app/requirements.lock \
+    && python -c "import torch; assert torch.version.cuda, 'torch wheel has no CUDA support'; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+
+COPY apps/asr-worker/src /app/src
+
+RUN mkdir -p /asr-tmp
+ENV ASR_TEMP_DIR=/asr-tmp
+
+CMD ["python", "-m", "asr_worker.main"]

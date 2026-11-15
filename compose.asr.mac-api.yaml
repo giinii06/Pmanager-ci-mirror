@@ -1,0 +1,20 @@
+# Apple Silicon: the ASR worker runs natively on the host with PyTorch MPS.
+# Docker on macOS does not expose Metal to Linux containers, so only the model
+# download and the usual services run in Compose.
+#
+#   docker compose -f compose.yaml -f compose.asr.mac-api.yaml up -d --build
+#
+# The API is published on loopback only. The host worker talks to it on
+# 127.0.0.1:8788; do not expose that port to the LAN.
+services:
+  api:
+    ports:
+      - "127.0.0.1:${ASR_API_PORT:-8788}:8787"
+    environment:
+      ASR_WORKER_TOKEN: ${ASR_WORKER_TOKEN:?set ASR_WORKER_TOKEN to a long random string}
+      ASR_RESULT_DIR: /asr-results
+      ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:?set ASR_MODEL_REVISION to a commit SHA}
+      ALIGN_MODEL_REVISION: ${ALIGN_MODEL_REVISION:?set ALIGN_MODEL_REVISION to a commit SHA}
+      ASR_PIPELINE_VERSION: ${ASR_PIPELINE_VERSION:-1}
+    volumes:
+      - ./asr-results:/asr-results

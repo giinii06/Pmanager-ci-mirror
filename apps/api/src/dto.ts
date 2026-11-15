@@ -1,18 +1,24 @@
 import type {
+  AsrJobDTO,
   AssetDTO,
   FolderDTO,
   JobDTO,
   LibraryDTO,
   PlaybackProgressDTO,
+  TranscriptDTO,
+  TranscriptSummaryDTO,
   UserDTO,
 } from '@mediavault/shared'
 import { playbackModeFor } from '@mediavault/shared'
 import type {
+  AsrJobRecord,
   AssetRecord,
   FolderRecord,
   JobRecord,
   LibraryRecord,
   PlaybackRecord,
+  TranscriptRecord,
+  TranscriptWithSegments,
   UserRecord,
 } from '@mediavault/database'
 
@@ -106,5 +112,54 @@ export function toPlaybackDTO(progress: PlaybackRecord): PlaybackProgressDTO {
     positionMs: progress.positionMs,
     durationMs: progress.durationMs,
     updatedAt: new Date(progress.updatedAt).toISOString(),
+  }
+}
+
+export function toAsrJobDTO(job: AsrJobRecord): AsrJobDTO {
+  return {
+    id: job.id,
+    assetId: job.assetId,
+    fileVersion: job.fileVersion,
+    modelRevision: job.modelRevision,
+    alignerRevision: job.alignerRevision,
+    pipelineVersion: job.pipelineVersion,
+    state: job.state,
+    stage: job.stage,
+    progress: job.progress,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    errorMessage: job.errorMessage,
+    createdAt: new Date(job.createdAt).toISOString(),
+    updatedAt: new Date(job.updatedAt).toISOString(),
+  }
+}
+
+export function toTranscriptSummaryDTO(
+  transcript: TranscriptRecord,
+  segmentCount: number,
+): TranscriptSummaryDTO {
+  return {
+    id: transcript.id,
+    language: transcript.language,
+    segmentCount,
+    createdAt: new Date(transcript.createdAt).toISOString(),
+  }
+}
+
+export function toTranscriptDTO(stored: TranscriptWithSegments): TranscriptDTO {
+  const { transcript, segments } = stored
+  return {
+    id: transcript.id,
+    assetId: transcript.assetId,
+    fileVersion: transcript.fileVersion,
+    language: transcript.language,
+    plainText: transcript.plainText,
+    segments: segments.map((segment) => ({
+      seq: segment.seq,
+      startMs: segment.startMs,
+      endMs: segment.endMs,
+      text: segment.text,
+    })),
+    createdAt: new Date(transcript.createdAt).toISOString(),
   }
 }

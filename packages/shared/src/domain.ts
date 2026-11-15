@@ -91,6 +91,77 @@ export interface JobSummaryDTO {
   recentFailures: JobDTO[]
 }
 
+export type AsrJobState =
+  | 'queued'
+  | 'transcribing'
+  | 'aligning'
+  | 'writing'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+
+export type AsrStage =
+  | 'queued'
+  | 'extracting'
+  | 'chunking'
+  | 'transcribing'
+  | 'aligning'
+  | 'writing'
+  | 'completed'
+
+export interface AsrJobDTO {
+  id: string
+  assetId: string
+  fileVersion: number
+  modelRevision: string
+  alignerRevision: string
+  pipelineVersion: string
+  state: AsrJobState
+  stage: AsrStage
+  progress: number
+  attempts: number
+  maxAttempts: number
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TranscriptSegmentDTO {
+  seq: number
+  startMs: number
+  endMs: number
+  text: string
+}
+
+export interface TranscriptDTO {
+  id: string
+  assetId: string
+  fileVersion: number
+  language: string
+  plainText: string
+  segments: TranscriptSegmentDTO[]
+  createdAt: string
+}
+
+export interface TranscriptSummaryDTO {
+  id: string
+  language: string
+  segmentCount: number
+  createdAt: string
+}
+
+export interface TranscriptionStatusDTO {
+  /** False when the server has no ASR worker configured. */
+  available: boolean
+  job: AsrJobDTO | null
+  transcript: TranscriptSummaryDTO | null
+}
+
+export interface TranscriptSearchDTO {
+  query: string
+  hits: TranscriptSegmentDTO[]
+}
+
 export interface StatsDTO {
   assets: number
   images: number

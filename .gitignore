@@ -7,9 +7,15 @@ data/
 cache/
 sample-media/
 .audit/
+models/
+asr-results/
 
 *.log
 *.tsbuildinfo
 
 .codegraph/
 .playwright-cli/
+
+apps/asr-worker/.venv/
+__pycache__/
+.pytest_cache/

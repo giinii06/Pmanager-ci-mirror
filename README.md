@@ -5,6 +5,7 @@
 
 - 사진: 320/640 WebP 썸네일 + 1600px 프리뷰를 미리 생성
 - 영상: 브라우저가 재생할 수 있으면 Direct Play, 아니면(HEVC/MKV 등) HLS로 변환
+- 자막(선택): 한국어 음성 인식 + 단어 단위 시간 정렬로 VTT/SRT 생성
 - 웹은 원본 디스크를 직접 훑지 않고 인덱스만 조회. 무거운 작업은 별도 Worker
 - 원본 이동·수정·삭제 없음. 캐시는 지워도 다시 만들어진다
 
@@ -61,6 +62,22 @@ docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 
 `HWACCEL=nvenc`로 H.264 인코딩을 시도하고, 실패하면 자동으로 `libx264`로
 폴백한다. GPU가 없어도 모든 기능은 동작한다(느릴 뿐).
+
+### AI 자막 (선택)
+
+자막은 별도 Python 워커가 처리하며, 기본 스택에는 포함되지 않는다.
+모델은 이미지에 넣지 않고 `asr-model-init` 컨테이너가 `./models`로 한 번만
+내려받는다. 설치·운영 방법은 [docs/ASR-OPERATIONS.md](docs/ASR-OPERATIONS.md)를
+따른다.
+
+```bash
+cp .env.asr.example .env.asr   # ASR_WORKER_TOKEN, 모델 커밋 SHA 채우기
+docker compose -f compose.yaml -f compose.asr.models.yaml run --rm asr-model-init
+```
+
+- WSL2/NVIDIA: `compose.asr.cuda.yaml`을 추가해 GPU 컨테이너로 실행
+- macOS: `compose.asr.mac-api.yaml`로 API만 띄우고 워커는 호스트에서 MPS로 실행
+- 결과는 `./asr-results`에, 원본은 읽기 전용으로만 접근한다
 
 ## 빠른 시작 — 로컬 개발 (Bun)
 
