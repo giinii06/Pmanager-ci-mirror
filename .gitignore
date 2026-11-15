@@ -12,3 +12,4 @@ sample-media/
 *.tsbuildinfo
 
 .codegraph/
+.playwright-cli/

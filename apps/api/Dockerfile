@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+# MediaVault API. Bun executes the TypeScript sources directly, so there is no
+# build step; only the workspace dependencies are installed.
+FROM oven/bun:1-debian AS deps
+WORKDIR /app
+
+COPY package.json bun.lock tsconfig.base.json tsconfig.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/worker/package.json apps/worker/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/shared/package.json packages/shared/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/media/package.json packages/media/package.json
+
+RUN bun install --frozen-lockfile --production
+
+FROM oven/bun:1-debian AS runtime
+WORKDIR /app
+ENV NODE_ENV=production \
+    DATA_DIR=/data \
+    CACHE_DIR=/cache \
+    MEDIA_ROOT=/media \
+    HOST=0.0.0.0 \
+    PORT=8787
+
+# Bun's isolated linker keeps dependency symlinks inside each workspace, so the
+# installed trees are copied before the sources are overlaid on top.
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages ./packages
+COPY --from=deps /app/apps/api ./apps/api
+
+COPY package.json tsconfig.base.json ./
+COPY packages ./packages
+COPY apps/api ./apps/api
+
+RUN mkdir -p /data /cache
+
+EXPOSE 8787
+CMD ["bun", "run", "apps/api/src/index.ts"]

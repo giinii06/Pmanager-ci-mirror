@@ -1,0 +1,15 @@
+# NVIDIA override. Requires the NVIDIA driver on the host, WSL2 GPU support and
+# the NVIDIA Container Toolkit inside the distro:
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
+# If NVENC fails at runtime the worker falls back to libx264 automatically.
+services:
+  worker:
+    environment:
+      HWACCEL: nvenc
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

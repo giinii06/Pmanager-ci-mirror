@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+
+@theme {
+  --color-canvas: #0b0c0f;
+  --color-panel: #111318;
+  --color-panel-2: #16181d;
+  --color-raised: #1c1f26;
+  --color-line: #23262e;
+  --color-line-strong: #2f333d;
+  --color-ink: #f4f4f5;
+  --color-muted: #9296a0;
+  --color-faint: #6b6f79;
+  --color-accent: #8b9eff;
+  --color-accent-strong: #a8b6ff;
+  --color-danger: #ff8f8f;
+
+  --font-sans:
+    'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    sans-serif;
+
+  --radius-tile: 8px;
+  --radius-panel: 14px;
+
+  --animate-rise: rise 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade: fade 180ms ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgb(139 158 255 / 0.28);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(139 158 255 / 0.55);
+    outline-offset: 2px;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  input {
+    font: inherit;
+  }
+}
