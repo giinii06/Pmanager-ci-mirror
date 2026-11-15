@@ -4,6 +4,10 @@
 The image never contains weights. This script runs before the translation worker
 starts, is idempotent, and publishes a file only after the SHA256 and the GGUF
 magic match, so a failed or partial download never replaces a working model.
+
+Transfers go through huggingface_hub, which uses the hf_xet backend for these
+repositories. Xet downloads the file as concurrent chunks and assembles them,
+instead of reading one HTTP stream from start to finish.
 """
 
 from __future__ import annotations
@@ -14,35 +18,27 @@ import os
 import re
 import shutil
 import sys
-import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
 
+from huggingface_hub import hf_hub_download
+
 PREFIX = "[translation-model-init]"
 MANIFEST_NAME = "model-manifest.json"
 GGUF_MAGIC = b"GGUF"
-DEFAULT_BASE_URL = "https://huggingface.co"
 DEFAULT_MODEL_ID = "IndexTeam/Index-Translate-9B-GGUF"
 DEFAULT_FILENAME = "Index-Translate-9B.Q4_K_M.gguf"
 CHUNK_BYTES = 4 * 1024 * 1024
-RETRIES = 3
 REQUIRED_FREE_GB = 12.0
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 QUANTIZATION_PATTERN = re.compile(r"\.(Q\d+[A-Z0-9_]*|F16|F32|BF16)\.gguf$", re.IGNORECASE)
-PERMANENT_HTTP_STATUS = frozenset({400, 401, 403, 404, 416})
 
 
 class InitError(Exception):
     """Something the operator has to fix. The entrypoint turns it into exit 1."""
-
-
-class TransientDownloadError(Exception):
-    """A stream that ended early. Another attempt usually completes it."""
 
 
 def log(message: str) -> None:
@@ -58,12 +54,6 @@ class Settings:
     quantization: str
     models_dir: Path
     token: str | None = None
-    base_url: str = DEFAULT_BASE_URL
-
-    @property
-    def url(self) -> str:
-        base = self.base_url.rstrip("/")
-        return f"{base}/{self.repo_id}/resolve/{self.revision}/{self.filename}"
 
 
 @dataclass(frozen=True)
@@ -97,7 +87,6 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
     filename = source.get("TRANSLATION_MODEL_FILENAME", "").strip() or DEFAULT_FILENAME
     quantization = source.get("TRANSLATION_MODEL_QUANTIZATION", "").strip()
     models_dir = source.get("MODELS_DIR", "").strip() or "/models"
-    base_url = source.get("TRANSLATION_MODEL_BASE_URL", "").strip() or DEFAULT_BASE_URL
 
     if not revision:
         raise InitError(
@@ -124,7 +113,6 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         quantization=quantization or quantization_from(filename),
         models_dir=Path(models_dir),
         token=source.get("HF_TOKEN", "").strip() or None,
-        base_url=base_url,
     )
 
 
@@ -227,94 +215,11 @@ def publish(staged: Path, paths: Paths) -> Path | None:
     return archived
 
 
-def download_file(
-    url: str,
-    destination: Path,
-    *,
-    token: str | None = None,
-    opener: Callable | None = None,
-    retries: int = RETRIES,
-    log_fn: Callable[[str], None] = log,
-    sleep: Callable[[float], None] = time.sleep,
-) -> int:
-    """Streams the file to destination and returns the byte count."""
-    headers = {"User-Agent": "mediavault-translation-model-init"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    attempts = max(1, retries + 1)
-    for attempt in range(1, attempts + 1):
-        try:
-            return _stream(url, destination, headers, opener, log_fn)
-        except urllib.error.HTTPError as error:
-            destination.unlink(missing_ok=True)
-            if error.code in PERMANENT_HTTP_STATUS:
-                hint = " Is the repository gated? Set HF_TOKEN." if error.code in (401, 403) else ""
-                raise InitError(f"{url} returned HTTP {error.code}.{hint}") from error
-            failure: Exception = error
-        except (
-            urllib.error.URLError,
-            TimeoutError,
-            ConnectionError,
-            TransientDownloadError,
-        ) as error:
-            destination.unlink(missing_ok=True)
-            failure = error
-        except OSError as error:
-            destination.unlink(missing_ok=True)
-            raise InitError(f"cannot write {destination}: {error}") from error
-        if attempt == attempts:
-            raise InitError(f"download failed after {attempt} attempts: {failure}") from failure
-        wait = float(2**attempt)
-        log_fn(f"attempt {attempt} failed ({failure}); retrying in {wait:.0f}s")
-        sleep(wait)
-    raise InitError("unreachable")
-
-
-def _stream(
-    url: str,
-    destination: Path,
-    headers: dict[str, str],
-    opener: Callable | None,
-    log_fn: Callable[[str], None],
-) -> int:
-    open_url = opener or urllib.request.urlopen
-    request = urllib.request.Request(url, headers=headers)
-    with open_url(request) as response, destination.open("wb") as sink:
-        declared = response.headers.get("Content-Length")
-        total = int(declared) if declared and str(declared).isdigit() else 0
-        step = max(CHUNK_BYTES, total // 10) if total else 512 * 1024 * 1024
-        mark = step
-        written = 0
-        while True:
-            block = response.read(CHUNK_BYTES)
-            if not block:
-                break
-            sink.write(block)
-            written += len(block)
-            if written >= mark:
-                if total:
-                    log_fn(
-                        f"downloaded {written / 1e9:.2f} GB of {total / 1e9:.2f} GB "
-                        f"({written * 100 // total}%)"
-                    )
-                else:
-                    log_fn(f"downloaded {written / 1e9:.2f} GB")
-                mark += step
-    if total and written != total:
-        raise TransientDownloadError(f"stream ended after {written} of {total} bytes")
-    if written == 0:
-        raise TransientDownloadError(f"{url} returned no data")
-    return written
-
-
 def ensure_model(
     settings: Settings,
     *,
-    opener: Callable | None = None,
+    download: Callable[..., str] | None = None,
     log_fn: Callable[[str], None] = log,
-    sleep: Callable[[float], None] = time.sleep,
 ) -> Path:
     paths = Paths.of(settings)
     size = expected_size(paths, settings)
@@ -335,24 +240,35 @@ def ensure_model(
             f"{REQUIRED_FREE_GB:.0f} GB for the download plus the kept previous copy."
         )
 
-    paths.staging.mkdir(parents=True, exist_ok=True)
-    staged = paths.staging / f"{settings.filename}.{os.getpid()}.part"
-    log_fn(f"downloading {settings.repo_id}@{settings.revision}")
-    written = download_file(
-        settings.url,
-        staged,
-        token=settings.token,
-        opener=opener,
-        log_fn=log_fn,
-        sleep=sleep,
-    )
+    staging_root = paths.staging / str(os.getpid())
+    staging_root.mkdir(parents=True, exist_ok=True)
+    log_fn(f"downloading {settings.repo_id}@{settings.revision} through hf_xet")
+    fetch = download or hf_hub_download
+    try:
+        staged = Path(
+            fetch(
+                repo_id=settings.repo_id,
+                filename=settings.filename,
+                revision=settings.revision,
+                token=settings.token,
+                local_dir=str(staging_root),
+            )
+        )
+    except Exception as error:
+        shutil.rmtree(staging_root, ignore_errors=True)
+        message = str(error)
+        gated = "gated" in message.lower() or "401" in message or "403" in message
+        hint = " Is the repository gated? Set HF_TOKEN." if gated else ""
+        raise InitError(f"download failed: {message}.{hint}") from error
 
     problems = verify_file(staged, settings.sha256)
     if problems:
-        staged.unlink(missing_ok=True)
+        shutil.rmtree(staging_root, ignore_errors=True)
         raise InitError(f"downloaded file failed verification: {'; '.join(problems)}")
 
+    written = staged.stat().st_size
     archived = publish(staged, paths)
+    shutil.rmtree(staging_root, ignore_errors=True)
     if archived:
         log_fn(f"previous file kept at {archived}")
     write_manifest(paths, build_manifest(settings, written))

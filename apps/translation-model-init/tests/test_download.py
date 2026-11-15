@@ -1,7 +1,6 @@
 """Behaviour tests for the translation model downloader.
 
-Every test serves the file from a local directory over a file:// URL, or
-injects its own opener, so nothing here reaches the network.
+The transfer is injected, so nothing here reaches the network or the Hub.
 """
 
 from __future__ import annotations
@@ -9,8 +8,6 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 import pytest
@@ -33,16 +30,7 @@ def ignore_host_free_space(monkeypatch):
     monkeypatch.setattr(dm, "REQUIRED_FREE_GB", 0.0)
 
 
-def serve(tmp_path: Path, payload: bytes = MODEL_BYTES, *, filename: str = FILENAME) -> Path:
-    """Writes payload where the Hugging Face URL layout expects it, returns the base URL."""
-    root = tmp_path / "hub"
-    path = root / REPO / "resolve" / REVISION / filename
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(payload)
-    return root
-
-
-def make_settings(tmp_path: Path, base_url: Path, **overrides) -> dm.Settings:
+def make_settings(tmp_path: Path, **overrides) -> dm.Settings:
     values = {
         "repo_id": REPO,
         "filename": FILENAME,
@@ -50,7 +38,6 @@ def make_settings(tmp_path: Path, base_url: Path, **overrides) -> dm.Settings:
         "sha256": MODEL_SHA,
         "quantization": "Q4_K_M",
         "models_dir": tmp_path / "models",
-        "base_url": base_url.as_uri(),
     }
     values.update(overrides)
     return dm.Settings(**values)
@@ -60,50 +47,37 @@ def final_path(settings: dm.Settings) -> Path:
     return settings.models_dir / "translation" / settings.filename
 
 
-class CountingOpener:
-    def __init__(self) -> None:
-        self.calls = 0
+def fake_download(payload: bytes = MODEL_BYTES, calls: list | None = None):
+    def fetch(*, repo_id, filename, revision, token, local_dir):
+        if calls is not None:
+            calls.append((repo_id, filename, revision, token))
+        path = Path(local_dir) / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        return str(path)
 
-    def __call__(self, request):
-        self.calls += 1
-        return urllib.request.urlopen(request)
-
-
-class FakeResponse:
-    def __init__(self, payload: bytes, declared: int | None = None) -> None:
-        self._payload = payload
-        self.headers = {"Content-Length": str(len(payload) if declared is None else declared)}
-
-    def read(self, size: int) -> bytes:
-        block, self._payload = self._payload[:size], self._payload[size:]
-        return block
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exception) -> bool:
-        return False
+    return fetch
 
 
 def test_second_run_does_not_download_again(tmp_path):
-    settings = make_settings(tmp_path, serve(tmp_path))
-    opener = CountingOpener()
+    settings = make_settings(tmp_path)
+    calls: list = []
 
-    first = dm.ensure_model(settings, opener=opener)
-    second = dm.ensure_model(settings, opener=opener)
+    first = dm.ensure_model(settings, download=fake_download(calls=calls))
+    second = dm.ensure_model(settings, download=fake_download(calls=calls))
 
     assert first == second == final_path(settings)
     assert first.read_bytes() == MODEL_BYTES
-    assert opener.calls == 1
+    assert len(calls) == 1
 
 
 def test_untrusted_existing_file_is_replaced_and_archived(tmp_path):
-    settings = make_settings(tmp_path, serve(tmp_path))
+    settings = make_settings(tmp_path)
     stale = final_path(settings)
     stale.parent.mkdir(parents=True)
     stale.write_bytes(b"GGUF" + b"an older build")
 
-    dm.ensure_model(settings, opener=CountingOpener())
+    dm.ensure_model(settings, download=fake_download())
 
     assert final_path(settings).read_bytes() == MODEL_BYTES
     archived = list((settings.models_dir / "translation" / ".archive").iterdir())
@@ -113,96 +87,41 @@ def test_untrusted_existing_file_is_replaced_and_archived(tmp_path):
 
 def test_file_with_the_right_digest_but_no_gguf_magic_is_refused(tmp_path):
     error_page = b"<html>rate limited</html>"
-    settings = make_settings(
-        tmp_path,
-        serve(tmp_path, error_page),
-        sha256=hashlib.sha256(error_page).hexdigest(),
-    )
+    settings = make_settings(tmp_path, sha256=hashlib.sha256(error_page).hexdigest())
 
     with pytest.raises(dm.InitError, match="not a GGUF file"):
-        dm.ensure_model(settings, opener=CountingOpener())
+        dm.ensure_model(settings, download=fake_download(error_page))
 
     assert not final_path(settings).exists()
 
 
-def test_retries_a_transient_failure_then_succeeds(tmp_path):
-    settings = make_settings(tmp_path, serve(tmp_path))
-    real = urllib.request.urlopen
-    attempts = []
+def test_download_failure_is_reported_and_leaves_nothing_behind(tmp_path):
+    settings = make_settings(tmp_path)
 
-    def flaky(request):
-        attempts.append(request)
-        if len(attempts) < 3:
-            raise urllib.error.URLError("connection reset")
-        return real(request)
+    def gated(**kwargs):
+        raise RuntimeError("403 Client Error: gated repository")
 
-    waits: list[float] = []
-    dm.ensure_model(settings, opener=flaky, sleep=waits.append)
-
-    assert len(attempts) == 3
-    assert waits == [2.0, 4.0]
-    assert final_path(settings).read_bytes() == MODEL_BYTES
-
-
-def test_gives_up_after_the_last_retry_and_leaves_nothing_behind(tmp_path):
-    settings = make_settings(tmp_path, serve(tmp_path))
-
-    def dead(request):
-        raise urllib.error.URLError("no route to host")
-
-    with pytest.raises(dm.InitError, match="after 4 attempts"):
-        dm.ensure_model(settings, opener=dead, sleep=lambda seconds: None)
+    with pytest.raises(dm.InitError, match="HF_TOKEN"):
+        dm.ensure_model(settings, download=gated)
 
     staging = settings.models_dir / "translation" / ".staging"
     assert not list(staging.iterdir())
     assert not final_path(settings).exists()
 
 
-def test_short_stream_is_retried_then_refused(tmp_path):
-    settings = make_settings(tmp_path, serve(tmp_path))
-    calls = []
+def test_staging_directory_is_removed_after_a_successful_download(tmp_path):
+    settings = make_settings(tmp_path)
 
-    def truncated(request):
-        calls.append(request)
-        return FakeResponse(MODEL_BYTES[:8], declared=len(MODEL_BYTES))
+    dm.ensure_model(settings, download=fake_download())
 
-    with pytest.raises(dm.InitError, match="stream ended after 8 of"):
-        dm.download_file(
-            settings.url,
-            tmp_path / "partial.gguf",
-            opener=truncated,
-            retries=1,
-            sleep=lambda seconds: None,
-            log_fn=lambda message: None,
-        )
-
-    assert len(calls) == 2
-
-
-def test_gated_repository_is_not_retried(tmp_path):
-    settings = make_settings(tmp_path, serve(tmp_path))
-    calls = []
-
-    def forbidden(request):
-        calls.append(request)
-        raise urllib.error.HTTPError(settings.url, 403, "Forbidden", {}, None)
-
-    with pytest.raises(dm.InitError, match="HF_TOKEN"):
-        dm.download_file(
-            settings.url,
-            tmp_path / "gated.gguf",
-            opener=forbidden,
-            sleep=lambda seconds: None,
-            log_fn=lambda message: None,
-        )
-
-    assert len(calls) == 1
+    staging = settings.models_dir / "translation" / ".staging"
+    assert not list(staging.iterdir())
 
 
 def test_manifest_records_the_verified_artifact(tmp_path):
-    settings = make_settings(tmp_path, serve(tmp_path))
+    settings = make_settings(tmp_path)
 
-    dm.ensure_model(settings, opener=CountingOpener())
+    dm.ensure_model(settings, download=fake_download())
 
     manifest = json.loads((settings.models_dir / "translation" / "model-manifest.json").read_text())
     assert manifest["repo"] == REPO
@@ -215,7 +134,7 @@ def test_manifest_records_the_verified_artifact(tmp_path):
 
 
 def test_publish_keeps_the_previous_file(tmp_path):
-    settings = make_settings(tmp_path, serve(tmp_path))
+    settings = make_settings(tmp_path)
     paths = dm.Paths.of(settings)
     paths.final.parent.mkdir(parents=True)
     paths.final.write_bytes(b"GGUF" + b"previous")
@@ -232,12 +151,15 @@ def test_publish_keeps_the_previous_file(tmp_path):
 
 
 def test_low_disk_space_is_refused_before_downloading(tmp_path, monkeypatch):
-    settings = make_settings(tmp_path, serve(tmp_path))
+    settings = make_settings(tmp_path)
     monkeypatch.setattr(dm, "REQUIRED_FREE_GB", 12.0)
     monkeypatch.setattr(dm, "disk_free_gb", lambda path: 1.5)
+    calls: list = []
 
     with pytest.raises(dm.InitError, match="only 1.5 GB free"):
-        dm.ensure_model(settings, opener=CountingOpener())
+        dm.ensure_model(settings, download=fake_download(calls=calls))
+
+    assert calls == []
 
 
 def test_missing_sha_is_refused():
@@ -283,9 +205,6 @@ def test_settings_come_from_the_documented_environment():
     assert settings.sha256 == MODEL_SHA
     assert settings.models_dir == Path("/srv/models")
     assert settings.token == "hf_example"
-    assert settings.url == (
-        f"https://huggingface.co/someone/else-GGUF/resolve/{REVISION}/Other.F16.gguf"
-    )
 
 
 def test_main_exits_non_zero_with_a_readable_error(capsys):
