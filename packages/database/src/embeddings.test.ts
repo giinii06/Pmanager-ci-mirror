@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  cancelEmbeddingJob,
   claimEmbeddingJob,
   completeAsrJob,
   completeEmbeddingJob,
@@ -159,6 +160,16 @@ function chunk(index: number, vector: number[]): EmbeddingVectorInput {
   }
 }
 
+/** The transcript a real enqueue would read, so a pass after retranscribe is honest. */
+function newestTranscript(db: Db, assetId: string): string | null {
+  const row = db
+    .query(
+      'SELECT id FROM transcripts WHERE asset_id = ? AND file_version = 1 ORDER BY created_at DESC LIMIT 1',
+    )
+    .get(assetId) as { id: string } | null
+  return row?.id ?? null
+}
+
 /** Enqueues, claims, and completes one pass, so the vectors land as a worker's would. */
 function store(
   db: Db,
@@ -168,7 +179,7 @@ function store(
 ): void {
   const job = createEmbeddingJob(
     db,
-    jobInput({ id: `embed-${assetId}-${at}`, assetId, sourceTranscriptId: `tr-${assetId}` }),
+    jobInput({ id: `embed-${assetId}-${at}`, assetId, sourceTranscriptId: newestTranscript(db, assetId) }),
     at,
   )
   claimEmbeddingJob(db, 'worker-a', 120_000, at + 1)
@@ -308,12 +319,56 @@ describe('embedding queue', () => {
     store(db, 'asset1', [chunk(0, [1, 0, 0, 0]), chunk(1, [0, 1, 0, 0])], 5_000)
     expect(getCurrentEmbedding(db, 'asset1', 1, FINGERPRINT)).toHaveLength(2)
 
+    retranscribe(db, 'asset1', 'v2', 5_500)
     store(db, 'asset1', [chunk(0, [0, 0, 1, 0])], 6_000)
 
     const stored = getCurrentEmbedding(db, 'asset1', 1, FINGERPRINT)
     expect(stored).toHaveLength(1)
     expect(stored[0]!.chunkIndex).toBe(0)
     expect([...stored[0]!.vector]).toEqual([0, 0, 1, 0])
+    db.close()
+  })
+
+  test('re-enqueueing a finished pass leaves one row and no new work', () => {
+    const db = seed()
+    store(db, 'asset1', [chunk(0, [1, 0, 0, 0])], 5_000)
+
+    const again = createEmbeddingJob(db, jobInput({ id: 'embed-again' }), 9_000)
+
+    expect(again.id).toBe('embed-asset1-5000')
+    expect(again.state).toBe('completed')
+    expect(again.createdAt).toBe(5_000)
+    expect(again.updatedAt).toBe(5_002)
+    const rows = db.query('SELECT count(*) AS n FROM embedding_jobs').get() as { n: number }
+    expect(rows.n).toBe(1)
+    db.close()
+  })
+
+  test('a finished row whose model changed is reset instead of duplicated', () => {
+    const db = seed()
+    store(db, 'asset1', [chunk(0, [1, 0, 0, 0])], 5_000)
+
+    const rebuilt = createEmbeddingJob(db, jobInput({ id: 'embed-new', modelSha256: 'sha-embed-2' }), 9_000)
+
+    expect(rebuilt.id).toBe('embed-asset1-5000')
+    expect(rebuilt.state).toBe('queued')
+    expect(rebuilt.modelSha256).toBe('sha-embed-2')
+    const rows = db.query('SELECT count(*) AS n FROM embedding_jobs').get() as { n: number }
+    expect(rows.n).toBe(1)
+    db.close()
+  })
+
+  test('a canceled row is retried in place', () => {
+    const db = seed()
+    const job = createEmbeddingJob(db, jobInput(), 3_000)
+    cancelEmbeddingJob(db, job.id, 3_200)
+
+    const retried = createEmbeddingJob(db, jobInput({ id: 'embed-retry' }), 9_000)
+
+    expect(retried.id).toBe(job.id)
+    expect(retried.state).toBe('queued')
+    expect(retried.attempts).toBe(0)
+    expect(retried.errorMessage).toBeNull()
     db.close()
   })
 

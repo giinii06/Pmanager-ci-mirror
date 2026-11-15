@@ -14,6 +14,8 @@ type Params = SQLQueryBindings[]
 
 const ACTIVE_STATES = "('queued','embedding','writing')"
 
+const ACTIVE = new Set<EmbeddingJobState>(['queued', 'embedding', 'writing'])
+
 const JOB_COLUMNS = `
   id, asset_id AS assetId, file_version AS fileVersion,
   source_transcript_id AS sourceTranscriptId, state, stage, progress, attempts,
@@ -111,12 +113,48 @@ const UPSERT_SETS = [
 /**
  * Queues one embedding pass for a file version. An active row is reused as it
  * stands when nothing it depends on changed, and rebuilt from scratch when it did.
+ *
+ * A finished row is reused too: re-running the backfill, or asking for the same
+ * video twice, must not queue a second pass over work that is already current.
+ * Without this, every run adds a row per video and spends the card again.
  */
 export function createEmbeddingJob(
   db: Db,
   input: CreateEmbeddingJobInput,
   now: number,
 ): EmbeddingJobRecord {
+  const newest = db
+    .query<EmbeddingJobRecord, Params>(
+      `SELECT ${JOB_COLUMNS} FROM embedding_jobs
+       WHERE asset_id = ? AND file_version = ?
+       ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+    )
+    .get(input.assetId, input.fileVersion)
+
+  if (newest && isCurrent(newest, input)) return newest
+
+  if (newest && !ACTIVE.has(newest.state)) {
+    // Reset the finished row in place so the table keeps one row per file version.
+    db.query<null, Params>(
+      `UPDATE embedding_jobs SET
+         source_transcript_id = ?, state = 'queued', stage = 'queued', progress = 0,
+         attempts = 0, lease_owner = NULL, lease_expires_at = NULL, run_after = 0,
+         model_id = ?, model_revision = ?, model_sha256 = ?, pipeline_version = ?,
+         dimensions = ?, error_message = NULL, started_at = NULL, updated_at = ?
+       WHERE id = ?`,
+    ).run(
+      input.sourceTranscriptId,
+      input.modelId,
+      input.modelRevision,
+      input.modelSha256,
+      input.pipelineVersion,
+      input.dimensions,
+      now,
+      newest.id,
+    )
+    return getEmbeddingJob(db, newest.id)!
+  }
+
   return db
     .query<EmbeddingJobRecord, Params>(
       `INSERT INTO embedding_jobs (
@@ -142,6 +180,17 @@ export function createEmbeddingJob(
       now,
       now,
     )!
+}
+
+/** True when a finished row already holds the vectors this input would produce. */
+function isCurrent(row: EmbeddingJobRecord, input: CreateEmbeddingJobInput): boolean {
+  return (
+    row.state === 'completed' &&
+    row.modelSha256 === input.modelSha256 &&
+    row.pipelineVersion === input.pipelineVersion &&
+    row.dimensions === input.dimensions &&
+    row.sourceTranscriptId === input.sourceTranscriptId
+  )
 }
 
 export function getEmbeddingJob(db: Db, id: string): EmbeddingJobRecord | null {

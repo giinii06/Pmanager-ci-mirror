@@ -298,11 +298,12 @@ describe('work queue', () => {
 
   test('the embedding lane estimates on its own and adds to the GPU total', () => {
     const db = seed()
+    insertAsset(db, assetInput('asset4', 'folder1'))
     let now = 10_000
     now = finishedEmbedding(db, 'e1', 'asset1', now, 10_000)
     now = finishedEmbedding(db, 'e2', 'asset2', now, 20_000)
     now = finishedEmbedding(db, 'e3', 'asset3', now, 30_000)
-    embeddingJob(db, 'e4', 'asset1', now)
+    embeddingJob(db, 'e4', 'asset4', now)
 
     const queue = workQueue(db, now + 1_000, RESOURCE)
     const lane = queue.pipelines.find((item) => item.pipeline === 'embedding')!
