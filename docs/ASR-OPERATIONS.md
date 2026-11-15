@@ -88,6 +88,9 @@ cd apps/asr-worker
 uv sync --python 3.12 --extra dev
 
 ASR_WORKER_TOKEN=<.env.asr과 같은 값> \
+ASR_MODEL_REVISION=a8b7485274ac50e80a685f3813489fed475adc5f \
+ALIGN_MODEL_REVISION=c7cbfc2048c462b0d63a45797104fc9db3ad62b7 \
+ASR_PIPELINE_VERSION=1 \
 API_BASE_URL=http://127.0.0.1:8788 \
 ASR_DEVICE=mps \
 ASR_MODEL_DIR=../../models/asr \
@@ -97,6 +100,9 @@ RESULT_DIR=../../asr-results \
 HF_HUB_OFFLINE=1 \
 .venv/bin/python -m asr_worker.main
 ```
+
+워커의 `ASR_MODEL_REVISION`, `ALIGN_MODEL_REVISION`, `ASR_PIPELINE_VERSION`은
+API와 같아야 합니다. 다르면 첫 작업이 revision 불일치로 실패합니다.
 
 MPS 지원은 실기기에서 확인해야 합니다. 특정 연산이 실패하면 `ASR_DEVICE=cpu`로 같은 작업을 다시 돌려 결과를 비교하고, 속도가 기준에 못 미치면 그 사실을 사용자에게 알립니다.
 
