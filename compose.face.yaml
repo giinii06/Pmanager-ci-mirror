@@ -36,6 +36,7 @@ services:
       FACE_CACHE_DIR: /cache
     volumes:
       - ${MEDIA_ROOT:-./sample-media}:/media:ro
+      - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra:ro
       - ./models:/models:ro
       - mediavault-cache:/cache
     depends_on:
