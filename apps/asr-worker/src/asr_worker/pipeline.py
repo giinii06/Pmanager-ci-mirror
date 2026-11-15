@@ -30,20 +30,37 @@ def safe_segment(value: str, limit: int = 40) -> str:
 
 
 class Heartbeat:
-    """Keeps the lease alive and tells the pipeline when it is gone."""
+    """Keeps the lease alive and tells the pipeline when it is gone.
 
-    def __init__(self, client: WorkerClient, job_id: str, owner: str, lease_ms: int):
+    Fail-closed: the thread declares the lease lost as soon as it cannot confirm it
+    before it expires, instead of retrying until a call happens to return.
+    """
+
+    def __init__(
+        self,
+        client: WorkerClient,
+        job_id: str,
+        owner: str,
+        lease_ms: int,
+        *,
+        interval: float | None = None,
+    ):
         self.client = client
         self.job_id = job_id
         self.owner = owner
-        self.interval = max(5.0, lease_ms / 3000)
+        self.lease = lease_ms / 1000.0
+        self.interval = max(5.0, lease_ms / 3000) if interval is None else interval
+        self.call_timeout = max(1.0, self.lease / 4)  # one renewal inside the lease
         self.lost = threading.Event()
         self.gpu = threading.Event()
         self._process: subprocess.Popen[str] | None = None
         self._stop = threading.Event()
+        self._confirmed_until = 0.0  # monotonic; the job lease is known live until here
+        self._gpu_until = 0.0  # monotonic; the card is known ours until here
         self._thread = threading.Thread(target=self._loop, name="asr-heartbeat", daemon=True)
 
     def start(self) -> None:
+        self._confirmed_until = time.monotonic() + self.lease  # claim() just granted it
         self._thread.start()
 
     def stop(self) -> None:
@@ -57,29 +74,69 @@ class Heartbeat:
         self._process = None
 
     def hold_gpu(self) -> None:
+        self._gpu_until = time.monotonic() + self.lease  # the acquire just granted it
         self.gpu.set()
 
     def drop_gpu(self) -> None:
+        self._gpu_until = 0.0
         self.gpu.clear()
 
     def _loop(self) -> None:
-        while not self._stop.wait(self.interval):
-            try:
-                self.client.heartbeat(self.job_id, self.owner)
-                if self.gpu.is_set():
-                    self.client.gpu_heartbeat(self.owner)
-            except LeaseLost:
-                log.warning("lease lost for %s, stopping the pipeline", self.job_id)
-                self.lost.set()
-                self._terminate()
+        while not self._stop.wait(self._next_wait()):
+            if self._expired():
+                self._lose("the lease expired before a heartbeat was confirmed")
                 return
-            except FatalError as error:
-                log.error("heartbeat failed: %s", error)
-                self.lost.set()
-                self._terminate()
-                return
-            except Exception as error:  # noqa: BLE001 - keep retrying transient faults
-                log.warning("heartbeat error: %s", error)
+            self._beat()
+
+    def _next_wait(self) -> float:
+        """Wake on the interval, but never sleep past an unconfirmed deadline: that
+        instant is when the card may already belong to someone else."""
+        deadlines = [self._confirmed_until]
+        if self.gpu.is_set():
+            deadlines.append(self._gpu_until)
+        return max(0.0, min(self.interval, min(deadlines) - time.monotonic()))
+
+    def _expired(self) -> bool:
+        now = time.monotonic()
+        return now >= self._confirmed_until or (self.gpu.is_set() and now >= self._gpu_until)
+
+    def _beat(self) -> None:
+        now = time.monotonic()
+        try:
+            self.client.heartbeat(
+                self.job_id,
+                self.owner,
+                timeout=min(self.call_timeout, max(0.1, self._confirmed_until - now)),
+            )
+            self._confirmed_until = time.monotonic() + self.lease
+        except LeaseLost:
+            self._lose(f"lease lost for {self.job_id}")
+            return
+        except FatalError as error:
+            self._lose(f"heartbeat failed: {error}")
+            return
+        except Exception as error:  # noqa: BLE001 - transient while the lease still lives
+            log.warning("heartbeat error: %s", error)
+            return  # the deadline decides, not this exception
+        if not self.gpu.is_set():
+            return
+        now = time.monotonic()  # the job call above may have taken a while
+        try:
+            self.client.gpu_heartbeat(
+                self.owner, timeout=min(self.call_timeout, max(0.1, self._gpu_until - now))
+            )
+            self._gpu_until = time.monotonic() + self.lease
+        except LeaseLost:
+            self._lose(f"GPU lease lost for {self.job_id}")
+        except FatalError as error:
+            self._lose(f"GPU heartbeat failed: {error}")
+        except Exception as error:  # noqa: BLE001 - the deadline decides
+            log.warning("GPU heartbeat error: %s", error)
+
+    def _lose(self, message: str) -> None:
+        log.warning("%s, stopping the pipeline", message)
+        self.lost.set()
+        self._terminate()
 
     def _terminate(self) -> None:
         process = self._process
