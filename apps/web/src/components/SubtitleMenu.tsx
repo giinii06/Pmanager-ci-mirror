@@ -44,6 +44,7 @@ export function languageName(tag: string): string {
 }
 
 export function trackLabel(track: SubtitleTrackDTO, sourceLanguage?: string | null): string {
+  if (!track.language) return track.source === 'asr' ? '자막 (AI)' : 'AI 번역'
   const name = languageName(track.language)
   if (track.source === 'asr') return `${name} (AI)`
   if (sourceLanguage && sourceLanguage !== track.language) {
