@@ -9,6 +9,7 @@ import {
   openDatabase,
   removeFavorite,
   softDeleteMissing,
+  touchAssets,
   upsertFolder,
 } from './index'
 import type { NewAsset } from './assets'
@@ -93,6 +94,24 @@ describe('listAssets', () => {
     expect(softDeleteMissing(db, LIBRARY, 'newer-scan', 40_000)).toBe(5)
     expect(listAssets(db, USER, {}, null, 10).total).toBe(0)
     expect(getStats(db, USER)).toMatchObject({ assets: 0, images: 0, videos: 0 })
+    db.close()
+  })
+
+  test('touchAssets marks every id in the batch', () => {
+    const db = seed()
+    touchAssets(db, ['asset1', 'asset3'], 'scan2')
+    const rows = db
+      .query<{ id: string; lastSeenScan: string }, []>(
+        'SELECT id, last_seen_scan AS lastSeenScan FROM assets ORDER BY id',
+      )
+      .all()
+    expect(rows).toEqual([
+      { id: 'asset0', lastSeenScan: SCAN },
+      { id: 'asset1', lastSeenScan: 'scan2' },
+      { id: 'asset2', lastSeenScan: SCAN },
+      { id: 'asset3', lastSeenScan: 'scan2' },
+      { id: 'asset4', lastSeenScan: SCAN },
+    ])
     db.close()
   })
 })

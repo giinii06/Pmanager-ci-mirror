@@ -9,7 +9,7 @@ import {
   insertAsset,
   recomputeFolderCounts,
   softDeleteMissing,
-  touchAsset,
+  touchAssets,
   updateAssetFile,
   updateScanProgress,
   upsertFolder,
@@ -18,6 +18,8 @@ import {
 import { PRIORITY, classifyFile, extensionOf, newId } from '@mediavault/shared'
 import { probeImage, probeVideo, resolveInside } from '@mediavault/media'
 import type { WorkerConfig } from './config'
+
+const TOUCH_BATCH = 500
 
 const SKIP_DIRECTORIES = new Set([
   '@eaDir',
@@ -49,6 +51,12 @@ export async function scanLibrary(
   const summary: ScanSummary = { files: 0, added: 0, updated: 0, removed: 0, skipped: 0 }
   const startedAt = performance.now()
   let unchanged = 0
+  const pending: string[] = []
+  const flush = (): void => {
+    if (pending.length === 0) return
+    touchAssets(db, pending, scanId)
+    pending.length = 0
+  }
 
   const indexFile = async (absolute: string, relative: string, folderId: string): Promise<void> => {
     const filename = path.basename(absolute)
@@ -72,7 +80,8 @@ export async function scanLibrary(
       existing.sizeBytes === fileInfo.size &&
       existing.mtimeMs === mtimeMs
     ) {
-      touchAsset(db, existing.id, scanId)
+      pending.push(existing.id)
+      if (pending.length >= TOUCH_BATCH) flush()
       unchanged += 1
       summary.files += 1
       return
@@ -102,7 +111,10 @@ export async function scanLibrary(
       }
     } catch (error) {
       console.warn(`[scan] skipped ${relative}: ${(error as Error).message}`)
-      if (existing) touchAsset(db, existing.id, scanId)
+      if (existing) {
+        pending.push(existing.id)
+        if (pending.length >= TOUCH_BATCH) flush()
+      }
       summary.skipped += 1
       return
     }
@@ -210,6 +222,7 @@ export async function scanLibrary(
   }
 
   await walk(root, '', null, 0)
+  flush()
 
   summary.removed = softDeleteMissing(db, libraryId, scanId, Date.now())
   deleteStaleFolders(db, libraryId, scanId)

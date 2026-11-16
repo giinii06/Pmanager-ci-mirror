@@ -274,10 +274,14 @@ export function updateAssetFile(db: Db, id: string, update: AssetFileUpdate): vo
   )
 }
 
-export function touchAsset(db: Db, id: string, scanId: string): void {
-  db.query<null, Params>(
+export function touchAssets(db: Db, ids: string[], scanId: string): void {
+  if (ids.length === 0) return
+  const statement = db.query<null, Params>(
     'UPDATE assets SET last_seen_scan = ?, deleted_at = NULL WHERE id = ?',
-  ).run(scanId, id)
+  )
+  db.transaction(() => {
+    for (const id of ids) statement.run(scanId, id)
+  })()
 }
 
 export function softDeleteMissing(db: Db, libraryId: string, scanId: string, now: number): number {
