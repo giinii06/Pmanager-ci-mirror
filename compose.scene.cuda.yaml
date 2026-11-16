@@ -33,7 +33,7 @@ services:
       SCENE_TEMP_DIR: /scene-tmp
       SCENE_CACHE_DIR: /cache
       # Bounds how long one scene job can hold the shared GPU, so ASR is not starved.
-      SCENE_MAX_WINDOWS: ${SCENE_MAX_WINDOWS:-60}
+      SCENE_MAX_WINDOWS: ${SCENE_MAX_WINDOWS:-120}
       # The card is shared with ASR, translation and embedding, and the kind that
       # just released it lets another kind take the next turn. A scene job can
       # therefore wait for one ASR stage, which is longer than the default 15

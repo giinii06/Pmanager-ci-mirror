@@ -24,16 +24,14 @@ def plan_windows(
     """Even windows over the whole file. A file shorter than one window is one window.
 
     A positive max_windows widens the step so one job never plans more than that
-    many windows, keeping the configured overlap-to-step ratio.
+    many windows, sampling the file instead of covering it. The window itself
+    stays at the configured length, because the model's memory grows with it.
     """
     if duration_ms <= 0 or window_ms <= 0:
         return []
-    base = max(1, window_ms - overlap_ms)
-    step = base
+    step = max(1, window_ms - overlap_ms)
     if max_windows > 0 and duration_ms > step * max_windows:
         step = max(1, -(-duration_ms // max_windows))
-        ratio = overlap_ms / base
-        window_ms = step + round(step * ratio)
     windows: list[tuple[int, int]] = []
     start = 0
     while start < duration_ms:

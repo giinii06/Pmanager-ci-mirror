@@ -49,12 +49,11 @@ def test_a_cap_bounds_the_windows_of_a_long_file() -> None:
 
     assert len(windows) == 60
     assert windows[0][0] == 0
-    assert windows[-1][1] == duration
-    overlaps = [end - start for (_, end), (start, _) in zip(windows, windows[1:])]
-    assert len(set(overlaps)) == 1
-    assert overlaps[0] > 0
-    step = windows[1][0] - windows[0][0]
-    assert overlaps[0] / step == pytest.approx(0.25, rel=1e-4)
+    assert windows[-1][1] <= duration
+    assert all(end - start == 10_000 for start, end in windows)
+    steps = [start - previous_start for (previous_start, _), (start, _) in zip(windows, windows[1:])]
+    assert len(set(steps)) == 1
+    assert steps[0] > 10_000
 
 
 def test_a_cap_the_plan_already_fits_changes_nothing() -> None:
@@ -69,7 +68,7 @@ def test_a_cap_of_zero_leaves_the_long_file_plan_unchanged() -> None:
 
 
 def test_a_cap_of_one_is_a_single_window_over_the_file() -> None:
-    assert plan_windows(13_804_000, 10_000, 2_000, 1) == [(0, 13_804_000)]
+    assert plan_windows(13_804_000, 10_000, 2_000, 1) == [(0, 10_000)]
 
 
 def test_normalise_returns_a_unit_vector() -> None:
@@ -112,8 +111,8 @@ def test_the_default_media_root_is_the_mount() -> None:
     assert config.media_root == "/media"
 
 
-def test_the_window_cap_defaults_to_60_and_honours_the_environment() -> None:
-    assert load_config({"SCENE_WORKER_TOKEN": "token-token-token"}).max_windows == 60
+def test_the_window_cap_defaults_to_120_and_honours_the_environment() -> None:
+    assert load_config({"SCENE_WORKER_TOKEN": "token-token-token"}).max_windows == 120
 
     capped = load_config({"SCENE_WORKER_TOKEN": "token-token-token", "SCENE_MAX_WINDOWS": "12"})
 
