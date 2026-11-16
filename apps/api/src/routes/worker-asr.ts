@@ -60,11 +60,15 @@ const completeBody = z
   })
   .superRefine((body, ctx) => {
     if (body.hasSpeech !== false) {
-      if (body.language.length < 2) {
+      // A speech file may still have no language: the probe can be uncertain,
+      // report a language this library has no track for, or fail outright. The
+      // transcript is the only record that the file was processed, so it is
+      // stored with an unknown language instead of failing the job.
+      if (body.language !== '' && body.language.length < 2) {
         ctx.addIssue({
           code: 'custom',
           path: ['language'],
-          message: 'A transcript with speech needs a language.',
+          message: 'A language tag is at least two characters, or empty when unknown.',
         })
       }
       return

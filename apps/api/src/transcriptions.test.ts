@@ -257,3 +257,30 @@ describe('no-speech transcripts', () => {
     await h.app.close()
   })
 })
+
+describe('an unknown spoken language', () => {
+  test('a speech transcript without a language is stored instead of rejected', async () => {
+    const h = await harness()
+    const done = await complete(h, {
+      language: '',
+      plainText: '안녕하세요',
+      segments: [{ startMs: 0, endMs: 1_000, text: '안녕하세요' }],
+    })
+    expect(done.statusCode).toBe(200)
+
+    const status = await h.app.inject({
+      method: 'GET',
+      url: '/api/assets/asset1/transcription/status',
+      headers: { cookie: h.cookie },
+    })
+    expect(status.json().job.state).toBe('completed')
+    expect(status.json().transcript.hasSpeech).toBe(true)
+    expect(status.json().transcript.language).toBe('')
+    expect(status.json().transcript.segmentCount).toBe(1)
+
+    // The translation lane still runs, so an unlabelled transcript is not a
+    // dead end for the file.
+    expect(activeTranslationJob(h.db, done.json().transcriptId, 'ko')).not.toBeNull()
+    await h.app.close()
+  })
+})
