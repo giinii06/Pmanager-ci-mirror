@@ -187,6 +187,7 @@ export function TranscriptPanel({
 
   const job = status.data?.job
   const running = isActive(job?.state)
+  const noSpeech = status.data?.transcript?.hasSpeech === false
   const failed = job?.state === 'failed'
   const translationJob = translationStatus.data?.job
   const translationRunning = isTranslationActive(translationJob?.state)
@@ -221,6 +222,21 @@ export function TranscriptPanel({
             progress={job?.progress ?? 0}
             note="음성 인식과 시간 정렬은 한 번에 하나씩 실행됩니다. 창을 닫아도 작업은 계속됩니다."
           />
+        ) : noSpeech ? (
+          <div className="px-4 py-5">
+            <p className="text-[12.5px] text-ink">이 파일에는 대사가 없습니다.</p>
+            <p className="mt-1.5 break-words text-[11.5px] leading-relaxed text-muted">
+              자막은 말소리가 있는 파일에만 만듭니다. 다시 확인하면 이 파일을 한 번 더 인식합니다.
+            </p>
+            <button
+              type="button"
+              onClick={() => create.mutate(true)}
+              disabled={create.isPending}
+              className="mt-3 rounded-lg border border-line-strong px-3 py-1.5 text-[12px] text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-50"
+            >
+              다시 확인
+            </button>
+          </div>
         ) : failed ? (
           <div className="px-4 py-5">
             <p className="text-[12.5px] text-ink">자막을 만들지 못했습니다.</p>

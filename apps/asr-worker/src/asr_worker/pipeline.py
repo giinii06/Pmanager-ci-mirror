@@ -250,7 +250,8 @@ class Pipeline:
                 self.config.language,
             )
             if not detected:
-                raise RuntimeError("No speech was found in this file.")
+                self._write_no_speech(job_id, duration_ms, file_version, asset_id)
+                return
             self._run_stage(
                 [
                     "align",
@@ -389,6 +390,61 @@ class Pipeline:
                 log.warning("could not release the GPU lease: %s", error)
             log_path.unlink(missing_ok=True)
 
+    def _result_target(self, file_version: int, asset_id: str) -> tuple[Path, str]:
+        """The absolute result directory and its path relative to the result root."""
+        key = "_".join(
+            safe_segment(part)
+            for part in (
+                self.config.model_revision,
+                self.config.aligner_revision,
+                self.config.pipeline_version,
+            )
+        )
+        relative = f"{safe_segment(asset_id, 32)}/{file_version}/{key}"
+        target = Path(self.config.result_dir) / relative
+        target.mkdir(parents=True, exist_ok=True)
+        return target, relative
+
+    def _write_no_speech(
+        self, job_id: str, duration_ms: int, file_version: int, asset_id: str
+    ) -> None:
+        """A file with no dialogue still records a transcript.
+
+        The row is what tells the queue this file has been examined, so without it
+        the reconciler would keep queuing the same silent file.
+        """
+        target, relative = self._result_target(file_version, asset_id)
+        transcript = {
+            "assetId": asset_id,
+            "fileVersion": file_version,
+            "language": "",
+            "hasSpeech": False,
+            "modelId": self.config.model_id,
+            "modelRevision": self.config.model_revision,
+            "alignerId": self.config.aligner_id,
+            "alignerRevision": self.config.aligner_revision,
+            "pipelineVersion": self.config.pipeline_version,
+            "device": None,
+            "durationMs": duration_ms,
+            "createdAt": int(time.time() * 1000),
+            "segments": [],
+            "chunks": [],
+        }
+        write_json_atomic(target / "transcript.json", transcript)
+
+        self.client.complete(
+            job_id,
+            self.owner,
+            {
+                "transcriptId": f"{safe_segment(asset_id, 32)}-{uuid.uuid4().hex[:12]}",
+                "resultDir": relative,
+                "plainText": "",
+                "language": "",
+                "hasSpeech": False,
+                "segments": [],
+            },
+        )
+
     def _write_results(
         self,
         job_id: str,
@@ -408,17 +464,7 @@ class Pipeline:
             for chunk in chunks
             if str(chunk.get("text", "")).strip()
         )
-        key = "_".join(
-            safe_segment(part)
-            for part in (
-                self.config.model_revision,
-                self.config.aligner_revision,
-                self.config.pipeline_version,
-            )
-        )
-        relative = f"{safe_segment(asset_id, 32)}/{file_version}/{key}"
-        target = Path(self.config.result_dir) / relative
-        target.mkdir(parents=True, exist_ok=True)
+        target, relative = self._result_target(file_version, asset_id)
 
         transcript = {
             "assetId": asset_id,
