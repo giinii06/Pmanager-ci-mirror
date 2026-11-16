@@ -6,6 +6,7 @@ import logging
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -191,11 +192,15 @@ def main() -> int:
 
     expected = int(claim["dimensions"])
     scenes: list[dict[str, Any]] = []
+    cut_ms = 0.0
+    thumbnail_ms = 0.0
     workdir = Path(tempfile.mkdtemp(prefix="scene-stage-"))
     try:
         for index, (start_ms, end_ms) in enumerate(windows):
             clip = workdir / f"clip-{index:04d}.mp4"
+            cut_started = time.perf_counter()
             cut_clip(claim["mediaPath"], start_ms, end_ms, clip, with_audio=audio_present)
+            cut_ms += (time.perf_counter() - cut_started) * 1000
             try:
                 visual, audio, joint = encode_clip(
                     model, processor, str(clip), device=device, dtype=dtype
@@ -211,11 +216,13 @@ def main() -> int:
                 clip.unlink(missing_ok=True)
 
             thumb_rel = f"scenes/{claim['assetId']}/{index:04d}.jpg"
+            thumb_started = time.perf_counter()
             write_thumbnail(
                 claim["mediaPath"],
                 (start_ms + end_ms) // 2,
                 Path(claim["cacheDir"]) / thumb_rel,
             )
+            thumbnail_ms += (time.perf_counter() - thumb_started) * 1000
             scenes.append(
                 {
                     "seq": index,
@@ -229,6 +236,16 @@ def main() -> int:
             )
             print(f"PROGRESS {(index + 1) / len(windows):.4f}", flush=True)
 
+        log.info(
+            json.dumps(
+                {
+                    "event": "scene.window_prepare",
+                    "windows": len(windows),
+                    "cutMs": round(cut_ms, 1),
+                    "thumbnailMs": round(thumbnail_ms, 1),
+                }
+            )
+        )
         Path(args.out).write_text(json.dumps({"scenes": scenes}), encoding="utf-8")
     finally:
         import shutil

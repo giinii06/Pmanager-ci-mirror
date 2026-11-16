@@ -184,6 +184,7 @@ class Pipeline:
             duration_ms = audio.probe_duration_ms(wav)
 
             self._report(job_id, "transcribing", "chunking", 6)
+            prepare_started = time.perf_counter()
             silences = audio.detect_silences(wav)
             plan = audio.plan_chunks(
                 duration_ms,
@@ -206,6 +207,15 @@ class Pipeline:
                         "wav": str(chunk_path),
                     }
                 )
+            log.info(
+                json.dumps(
+                    {
+                        "event": "asr.chunk_prepare",
+                        "chunks": len(plan),
+                        "durationMs": round((time.perf_counter() - prepare_started) * 1000, 1),
+                    }
+                )
+            )
 
             plan_path = workdir / "chunks.json"
             write_json_atomic(

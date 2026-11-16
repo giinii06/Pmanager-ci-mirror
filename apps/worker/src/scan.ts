@@ -47,6 +47,8 @@ export async function scanLibrary(
 
   const scanId = `scan-${Date.now()}-${newId(6)}`
   const summary: ScanSummary = { files: 0, added: 0, updated: 0, removed: 0, skipped: 0 }
+  const startedAt = performance.now()
+  let unchanged = 0
 
   const indexFile = async (absolute: string, relative: string, folderId: string): Promise<void> => {
     const filename = path.basename(absolute)
@@ -71,6 +73,7 @@ export async function scanLibrary(
       existing.mtimeMs === mtimeMs
     ) {
       touchAsset(db, existing.id, scanId)
+      unchanged += 1
       summary.files += 1
       return
     }
@@ -212,5 +215,14 @@ export async function scanLibrary(
   deleteStaleFolders(db, libraryId, scanId)
   recomputeFolderCounts(db, libraryId)
   finishScan(db, libraryId, Date.now(), summary.files)
+  console.info(
+    JSON.stringify({
+      event: 'scan.summary',
+      files: summary.files,
+      unchanged,
+      durationMs: Math.round(performance.now() - startedAt),
+      removed: summary.removed,
+    }),
+  )
   return summary
 }

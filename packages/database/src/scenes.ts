@@ -432,6 +432,7 @@ export function searchScenes(
   fingerprint: { modelSha256: string; pipelineVersion: string; dimensions: number },
   limit: number,
 ): SceneSearchHit[] {
+  const startedAt = performance.now()
   const rows = db
     .query<
       {
@@ -457,6 +458,7 @@ export function searchScenes(
          AND e.dimensions = ?`,
     )
     .all(fingerprint.modelSha256, fingerprint.pipelineVersion, fingerprint.dimensions)
+  const materializedAt = performance.now()
 
   const queries: Record<'visual' | 'audio' | 'av', Float32Array> = {
     visual: query.visual,
@@ -483,9 +485,20 @@ export function searchScenes(
     }
   }
 
-  return [...best.values()]
-    .sort((a, b) => b.score - a.score || a.sceneId.localeCompare(b.sceneId))
-    .slice(0, limit)
+  const ranked = [...best.values()].sort(
+    (a, b) => b.score - a.score || a.sceneId.localeCompare(b.sceneId),
+  )
+  const rankedAt = performance.now()
+  console.info(
+    JSON.stringify({
+      event: 'search.scenes',
+      rows: rows.length,
+      materializeMs: Math.round((materializedAt - startedAt) * 10) / 10,
+      rankMs: Math.round((rankedAt - materializedAt) * 10) / 10,
+      totalMs: Math.round((rankedAt - startedAt) * 10) / 10,
+    }),
+  )
+  return ranked.slice(0, limit)
 }
 
 export function countScenesForAsset(db: Db, assetId: string): number {
