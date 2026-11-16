@@ -275,6 +275,15 @@ describe('scene results', () => {
     expect(countScenesForAsset(db, 'asset1')).toBe(0)
   })
 
+  test('a stale file version cannot write results', () => {
+    const db = seed()
+    claim(db)
+    db.query('UPDATE assets SET file_version = 2 WHERE id = ?').run('asset1')
+
+    expect(completeSceneJob(db, completeInput(), 6_000)).toBe(false)
+    expect(countScenesForAsset(db, 'asset1')).toBe(0)
+  })
+
   test('a re-run replaces the windows instead of appending them', () => {
     const db = seed()
     claim(db)

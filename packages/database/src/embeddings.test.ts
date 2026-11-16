@@ -356,6 +356,24 @@ describe('embedding queue', () => {
     db.close()
   })
 
+  test('a stale file version cannot write vectors', () => {
+    const db = seed()
+    const job = createEmbeddingJob(db, jobInput(), 3_000)
+    claimEmbeddingJob(db, 'worker-a', 120_000, 3_100)
+    db.query('UPDATE assets SET file_version = 2 WHERE id = ?').run('asset1')
+
+    const stored = completeEmbeddingJob(
+      db,
+      { jobId: job.id, owner: 'worker-a', vectors: [chunk(0, [1, 0, 0, 0])] },
+      3_200,
+    )
+
+    expect(stored).toBe(false)
+    const rows = db.query('SELECT COUNT(*) AS n FROM video_embeddings').get() as { n: number }
+    expect(rows.n).toBe(0)
+    db.close()
+  })
+
   test('a second pass replaces every vector for the file version', () => {
     const db = seed()
     store(db, 'asset1', [chunk(0, [1, 0, 0, 0]), chunk(1, [0, 1, 0, 0])], 5_000)

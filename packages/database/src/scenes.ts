@@ -270,8 +270,10 @@ export function completeSceneJob(db: Db, input: CompleteSceneJobInput, now: numb
   if (!job || job.leaseOwner !== input.owner) return false
 
   const asset = db
-    .query<{ id: string }, Params>('SELECT id FROM assets WHERE id = ? AND deleted_at IS NULL')
-    .get(job.assetId)
+    .query<{ id: string }, Params>(
+      'SELECT id FROM assets WHERE id = ? AND deleted_at IS NULL AND file_version = ?',
+    )
+    .get(job.assetId, job.fileVersion)
   if (!asset) return false
 
   for (const scene of input.scenes) {
