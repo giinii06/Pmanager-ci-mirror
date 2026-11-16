@@ -38,8 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
     detect.add_argument("--output", required=True)
     detect.add_argument("--probe-dir", required=True)
     detect.add_argument("--samples", type=int, default=5)
-    detect.add_argument("--min-confidence", type=float, default=0.60)
-    detect.add_argument("--min-margin", type=float, default=0.15)
+    detect.add_argument("--min-confidence", type=float, default=0.50)
+    detect.add_argument("--min-margin", type=float, default=0.20)
     detect.add_argument("--pid-file", required=True)
     return parser
 

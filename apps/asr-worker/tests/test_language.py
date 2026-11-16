@@ -146,8 +146,8 @@ def test_an_illegal_combination_is_not_constructible(fields: dict[str, Any]) -> 
 def test_a_confident_probe_labels_the_file_and_forces_the_model() -> None:
     decision = decide(
         [sample({"ja": 0.95, "ko": 0.01}, unsupported=0.02)],
-        min_confidence=0.60,
-        min_margin=0.15,
+        min_confidence=0.50,
+        min_margin=0.20,
         probe_model_id="openai/whisper-small",
         probe_model_revision="rev-1",
     )
@@ -164,8 +164,8 @@ def test_a_confident_probe_labels_the_file_and_forces_the_model() -> None:
 def test_a_weak_top_still_steers_the_model_but_is_not_stored() -> None:
     decision = decide(
         [sample({"ja": 0.5, "ko": 0.4}, unsupported=0.1)],
-        min_confidence=0.60,
-        min_margin=0.15,
+        min_confidence=0.50,
+        min_margin=0.20,
         probe_model_id="openai/whisper-small",
         probe_model_revision="rev-1",
     )
@@ -179,8 +179,8 @@ def test_a_weak_top_still_steers_the_model_but_is_not_stored() -> None:
 def test_a_close_second_place_is_not_a_decision() -> None:
     decision = decide(
         [sample({"ja": 0.9, "ko": 0.8})],
-        min_confidence=0.60,
-        min_margin=0.15,
+        min_confidence=0.50,
+        min_margin=0.20,
         probe_model_id="openai/whisper-small",
         probe_model_revision="rev-1",
     )
@@ -193,8 +193,8 @@ def test_a_close_second_place_is_not_a_decision() -> None:
 def test_unsupported_mass_outranks_a_weak_top() -> None:
     decision = decide(
         [sample({"ja": 0.4}, unsupported=0.5)],
-        min_confidence=0.60,
-        min_margin=0.15,
+        min_confidence=0.50,
+        min_margin=0.20,
         probe_model_id="openai/whisper-small",
         probe_model_revision="rev-1",
     )
@@ -208,8 +208,8 @@ def test_unsupported_mass_outranks_a_weak_top() -> None:
 def test_the_mean_divides_by_every_sample_not_only_the_scored_ones() -> None:
     decision = decide(
         [sample({"ja": 0.9}), sample({"ko": 0.1})],
-        min_confidence=0.60,
-        min_margin=0.15,
+        min_confidence=0.50,
+        min_margin=0.20,
         probe_model_id="openai/whisper-small",
         probe_model_revision="rev-1",
     )
@@ -222,8 +222,8 @@ def test_the_mean_divides_by_every_sample_not_only_the_scored_ones() -> None:
 def test_no_samples_is_a_probe_failure() -> None:
     decision = decide(
         [],
-        min_confidence=0.60,
-        min_margin=0.15,
+        min_confidence=0.50,
+        min_margin=0.20,
         probe_model_id="openai/whisper-small",
         probe_model_revision="rev-1",
     )

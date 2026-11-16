@@ -23,8 +23,8 @@ def test_the_parser_accepts_detect() -> None:
     assert args.command == "detect"
     assert args.probe_dir == "/models/langid"
     assert args.samples == 5
-    assert args.min_confidence == 0.60
-    assert args.min_margin == 0.15
+    assert args.min_confidence == 0.50
+    assert args.min_margin == 0.20
 
 
 def test_detect_requires_a_probe_directory() -> None:

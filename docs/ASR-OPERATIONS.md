@@ -129,8 +129,8 @@ MPS 지원은 실기기에서 확인해야 합니다. 특정 연산이 실패하
 | `LANGID_MODEL_ID` | `openai/whisper-small` | 언어 분류 모델 |
 | `LANGID_MODEL_REVISION` | 없음(필수) | 모델 다운로드에 필요. 결과에 기록 |
 | `LANGID_SAMPLES` | `5` | 분류에 쓰는 청크 수 |
-| `LANGID_MIN_CONFIDENCE` | `0.60` | 이보다 낮으면 언어를 저장하지 않음 |
-| `LANGID_MIN_MARGIN` | `0.15` | 1위와 2위 차이가 이보다 작으면 저장하지 않음 |
+| `LANGID_MIN_CONFIDENCE` | `0.50` | 이보다 낮으면 언어를 저장하지 않음 |
+| `LANGID_MIN_MARGIN` | `0.20` | 1위와 2위 차이가 이보다 작으면 저장하지 않음 |
 | `MEDIA_ROOT` | `/media` | 읽기 전용 원본 루트 |
 | `RESULT_DIR` | `/asr-results` | 워커의 결과 루트 |
 | `ASR_MIN_CHUNK_MS` / `ASR_MAX_CHUNK_MS` | 15000 / 30000 | 음성 청크 길이 |
