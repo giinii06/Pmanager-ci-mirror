@@ -36,6 +36,7 @@ function apiConfig(dir: string): ApiConfig {
       modelRevision: 'asr-rev',
       alignerRevision: 'align-rev',
       pipelineVersion: 'asr-1',
+      retryMs: 15 * 60_000,
     },
     translation: {
       enabled: false,

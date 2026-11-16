@@ -13,6 +13,8 @@ type Params = SQLQueryBindings[]
 
 const ACTIVE_STATES = "('queued','transcribing','aligning','writing')"
 
+const DEFAULT_RETRY_DELAY_MS = 15 * 60_000
+
 const JOB_COLUMNS = `
   id, asset_id AS assetId, file_version AS fileVersion, state, stage, progress,
   attempts, max_attempts AS maxAttempts, lease_owner AS leaseOwner,
@@ -37,6 +39,8 @@ export interface CreateAsrJobInput {
   alignerRevision: string
   pipelineVersion: string
   maxAttempts?: number
+  /** How long a failed job waits before this call resets it. */
+  retryDelayMs?: number
 }
 
 export interface CompleteAsrJobInput {
@@ -52,6 +56,36 @@ export interface CompleteAsrJobInput {
 export function createAsrJob(db: Db, input: CreateAsrJobInput, now: number): AsrJobRecord {
   const existing = activeAsrJob(db, input.assetId, input.fileVersion)
   if (existing) return existing
+
+  const latest = latestAsrJob(db, input.assetId, input.fileVersion)
+  if (latest?.state === 'failed') {
+    const sameFingerprint =
+      latest.modelRevision === input.modelRevision &&
+      latest.alignerRevision === input.alignerRevision &&
+      latest.pipelineVersion === input.pipelineVersion
+    const retryDelay = input.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS
+    // A failure from an older pipeline is reset at once because its cause is
+    // gone. A current failure waits out the cooldown so a broken file cannot
+    // spin the worker.
+    if (!sameFingerprint || now - latest.updatedAt >= retryDelay) {
+      db.query<null, Params>(
+        `UPDATE asr_jobs SET
+           state = 'queued', stage = 'queued', progress = 0, attempts = 0,
+           lease_owner = NULL, lease_expires_at = NULL, run_after = 0,
+           model_revision = ?, aligner_revision = ?, pipeline_version = ?,
+           error_message = NULL, started_at = NULL, updated_at = ?
+         WHERE id = ?`,
+      ).run(
+        input.modelRevision,
+        input.alignerRevision,
+        input.pipelineVersion,
+        now,
+        latest.id,
+      )
+      return getAsrJob(db, latest.id)!
+    }
+    return latest
+  }
 
   return db
     .query<AsrJobRecord, Params>(

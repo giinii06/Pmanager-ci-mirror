@@ -5,7 +5,6 @@ import {
   createAsrJob,
   enqueueJob,
   getPipelineCursor,
-  latestAsrJob,
   listLibraries,
   listVideosForIndexingAfter,
   setPipelineCursor,
@@ -68,6 +67,7 @@ export function ensurePipelineJobs(ctx: AppContext, now: number, limit = BATCH):
           modelRevision: ctx.config.asr.modelRevision,
           alignerRevision: ctx.config.asr.alignerRevision,
           pipelineVersion: ctx.config.asr.pipelineVersion,
+          retryDelayMs: ctx.config.asr.retryMs,
         },
         now,
       )
@@ -135,19 +135,6 @@ function shouldTranscribe(
 ): boolean {
   if (!ctx.config.asr.enabled || video.audioCodec === null || hasTranscript) return false
   if (activeAsrJob(ctx.db, video.id, video.fileVersion)) return false
-
-  // A job that used every attempt is not retried on a timer. The player can
-  // still ask for it again, and that creates a fresh job. A failure from an
-  // older pipeline says nothing about the running one, so it is retried.
-  const latest = latestAsrJob(ctx.db, video.id, video.fileVersion)
-  if (
-    latest &&
-    latest.pipelineVersion === ctx.config.asr.pipelineVersion &&
-    latest.state === 'failed' &&
-    latest.attempts >= latest.maxAttempts
-  ) {
-    return false
-  }
   return true
 }
 

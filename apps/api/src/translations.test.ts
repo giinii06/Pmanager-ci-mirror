@@ -155,6 +155,7 @@ async function harness(language = 'ja'): Promise<Harness> {
       modelRevision: MODEL,
       alignerRevision: ALIGNER,
       pipelineVersion: ASR_PIPELINE,
+      retryMs: 15 * 60_000,
     },
     translation: {
       enabled: true,

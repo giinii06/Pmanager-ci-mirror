@@ -57,6 +57,7 @@ function apiConfig(dir: string, options: { scene?: boolean; face?: boolean }): A
       modelRevision: ASR_MODEL,
       alignerRevision: ALIGNER,
       pipelineVersion: ASR_PIPELINE,
+      retryMs: 15 * 60_000,
     },
     translation: {
       enabled: true,
@@ -260,7 +261,7 @@ describe('pipeline pass', () => {
     expect(result.embeddings).toBe(1)
   })
 
-  test('a terminal ASR failure is not retried on a timer', async () => {
+  test('a fresh ASR failure waits for the retry cooldown', async () => {
     const h = await harness()
     h.scannedAt(NOW - 60_000)
     h.addVideo('video1', 'aac')
@@ -284,9 +285,43 @@ describe('pipeline pass', () => {
 
     expect(result.asr).toBe(0)
     expect(jobCount(h, 'asr_jobs', 'video1')).toBe(1)
+    expect(h.db.query<{ state: string }, []>('SELECT state FROM asr_jobs').get()?.state).toBe(
+      'failed',
+    )
   })
 
-  test('a terminal failure from an older pipeline is retried', async () => {
+  test('an ASR failure older than the cooldown is queued again', async () => {
+    const h = await harness()
+    h.scannedAt(NOW - 60_000)
+    h.addVideo('video1', 'aac')
+    const job = createAsrJob(
+      h.db,
+      {
+        id: 'asr-failed',
+        assetId: 'video1',
+        fileVersion: 1,
+        modelRevision: ASR_MODEL,
+        alignerRevision: ALIGNER,
+        pipelineVersion: ASR_PIPELINE,
+      },
+      NOW - 20 * 60_000,
+    )
+    h.db
+      .query(`UPDATE asr_jobs SET state = 'failed', attempts = max_attempts, updated_at = ? WHERE id = ?`)
+      .run(NOW - 16 * 60_000, job.id)
+
+    const result = ensurePipelineJobs(h.ctx, NOW)
+
+    expect(result.asr).toBe(1)
+    expect(jobCount(h, 'asr_jobs', 'video1')).toBe(1)
+    const row = h.db
+      .query<{ state: string; attempts: number }, []>('SELECT state, attempts FROM asr_jobs')
+      .get()
+    expect(row?.state).toBe('queued')
+    expect(row?.attempts).toBe(0)
+  })
+
+  test('a terminal failure from an older pipeline is retried at once', async () => {
     const h = await harness()
     h.scannedAt(NOW - 60_000)
     h.addVideo('video1', 'aac')
@@ -309,7 +344,14 @@ describe('pipeline pass', () => {
     const result = ensurePipelineJobs(h.ctx, NOW)
 
     expect(result.asr).toBe(1)
-    expect(jobCount(h, 'asr_jobs', 'video1')).toBe(2)
+    expect(jobCount(h, 'asr_jobs', 'video1')).toBe(1)
+    const row = h.db
+      .query<{ state: string; pipelineVersion: string }, []>(
+        'SELECT state, pipeline_version AS pipelineVersion FROM asr_jobs',
+      )
+      .get()
+    expect(row?.state).toBe('queued')
+    expect(row?.pipelineVersion).toBe(ASR_PIPELINE)
   })
 
   test('an active ASR job is not duplicated', async () => {

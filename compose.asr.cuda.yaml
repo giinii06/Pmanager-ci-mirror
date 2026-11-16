@@ -14,6 +14,7 @@ services:
       ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:?set ASR_MODEL_REVISION to a commit SHA}
       ALIGN_MODEL_REVISION: ${ALIGN_MODEL_REVISION:?set ALIGN_MODEL_REVISION to a commit SHA}
       ASR_PIPELINE_VERSION: ${ASR_PIPELINE_VERSION:-3}
+      ASR_RETRY_MINUTES: ${ASR_RETRY_MINUTES:-15}
     volumes:
       - ./asr-results:/asr-results
 

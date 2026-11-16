@@ -9,6 +9,8 @@ export interface AsrConfig {
   modelRevision: string
   alignerRevision: string
   pipelineVersion: string
+  /** How long a failed job waits before the reconciler queues it again. */
+  retryMs: number
 }
 
 export interface TranslationConfig {
@@ -116,6 +118,7 @@ function resolveAsr(env: Record<string, string | undefined>): AsrConfig {
     throw new Error('ASR_WORKER_TOKEN must be at least 16 characters when ASR is enabled.')
   }
 
+  const retryMinutes = Number(env.ASR_RETRY_MINUTES)
   return {
     enabled,
     workerToken: token,
@@ -123,6 +126,7 @@ function resolveAsr(env: Record<string, string | undefined>): AsrConfig {
     modelRevision: env.ASR_MODEL_REVISION?.trim() || 'main',
     alignerRevision: env.ALIGN_MODEL_REVISION?.trim() || 'main',
     pipelineVersion: env.ASR_PIPELINE_VERSION?.trim() || '3',
+    retryMs: (Number.isFinite(retryMinutes) && retryMinutes >= 0 ? retryMinutes : 15) * 60_000,
   }
 }
 

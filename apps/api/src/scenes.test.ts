@@ -268,6 +268,7 @@ async function harness(options: { sceneEnabled?: boolean; faceEnabled?: boolean;
       modelRevision: 'asr-rev',
       alignerRevision: 'align-rev',
       pipelineVersion: 'asr-1',
+      retryMs: 15 * 60_000,
     },
     translation: {
       enabled: false,
