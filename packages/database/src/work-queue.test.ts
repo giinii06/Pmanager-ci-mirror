@@ -288,6 +288,44 @@ describe('work queue', () => {
     expect(first!.state).toBe('failed')
   })
 
+  test('a failure that a newer attempt replaced is not listed', () => {
+    const db = seed()
+    enqueueJob(
+      db,
+      { dedupeKey: 'thumb', kind: 'thumbnail', priority: 2, assetId: 'asset1', maxAttempts: 1 },
+      1_000,
+    )
+    const media = claimNextJob(db, 1_000)!
+    failJob(db, media.id, 'ffmpeg exited 1', 2_000)
+    // The same work is queued again, so the failure is history, not a live one.
+    enqueueJob(db, { dedupeKey: 'thumb', kind: 'thumbnail', priority: 2, assetId: 'asset1' }, 3_000)
+
+    const queue = workQueue(db, 4_000, RESOURCE)
+
+    expect(queue.failures).toHaveLength(0)
+    expect(queue.queued.some((item) => item.kind === 'thumbnail')).toBe(true)
+  })
+
+  test('an older ASR failure under a newer attempt is not listed', () => {
+    const db = seed()
+    asrJob(db, 'asr1', 'asset2', 1_000, 1)
+    claimAsrJob(db, 'asr-w', 120_000, 1_000)
+    failAsrJob(db, 'asr1', 'audio stream missing', 3_000)
+
+    // The shape the old code left on the host: a second row for the same file.
+    db.query(
+      `INSERT INTO asr_jobs (
+         id, asset_id, file_version, state, stage, progress, attempts, max_attempts,
+         model_revision, aligner_revision, pipeline_version, created_at, updated_at
+       ) VALUES ('asr2', 'asset2', 1, 'queued', 'queued', 0, 0, 3, ?, ?, 'asr-pipeline-2', 4000, 4000)`,
+    ).run(MODEL, ALIGNER)
+
+    const queue = workQueue(db, 5_000, RESOURCE)
+
+    expect(queue.failures).toHaveLength(0)
+    expect(queue.queued.some((item) => item.id === 'asr2')).toBe(true)
+  })
+
   test('lastCompletedAt is the newest finish across the queues', () => {
     const db = seed()
     finishedMedia(db, 'a', 10_000, 5_000)
