@@ -654,6 +654,59 @@ describe('translation routes', () => {
     await h.app.close()
   })
 
+  test('a kind that just released the card lets a waiting kind take it first', async () => {
+    const h = await harness('ja')
+
+    const first = await h.app.inject({
+      method: 'POST',
+      url: '/worker/gpu/acquire',
+      headers: worker(),
+      payload: { owner: 'translation-worker', taskKind: 'translation' },
+    })
+    expect(first.json().acquired).toBe(true)
+
+    const released = await h.app.inject({
+      method: 'POST',
+      url: '/worker/gpu/release',
+      headers: worker(),
+      payload: { owner: 'translation-worker' },
+    })
+    expect(released.statusCode).toBe(204)
+
+    // An ASR job in the queue is a worker waiting for the card, so the kind
+    // that just had a turn steps back instead of taking it again.
+    insertAsset(h.db, assetInput('asset2', 'folder1'))
+    createAsrJob(
+      h.db,
+      {
+        id: 'asr2',
+        assetId: 'asset2',
+        fileVersion: 1,
+        modelRevision: MODEL,
+        alignerRevision: ALIGNER,
+        pipelineVersion: ASR_PIPELINE,
+      },
+      3_000,
+    )
+
+    const again = await h.app.inject({
+      method: 'POST',
+      url: '/worker/gpu/acquire',
+      headers: worker(),
+      payload: { owner: 'translation-worker', taskKind: 'translation' },
+    })
+    expect(again.json().acquired).toBe(false)
+
+    const asr = await h.app.inject({
+      method: 'POST',
+      url: '/worker/gpu/acquire',
+      headers: { 'x-worker-token': ASR_TOKEN },
+      payload: { owner: 'asr-worker', taskKind: 'asr' },
+    })
+    expect(asr.json().acquired).toBe(true)
+    await h.app.close()
+  })
+
   test('the ASR worker takes the same lease with its own token', async () => {
     const h = await harness('ja')
     const asr = await h.app.inject({

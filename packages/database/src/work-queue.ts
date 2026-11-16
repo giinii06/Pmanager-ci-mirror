@@ -157,7 +157,7 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
               j.started_at AS startedAt, j.updated_at AS updatedAt,
               j.lease_expires_at AS leaseExpiresAt, j.error_message AS errorMessage
        FROM asr_jobs j LEFT JOIN assets a ON a.id = j.asset_id
-       LEFT JOIN gpu_leases g ON g.resource_id = ?
+       LEFT JOIN gpu_leases g ON g.resource_id = ? AND g.released_at IS NULL
        WHERE j.state IN ('queued','transcribing','aligning','writing')
        ORDER BY CASE j.state WHEN 'queued' THEN 1 ELSE 0 END, j.created_at ASC
        LIMIT ?`,
@@ -172,7 +172,7 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
               j.started_at AS startedAt, j.updated_at AS updatedAt,
               j.lease_expires_at AS leaseExpiresAt, j.error_message AS errorMessage
        FROM translation_jobs j LEFT JOIN assets a ON a.id = j.asset_id
-       LEFT JOIN gpu_leases g ON g.resource_id = ?
+       LEFT JOIN gpu_leases g ON g.resource_id = ? AND g.released_at IS NULL
        WHERE j.state IN ('queued','translating','writing')
        ORDER BY CASE j.state WHEN 'queued' THEN 1 ELSE 0 END, j.created_at ASC
        LIMIT ?`,
@@ -187,7 +187,7 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
               j.started_at AS startedAt, j.updated_at AS updatedAt,
               j.lease_expires_at AS leaseExpiresAt, j.error_message AS errorMessage
        FROM embedding_jobs j LEFT JOIN assets a ON a.id = j.asset_id
-       LEFT JOIN gpu_leases g ON g.resource_id = ?
+       LEFT JOIN gpu_leases g ON g.resource_id = ? AND g.released_at IS NULL
        WHERE j.state IN ('queued','embedding','writing')
        ORDER BY CASE j.state WHEN 'queued' THEN 1 ELSE 0 END, j.created_at ASC
        LIMIT ?`,

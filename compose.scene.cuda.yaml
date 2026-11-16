@@ -32,6 +32,11 @@ services:
       SCENE_MODEL_REVISION: ${SCENE_MODEL_REVISION:?set SCENE_MODEL_REVISION to a commit SHA}
       SCENE_TEMP_DIR: /scene-tmp
       SCENE_CACHE_DIR: /cache
+      # The card is shared with ASR, translation and embedding, and the kind that
+      # just released it lets another kind take the next turn. A scene job can
+      # therefore wait for one ASR stage, which is longer than the default 15
+      # minutes on a feature-length file.
+      SCENE_GPU_WAIT_SECONDS: ${SCENE_GPU_WAIT_SECONDS:-3600}
       HF_HUB_OFFLINE: "1"
     volumes:
       - ${MEDIA_ROOT:-./sample-media}:/media:ro

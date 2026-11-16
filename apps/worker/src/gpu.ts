@@ -24,7 +24,7 @@ function hold(db: Db, options: GpuLeaseOptions): GpuLease {
   return {
     heartbeat: () => heartbeatGpuLease(db, options.resourceId, options.owner, Date.now()),
     release: () => {
-      releaseGpuLease(db, options.resourceId, options.owner)
+      releaseGpuLease(db, options.resourceId, options.owner, Date.now())
     },
   }
 }

@@ -92,7 +92,7 @@ export function registerWorkerGpuRoutes(app: FastifyInstance, ctx: AppContext): 
       const body = parseInput(heartbeatBody, request.body ?? {}, reply)
       if (!body) return
 
-      releaseGpuLease(ctx.db, ctx.config.gpu.resourceId, body.owner)
+      releaseGpuLease(ctx.db, ctx.config.gpu.resourceId, body.owner, Date.now())
       reply.code(204).send()
     })
   })

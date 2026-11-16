@@ -105,9 +105,9 @@ describe('withGpuLease', () => {
     const states: boolean[] = []
 
     await withGpuLease(db, options(0, 60), async (_granted, signal) => {
-      // Another consumer taking the card deletes or replaces this row, which is
-      // what a failed heartbeat reports.
-      releaseGpuLease(db, RESOURCE, 'media-worker')
+      // Another consumer taking the card marks the row released or replaces it,
+      // which is what a failed heartbeat reports.
+      releaseGpuLease(db, RESOURCE, 'media-worker', Date.now())
       await Bun.sleep(150)
       states.push(signal.aborted)
     })
@@ -120,7 +120,7 @@ describe('withGpuLease', () => {
 
     await expect(
       withGpuLease(db, options(0, 60), async (_granted, signal) => {
-        releaseGpuLease(db, RESOURCE, 'media-worker')
+        releaseGpuLease(db, RESOURCE, 'media-worker', Date.now())
         await new Promise((resolve) => signal.addEventListener('abort', resolve))
         throw new Error('The operation was aborted')
       }),

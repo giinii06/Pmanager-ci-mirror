@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 9
+export const SCHEMA_VERSION = 10
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -458,4 +458,7 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(EMBEDDING_SQL),
   (exec) => exec(SCENE_SQL),
   (exec) => exec(FACE_SQL),
+  // A released lease keeps its row so the next acquire can see which kind just
+  // let go of the card and step back for one turn.
+  (exec) => exec('ALTER TABLE gpu_leases ADD COLUMN released_at INTEGER'),
 ]

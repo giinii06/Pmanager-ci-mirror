@@ -357,8 +357,8 @@ describe('gpu leases', () => {
 
     expect(heartbeatGpuLease(db, 'mac:metal', 'worker-b', 1_100)).toBe(false)
     expect(heartbeatGpuLease(db, 'mac:metal', 'worker-a', 1_100)).toBe(true)
-    expect(releaseGpuLease(db, 'mac:metal', 'worker-b')).toBe(false)
-    expect(releaseGpuLease(db, 'mac:metal', 'worker-a')).toBe(true)
+    expect(releaseGpuLease(db, 'mac:metal', 'worker-b', 1_100)).toBe(false)
+    expect(releaseGpuLease(db, 'mac:metal', 'worker-a', 1_100)).toBe(true)
     expect(getGpuLease(db, 'mac:metal')).toBeNull()
     db.close()
   })
