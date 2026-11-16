@@ -404,9 +404,13 @@ export function completeFaceJob(db: Db, input: CompleteFaceJobInput, now: number
   const job = getFaceJob(db, input.jobId)
   if (!job || job.leaseOwner !== input.owner) return false
 
+  // A completion for a version the asset no longer has is dropped, so a
+  // replaced file cannot keep detections from its old copy.
   const asset = db
-    .query<{ id: string }, Params>('SELECT id FROM assets WHERE id = ? AND deleted_at IS NULL')
-    .get(job.assetId)
+    .query<{ id: string }, Params>(
+      'SELECT id FROM assets WHERE id = ? AND deleted_at IS NULL AND file_version = ?',
+    )
+    .get(job.assetId, job.fileVersion)
   if (!asset) return false
 
   for (const face of input.faces) assertUsableVector(face.vector, job.dimensions)
