@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import wave
 from pathlib import Path
 
 SAMPLE_RATE = 16_000
@@ -171,6 +172,35 @@ def plan_chunks(
 
 
 def slice_wav(wav: Path, start_ms: int, end_ms: int, target: Path) -> None:
+    """Cuts one chunk from the 16 kHz mono master without another process.
+
+    A master in any other layout falls back to FFmpeg, which resamples it. The
+    frame offsets are absolute, so rounding never accumulates across chunks.
+    """
+    try:
+        with wave.open(str(wav), "rb") as src:
+            if (
+                src.getnchannels() != 1
+                or src.getsampwidth() != 2
+                or src.getframerate() != SAMPLE_RATE
+            ):
+                return _slice_wav_ffmpeg(wav, start_ms, end_ms, target)
+            start_frame = round(start_ms * SAMPLE_RATE / 1000)
+            end_frame = round(end_ms * SAMPLE_RATE / 1000)
+            src.setpos(min(start_frame, src.getnframes()))
+            frames = src.readframes(max(0, end_frame - start_frame))
+    except (wave.Error, EOFError):
+        return _slice_wav_ffmpeg(wav, start_ms, end_ms, target)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(target), "wb") as dst:
+        dst.setnchannels(1)
+        dst.setsampwidth(2)
+        dst.setframerate(SAMPLE_RATE)
+        dst.writeframes(frames)
+
+
+def _slice_wav_ffmpeg(wav: Path, start_ms: int, end_ms: int, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     run_ffmpeg(
         [
