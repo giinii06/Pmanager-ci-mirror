@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 11
+export const SCHEMA_VERSION = 12
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -464,4 +464,12 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   // Having no dialogue is a property of the file, so a run that found none
   // still writes a transcript row and the queue stops retrying that file.
   (exec) => exec('ALTER TABLE transcripts ADD COLUMN has_speech INTEGER NOT NULL DEFAULT 1'),
+  // One row per reconciler. A pass continues after the last id it looked at, so
+  // every eligible video is reached across passes instead of the same head.
+  (exec) =>
+    exec(`CREATE TABLE IF NOT EXISTS pipeline_cursors (
+      name TEXT PRIMARY KEY,
+      last_id TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`),
 ]

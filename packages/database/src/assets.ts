@@ -307,17 +307,51 @@ export function countAssets(db: Db, libraryId: string): number {
  * `audioCodec` is null when the file has no audio stream, which is what keeps a
  * silent clip out of the transcription queue.
  */
-export function listVideosForIndexing(
+export function listVideosForIndexingAfter(
   db: Db,
+  afterId: string | null,
   limit: number,
 ): Array<{ id: string; fileVersion: number; audioCodec: string | null }> {
+  if (limit <= 0) return []
+  if (afterId === null) {
+    return db
+      .query<{ id: string; fileVersion: number; audioCodec: string | null }, Params>(
+        `SELECT id, file_version AS fileVersion, audio_codec AS audioCodec FROM assets
+         WHERE deleted_at IS NULL AND kind = 'video' AND duration_ms IS NOT NULL
+         ORDER BY id ASC LIMIT ?`,
+      )
+      .all(limit)
+  }
   return db
     .query<{ id: string; fileVersion: number; audioCodec: string | null }, Params>(
       `SELECT id, file_version AS fileVersion, audio_codec AS audioCodec FROM assets
-       WHERE deleted_at IS NULL AND kind = 'video' AND duration_ms IS NOT NULL
+       WHERE deleted_at IS NULL AND kind = 'video' AND duration_ms IS NOT NULL AND id > ?
        ORDER BY id ASC LIMIT ?`,
     )
-    .all(limit)
+    .all(afterId, limit)
+}
+
+export interface PipelineCursor {
+  name: string
+  lastId: string
+  updatedAt: number
+}
+
+export function getPipelineCursor(db: Db, name: string): PipelineCursor | null {
+  return (
+    db
+      .query<PipelineCursor, Params>(
+        'SELECT name, last_id AS lastId, updated_at AS updatedAt FROM pipeline_cursors WHERE name = ?',
+      )
+      .get(name) ?? null
+  )
+}
+
+export function setPipelineCursor(db: Db, name: string, lastId: string, now: number): void {
+  db.query<null, Params>(
+    `INSERT INTO pipeline_cursors (name, last_id, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT (name) DO UPDATE SET last_id = excluded.last_id, updated_at = excluded.updated_at`,
+  ).run(name, lastId, now)
 }
 
 export function getStats(db: Db, userId: string): StatsDTO {

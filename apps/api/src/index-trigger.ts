@@ -4,10 +4,13 @@ import {
   activeSceneJob,
   createAsrJob,
   enqueueJob,
+  getPipelineCursor,
   latestAsrJob,
   listLibraries,
-  listVideosForIndexing,
+  listVideosForIndexingAfter,
+  setPipelineCursor,
   setScanState,
+  type Db,
 } from '@mediavault/database'
 import { PRIORITY, newId } from '@mediavault/shared'
 import type { AppContext } from './context'
@@ -16,7 +19,10 @@ import { enqueueFaces, enqueueScenes } from './scene-trigger'
 import { currentTranscriptRecord } from './subtitles'
 import { enqueueTranslation } from './translation-trigger'
 
-const BATCH = 500
+const BATCH = (() => {
+  const value = Number(process.env.PIPELINE_BATCH)
+  return Number.isInteger(value) && value > 0 ? value : 500
+})()
 
 export interface PipelinePass {
   scanned: number
@@ -47,7 +53,8 @@ export function ensurePipelineJobs(ctx: AppContext, now: number, limit = BATCH):
     faces: 0,
   }
 
-  for (const video of listVideosForIndexing(ctx.db, limit)) {
+  const batch = nextIndexBatch(ctx.db, limit)
+  for (const video of batch) {
     result.considered += 1
     const transcript = currentTranscriptRecord(ctx, video.id, video.fileVersion)
 
@@ -84,7 +91,33 @@ export function ensurePipelineJobs(ctx: AppContext, now: number, limit = BATCH):
       if (job?.state === 'queued') result.faces += 1
     }
   }
+
+  // A pass that throws leaves the cursor where it was, so the next pass retries
+  // the same videos instead of skipping them.
+  if (batch.length > 0) {
+    setPipelineCursor(ctx.db, 'index', batch[batch.length - 1]!.id, now)
+  }
   return result
+}
+
+/**
+ * The next slice of the id space, wrapping to the head when the tail is short.
+ * The head fill is deduplicated because a library smaller than one batch returns
+ * the same rows twice.
+ */
+function nextIndexBatch(
+  db: Db,
+  limit: number,
+): Array<{ id: string; fileVersion: number; audioCodec: string | null }> {
+  const cursor = getPipelineCursor(db, 'index')?.lastId ?? null
+  const batch = listVideosForIndexingAfter(db, cursor, limit)
+  if (batch.length >= limit) return batch
+
+  const seen = new Set(batch.map((video) => video.id))
+  for (const video of listVideosForIndexingAfter(db, null, limit - batch.length)) {
+    if (!seen.has(video.id)) batch.push(video)
+  }
+  return batch
 }
 
 /**

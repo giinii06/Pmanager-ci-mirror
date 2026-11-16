@@ -7,8 +7,10 @@ import {
   createAsrJob,
   createLibrary,
   finishScan,
+  getPipelineCursor,
   insertAsset,
   openDatabase,
+  setPipelineCursor,
   upsertFolder,
   type Db,
   type NewAsset,
@@ -370,5 +372,90 @@ describe('pipeline pass', () => {
     expect(result.scenes).toBe(1)
     expect(result.faces).toBe(1)
     expect(result.asr).toBe(1)
+  })
+})
+
+describe('index cursor', () => {
+  test('the cursor covers every video across passes', async () => {
+    const h = await harness()
+    h.scannedAt(NOW - 60_000)
+    const ids = ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7']
+    for (const id of ids) h.addVideo(id, 'aac')
+
+    for (let pass = 0; pass < 4; pass += 1) {
+      const result = ensurePipelineJobs(h.ctx, NOW + pass * 1_000, 3)
+      expect(result.considered).toBe(3)
+    }
+
+    const considered = h.db
+      .query<{ assetId: string }, []>('SELECT DISTINCT asset_id AS assetId FROM asr_jobs')
+      .all()
+      .map((row) => row.assetId)
+    expect(new Set(considered)).toEqual(new Set(ids))
+  })
+
+  test('a second pass continues from the stored cursor', async () => {
+    const h = await harness()
+    h.scannedAt(NOW - 60_000)
+    for (const id of ['v1', 'v2', 'v3', 'v4', 'v5', 'v6']) h.addVideo(id, 'aac')
+
+    ensurePipelineJobs(h.ctx, NOW, 3)
+    expect(getPipelineCursor(h.db, 'index')?.lastId).toBe('v3')
+
+    const restarted: AppContext = { ...h.ctx }
+    ensurePipelineJobs(restarted, NOW + 1_000, 3)
+
+    expect(getPipelineCursor(h.db, 'index')?.lastId).toBe('v6')
+  })
+
+  test('the cursor wraps to the lowest id after the last one', async () => {
+    const h = await harness()
+    h.scannedAt(NOW - 60_000)
+    for (const id of ['v1', 'v2', 'v3', 'v4']) h.addVideo(id, 'aac')
+    setPipelineCursor(h.db, 'index', 'v4', NOW - 1_000)
+
+    const result = ensurePipelineJobs(h.ctx, NOW, 3)
+
+    expect(result.considered).toBe(3)
+    expect(getPipelineCursor(h.db, 'index')?.lastId).toBe('v3')
+    const queued = h.db
+      .query<{ assetId: string }, []>('SELECT asset_id AS assetId FROM asr_jobs ORDER BY asset_id')
+      .all()
+      .map((row) => row.assetId)
+    expect(queued).toEqual(['v1', 'v2', 'v3'])
+  })
+
+  test('a pass that throws leaves the cursor unchanged', async () => {
+    const h = await harness()
+    h.scannedAt(NOW - 60_000)
+    h.addVideo('v1', 'aac')
+    h.db.exec(
+      "CREATE TRIGGER fail_asr BEFORE INSERT ON asr_jobs BEGIN SELECT RAISE(ABORT, 'boom'); END",
+    )
+
+    expect(() => ensurePipelineJobs(h.ctx, NOW, 3)).toThrow('boom')
+
+    expect(getPipelineCursor(h.db, 'index')).toBeNull()
+  })
+
+  test('an empty library leaves the cursor empty', async () => {
+    const h = await harness()
+    h.scannedAt(NOW - 60_000)
+
+    ensurePipelineJobs(h.ctx, NOW, 3)
+
+    expect(getPipelineCursor(h.db, 'index')).toBeNull()
+  })
+
+  test('a library smaller than the batch is considered once', async () => {
+    const h = await harness()
+    h.scannedAt(NOW - 60_000)
+    h.addVideo('v1', 'aac')
+    h.addVideo('v2', 'aac')
+
+    const result = ensurePipelineJobs(h.ctx, NOW, 5)
+
+    expect(result.considered).toBe(2)
+    expect(getPipelineCursor(h.db, 'index')?.lastId).toBe('v2')
   })
 })
