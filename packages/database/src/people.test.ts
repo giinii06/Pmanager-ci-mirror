@@ -101,6 +101,26 @@ function face(frameMs: number, vector: Float32Array, score = 0.9) {
   }
 }
 
+/** A rescan that found changed bytes, which increments the file version. */
+function bumpVersion(db: Db): void {
+  updateAssetFile(db, 'asset1', {
+    folderId: 'folder1',
+    filename: 'asset1.mp4',
+    mimeType: 'video/mp4',
+    sizeBytes: 2_000,
+    mtimeMs: 2_000,
+    width: 1_080,
+    height: 1_920,
+    durationMs: 30_000,
+    takenAt: 10_000,
+    videoCodec: 'h264',
+    audioCodec: 'aac',
+    container: 'mov,mp4',
+    indexedAt: 20_000,
+    scanId: 'scan2',
+  })
+}
+
 function run(
   db: Db,
   assetId: string,
@@ -140,22 +160,7 @@ describe('face job lifecycle', () => {
     createFaceJob(db, jobInput(), 1_000)
     claimFaceJob(db, 'worker-a', 60_000, 2_000)
 
-    updateAssetFile(db, 'asset1', {
-      folderId: 'folder1',
-      filename: 'asset1.mp4',
-      mimeType: 'video/mp4',
-      sizeBytes: 2_000,
-      mtimeMs: 2_000,
-      width: 1_080,
-      height: 1_920,
-      durationMs: 30_000,
-      takenAt: 10_000,
-      videoCodec: 'h264',
-      audioCodec: 'aac',
-      container: 'mov,mp4',
-      indexedAt: 20_000,
-      scanId: 'scan2',
-    })
+    bumpVersion(db)
 
     expect(
       completeFaceJob(
@@ -177,6 +182,44 @@ describe('face job lifecycle', () => {
       )
       .get()
     expect(stale?.n).toBe(0)
+  })
+
+  test('the current version still completes after a stale completion is rejected', () => {
+    const db = seed()
+    createFaceJob(db, jobInput(), 1_000)
+    claimFaceJob(db, 'worker-a', 60_000, 2_000)
+    bumpVersion(db)
+
+    const stale = completeFaceJob(
+      db,
+      {
+        jobId: 'face1',
+        owner: 'worker-a',
+        matchThreshold: MATCH,
+        candidateThreshold: CANDIDATE,
+        faces: [face(0, unit([1, 0, 0, 0]))],
+      },
+      3_000,
+    )
+    expect(stale).toBe(false)
+
+    // What the reconciler queues for the version the asset now has.
+    const current = run(
+      db,
+      'asset1',
+      'face2',
+      [face(0, unit([1, 0, 0, 0]))],
+      4_000,
+      { fileVersion: 2 },
+    )
+    expect(current).toBe(true)
+
+    const rows = db
+      .query<{ n: number }, []>(
+        "SELECT COUNT(*) AS n FROM face_detections WHERE asset_id = 'asset1' AND file_version = 2",
+      )
+      .get()
+    expect(rows?.n).toBe(1)
   })
 
   test('a complete from a stale owner is ignored', () => {
