@@ -39,18 +39,21 @@ export function VideoPlayer({
 }) {
   const localRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const trackRef = useRef<HTMLTrackElement>(null)
   const videoRef = externalRef ?? localRef
   const [useHls, setUseHls] = useState(asset.playback === 'hls')
   const [hlsState, setHlsState] = useState<HlsState>(asset.playback === 'hls' ? 'preparing' : 'idle')
   const [failure, setFailure] = useState<string | null>(null)
   const [captionLines, setCaptionLines] = useState<string[] | null>(null)
   const [controlsVisible, setControlsVisible] = useState(true)
-  const [fullscreen, setFullscreen] = useState(false)
+  const [containerFullscreen, setContainerFullscreen] = useState(false)
+  const [pseudoFullscreen, setPseudoFullscreen] = useState(false)
   const [nativeFullscreen, setNativeFullscreen] = useState(false)
   const [captionFontSize, setCaptionFontSize] = useState(16)
   const [captionScale, setCaptionScale] = useState(storedCaptionScale)
   const startAt = useRef(startMs && startMs > 0 ? startMs / 1000 : 0)
   const lastSave = useRef(0)
+  const appFullscreen = containerFullscreen || pseudoFullscreen
 
   const changeCaptionScale = (value: number) => {
     const next =
@@ -187,12 +190,13 @@ export function VideoPlayer({
   }, [asset.id, useHls])
 
   useEffect(() => {
-    const video = videoRef.current
-    if (!video || !subtitleUrl) return
-    const track = video.textTracks[0]
-    if (!track) return
+    const element = trackRef.current
+    const track = element?.track
+    if (!element || !track) return
 
     const sync = () => {
+      // Native fullscreen is the one surface where a DOM overlay cannot follow
+      // the video, so the browser draws the cues there instead.
       track.mode = nativeFullscreen ? 'showing' : 'hidden'
       const cues = track.activeCues ? Array.from(track.activeCues) : []
       // A translation track carries the spoken line and its translation as two
@@ -206,13 +210,14 @@ export function VideoPlayer({
 
     sync()
     track.addEventListener('cuechange', sync)
-    track.addEventListener('load', sync)
+    // `load` belongs to the element; the TextTrack itself only emits cuechange.
+    element.addEventListener('load', sync)
     return () => {
       track.removeEventListener('cuechange', sync)
-      track.removeEventListener('load', sync)
+      element.removeEventListener('load', sync)
       setCaptionLines(null)
     }
-  }, [nativeFullscreen, subtitleUrl, videoRef])
+  }, [nativeFullscreen, subtitleUrl])
 
   useEffect(() => {
     const video = videoRef.current
@@ -286,34 +291,64 @@ export function VideoPlayer({
         document.fullscreenElement ??
         (document as Document & { webkitFullscreenElement?: Element | null })
           .webkitFullscreenElement
-      setFullscreen(element !== null && element === containerRef.current)
+      setContainerFullscreen(element !== null && element === containerRef.current)
       setNativeFullscreen(element !== null && element === video)
     }
+
+    // iPhone Safari does not expose native video fullscreen through the
+    // document, so the video's own events are the only signal there.
+    const enterNative = () => setNativeFullscreen(true)
+    const leaveNative = () => setNativeFullscreen(false)
 
     sync()
     document.addEventListener('fullscreenchange', sync)
     document.addEventListener('webkitfullscreenchange', sync)
+    video.addEventListener('webkitbeginfullscreen', enterNative)
+    video.addEventListener('webkitendfullscreen', leaveNative)
     return () => {
       document.removeEventListener('fullscreenchange', sync)
       document.removeEventListener('webkitfullscreenchange', sync)
+      video.removeEventListener('webkitbeginfullscreen', enterNative)
+      video.removeEventListener('webkitendfullscreen', leaveNative)
     }
   }, [videoRef])
 
+  useEffect(() => {
+    if (!pseudoFullscreen) return
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      // Escape leaves the app's fullscreen before the viewer sees it close.
+      event.stopImmediatePropagation()
+      setPseudoFullscreen(false)
+    }
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      document.body.style.overflow = overflow
+    }
+  }, [pseudoFullscreen])
+
   const toggleFullscreen = () => {
     const container = containerRef.current
-    const video = videoRef.current
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => undefined)
       return
     }
-    if (container?.requestFullscreen) {
-      void container.requestFullscreen().catch(() => undefined)
+    if (pseudoFullscreen) {
+      setPseudoFullscreen(false)
       return
     }
-    // iOS has no element fullscreen, only the native player, which draws its
-    // own cues and is handled by the nativeFullscreen branch.
-    const legacy = video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
-    legacy?.webkitEnterFullscreen?.()
+    if (container?.requestFullscreen) {
+      // A rejected request still leaves the viewer in the app's own fullscreen
+      // rather than falling through to the native player.
+      void container.requestFullscreen().catch(() => setPseudoFullscreen(true))
+      return
+    }
+    // iPhone Safari has no element fullscreen, so the app draws its own frame.
+    setPseudoFullscreen(true)
   }
 
   if (failure) {
@@ -347,7 +382,10 @@ export function VideoPlayer({
       className={cn(
         'relative flex items-center justify-center',
         fill ? 'h-full w-full' : 'max-h-full max-w-full',
-        fullscreen && 'h-screen w-screen bg-black',
+        appFullscreen &&
+          (pseudoFullscreen
+            ? 'fixed inset-0 z-[80] h-[100dvh] w-screen bg-black'
+            : 'h-screen w-screen bg-black'),
       )}
     >
       <video
@@ -358,13 +396,14 @@ export function VideoPlayer({
         poster={asset.thumbnails.medium}
         className={cn(
           'bg-black',
-          fullscreen || fill
+          appFullscreen || fill
             ? 'h-full w-full object-contain'
             : 'max-h-[calc(100vh-170px)] max-w-[calc(100vw-140px)] rounded-lg shadow-2xl',
         )}
       >
         {subtitleUrl && language ? (
           <track
+            ref={trackRef}
             key={subtitleUrl}
             kind="subtitles"
             src={subtitleUrl}
@@ -377,11 +416,11 @@ export function VideoPlayer({
         <div className="absolute right-2 top-2 z-20 flex items-center gap-1.5">
           <button
             type="button"
-            aria-label={fullscreen ? '전체 화면 종료' : '전체 화면'}
+            aria-label={appFullscreen ? '전체 화면 종료' : '전체 화면'}
             onClick={toggleFullscreen}
             className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/85 backdrop-blur-sm transition-colors hover:bg-black/75 hover:text-white"
           >
-            {fullscreen ? <Minimize size={13} /> : <Maximize size={13} />}
+            {appFullscreen ? <Minimize size={13} /> : <Maximize size={13} />}
           </button>
           <SubtitleMenu tracks={tracks} language={language} onSelect={onSelectLanguage} />
           {language ? (
@@ -390,14 +429,14 @@ export function VideoPlayer({
         </div>
       ) : null}
       {/*
-        The container is the fullscreen element, so this overlay stays in the top
-        layer. The native renderer would sit under the fullscreen controls, which
-        is why the offset grows with the control bar instead of using it.
+        The container owns both real and pseudo fullscreen, so this overlay stays
+        above the video there. Native fullscreen is the one mode that hides the
+        DOM, and only there does the browser draw the cues instead.
       */}
       {!nativeFullscreen && captionLines ? (
         <div
           className="pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3"
-          style={{ bottom: controlsVisible ? (fullscreen ? 96 : 64) : fullscreen ? 32 : 24 }}
+          style={{ bottom: controlsVisible ? (appFullscreen ? 96 : 64) : appFullscreen ? 32 : 24 }}
         >
           <span
             className="max-w-[86%] rounded-md bg-black/75 px-3 py-1.5 text-center font-medium leading-[1.4] whitespace-pre-line text-white [overflow-wrap:anywhere] [word-break:keep-all]"
