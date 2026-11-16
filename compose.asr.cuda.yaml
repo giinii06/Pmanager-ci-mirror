@@ -35,6 +35,10 @@ services:
       ASR_WORKER_TOKEN: ${ASR_WORKER_TOKEN:?set ASR_WORKER_TOKEN to a long random string}
       MEDIA_ROOT: /media
       RESULT_DIR: /asr-results
+      # The card is shared, and the kind that just released it waits one turn.
+      # An ASR job can therefore sit behind a translation job, which is longer
+      # than the ten-minute default.
+      GPU_WAIT_SECONDS: ${ASR_GPU_WAIT_SECONDS:-1800}
       HF_HUB_OFFLINE: "1"
     volumes:
       - ${MEDIA_ROOT:-./sample-media}:/media:ro
