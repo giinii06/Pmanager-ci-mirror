@@ -346,6 +346,8 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
   const basis: EtaBasis =
     overall === null || (!mediaBusy && !gpuBusy) ? null : 'history'
 
+  // A failure is live only when no newer attempt for the same work exists.
+  // Retrying writes a newer row, so the older one is history, not a failure.
   const failures = db
     .query<RawItem, Params>(
       `SELECT * FROM (
@@ -353,19 +355,37 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
                 j.state, NULL AS stage, NULL AS progress, NULL AS onGpu,
                 j.started_at AS startedAt, j.updated_at AS updatedAt,
                 NULL AS leaseExpiresAt, j.last_error AS errorMessage
-         FROM jobs j LEFT JOIN assets a ON a.id = j.asset_id WHERE j.state = 'failed'
+         FROM jobs j LEFT JOIN assets a ON a.id = j.asset_id
+         WHERE j.state = 'failed' AND NOT EXISTS (
+           SELECT 1 FROM jobs n WHERE n.dedupe_key = j.dedupe_key AND n.updated_at > j.updated_at
+         )
          UNION ALL
          SELECT j.id, 'asr', j.asset_id, a.filename, j.state, j.stage, j.progress,
                 NULL, j.started_at, j.updated_at, NULL, j.error_message
-         FROM asr_jobs j LEFT JOIN assets a ON a.id = j.asset_id WHERE j.state = 'failed'
+         FROM asr_jobs j LEFT JOIN assets a ON a.id = j.asset_id
+         WHERE j.state = 'failed' AND NOT EXISTS (
+           SELECT 1 FROM asr_jobs n
+           WHERE n.asset_id = j.asset_id AND n.file_version = j.file_version
+             AND n.updated_at > j.updated_at
+         )
          UNION ALL
          SELECT j.id, 'translation', j.asset_id, a.filename, j.state, j.stage, j.progress,
                 NULL, j.started_at, j.updated_at, NULL, j.error_message
-         FROM translation_jobs j LEFT JOIN assets a ON a.id = j.asset_id WHERE j.state = 'failed'
+         FROM translation_jobs j LEFT JOIN assets a ON a.id = j.asset_id
+         WHERE j.state = 'failed' AND NOT EXISTS (
+           SELECT 1 FROM translation_jobs n
+           WHERE n.asset_id = j.asset_id AND n.file_version = j.file_version
+             AND n.target_language = j.target_language AND n.updated_at > j.updated_at
+         )
          UNION ALL
          SELECT j.id, 'embedding', j.asset_id, a.filename, j.state, j.stage, j.progress,
                 NULL, j.started_at, j.updated_at, NULL, j.error_message
-         FROM embedding_jobs j LEFT JOIN assets a ON a.id = j.asset_id WHERE j.state = 'failed'
+         FROM embedding_jobs j LEFT JOIN assets a ON a.id = j.asset_id
+         WHERE j.state = 'failed' AND NOT EXISTS (
+           SELECT 1 FROM embedding_jobs n
+           WHERE n.asset_id = j.asset_id AND n.file_version = j.file_version
+             AND n.updated_at > j.updated_at
+         )
        ) ORDER BY updatedAt DESC LIMIT ?`,
     )
     .all(FAILURE_LIMIT)
