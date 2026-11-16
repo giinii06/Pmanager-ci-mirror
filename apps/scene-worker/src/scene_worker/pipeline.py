@@ -168,6 +168,7 @@ class Pipeline:
                     "dimensions": model["dimensions"],
                     "windowMs": window["windowMs"],
                     "overlapMs": window["overlapMs"],
+                    "maxWindows": self.config.max_windows,
                     "cacheDir": self.config.cache_dir,
                 }
             ),

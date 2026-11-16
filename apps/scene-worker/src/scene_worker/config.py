@@ -21,6 +21,7 @@ class Config:
     lease_ms: int
     poll_seconds: float
     gpu_wait_seconds: float
+    max_windows: int
 
 
 def _int(source: dict[str, str], name: str, fallback: int) -> int:
@@ -65,4 +66,5 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         lease_ms=_int(source, "SCENE_LEASE_MS", 120_000),
         poll_seconds=_float(source, "SCENE_POLL_SECONDS", 2.0),
         gpu_wait_seconds=_float(source, "SCENE_GPU_WAIT_SECONDS", 900.0),
+        max_windows=_int(source, "SCENE_MAX_WINDOWS", 60),
     )

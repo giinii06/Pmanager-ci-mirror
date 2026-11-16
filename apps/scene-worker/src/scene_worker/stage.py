@@ -18,11 +18,22 @@ CLIP_FPS = 16
 THUMB_WIDTH = 320
 
 
-def plan_windows(duration_ms: int, window_ms: int, overlap_ms: int) -> list[tuple[int, int]]:
-    """Even windows over the whole file. A file shorter than one window is one window."""
+def plan_windows(
+    duration_ms: int, window_ms: int, overlap_ms: int, max_windows: int = 0
+) -> list[tuple[int, int]]:
+    """Even windows over the whole file. A file shorter than one window is one window.
+
+    A positive max_windows widens the step so one job never plans more than that
+    many windows, keeping the configured overlap-to-step ratio.
+    """
     if duration_ms <= 0 or window_ms <= 0:
         return []
-    step = max(1, window_ms - overlap_ms)
+    base = max(1, window_ms - overlap_ms)
+    step = base
+    if max_windows > 0 and duration_ms > step * max_windows:
+        step = max(1, -(-duration_ms // max_windows))
+        ratio = overlap_ms / base
+        window_ms = step + round(step * ratio)
     windows: list[tuple[int, int]] = []
     start = 0
     while start < duration_ms:
@@ -155,9 +166,16 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     claim = json.loads(Path(args.claim).read_text(encoding="utf-8"))
-    windows = plan_windows(int(claim["durationMs"]), int(claim["windowMs"]), int(claim["overlapMs"]))
+    duration_ms = int(claim["durationMs"])
+    windows = plan_windows(
+        duration_ms,
+        int(claim["windowMs"]),
+        int(claim["overlapMs"]),
+        int(claim.get("maxWindows", 0)),
+    )
     if not windows:
         raise SystemExit("the asset has no duration, so it has no windows")
+    log.info("%d windows over %d ms", len(windows), duration_ms)
 
     import torch
     from transformers import PeAudioVideoProcessor
