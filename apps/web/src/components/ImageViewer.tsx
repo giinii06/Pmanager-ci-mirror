@@ -216,7 +216,7 @@ export function ImageViewer({
           <div
             ref={stage.attach}
             className={cn(
-              'relative flex min-h-0 flex-1 items-center justify-center',
+              'relative flex h-full min-h-0 flex-1 items-center justify-center',
               fullscreenActive && 'bg-black',
               mode === 'pseudo' && 'fixed inset-0 z-[90]',
             )}
