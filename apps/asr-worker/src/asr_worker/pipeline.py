@@ -17,7 +17,7 @@ from . import audio
 from .client import FatalError, LeaseLost, WorkerClient
 from .config import Config
 from .jsonio import write_json_atomic
-from .language import spoken_language
+from .language import LanguageDecision, code_for, has_speech, resolve_align_language
 from .stage_pid import reap_stale_stage, stage_pid_file
 from .subtitles import build_segments, to_srt, to_txt, to_vtt
 
@@ -219,6 +219,46 @@ class Pipeline:
                 },
             )
 
+            language_path = workdir / "language.json"
+            if code_for(self.config.language):
+                decision = LanguageDecision.from_hint(self.config.language)
+            else:
+                try:
+                    self._run_stage(
+                        [
+                            "detect",
+                            "--input",
+                            str(plan_path),
+                            "--output",
+                            str(language_path),
+                            "--probe-dir",
+                            self.config.langid_dir,
+                            "--samples",
+                            str(self.config.langid_samples),
+                            "--min-confidence",
+                            str(self.config.langid_min_confidence),
+                            "--min-margin",
+                            str(self.config.langid_min_margin),
+                        ],
+                        heartbeat,
+                        job_id,
+                        state="transcribing",
+                        stage="transcribing",
+                        low=6.0,
+                        high=10.0,
+                        gpu=False,
+                    )
+                    decision = LanguageDecision.from_dict(
+                        json.loads(language_path.read_text(encoding="utf-8"))
+                    )
+                except LeaseLost:
+                    raise
+                except Exception as error:  # noqa: BLE001 - a failed probe must not sink the job
+                    log.warning("language detection failed: %s", error)
+                    decision = LanguageDecision.failed(
+                        f"{type(error).__name__}: {error}", self.config.language
+                    )
+
             asr_path = workdir / "asr.json"
             self._run_stage(
                 [
@@ -232,7 +272,7 @@ class Pipeline:
                     "--device",
                     self._device(),
                     "--language",
-                    self.config.language,
+                    decision.force,
                 ],
                 heartbeat,
                 job_id,
@@ -243,15 +283,11 @@ class Pipeline:
             )
 
             aligned_path = workdir / "aligned.json"
-            # The hint only nudges the model; the chunks say what was actually
-            # spoken, and that is what the aligner and the transcript use.
-            detected = spoken_language(
-                json.loads(asr_path.read_text(encoding="utf-8")).get("chunks", []),
-                self.config.language,
-            )
-            if not detected:
-                self._write_no_speech(job_id, duration_ms, file_version, asset_id)
+            asr_chunks = json.loads(asr_path.read_text(encoding="utf-8")).get("chunks", [])
+            if not has_speech(asr_chunks):
+                self._write_no_speech(job_id, duration_ms, file_version, asset_id, decision)
                 return
+            align_language = resolve_align_language(decision, asr_chunks)
             self._run_stage(
                 [
                     "align",
@@ -264,7 +300,7 @@ class Pipeline:
                     "--device",
                     self._device(),
                     "--language",
-                    detected,
+                    align_language,
                 ],
                 heartbeat,
                 job_id,
@@ -276,7 +312,9 @@ class Pipeline:
 
             self._report(job_id, "writing", "writing", 88)
             aligned = json.loads(aligned_path.read_text(encoding="utf-8"))
-            self._write_results(job_id, aligned, duration_ms, file_version, asset_id, detected)
+            self._write_results(
+                job_id, aligned, duration_ms, file_version, asset_id, decision, align_language
+            )
         finally:
             if not self.config.keep_workdir:
                 _remove_tree(workdir)
@@ -311,16 +349,18 @@ class Pipeline:
         stage: str,
         low: float,
         high: float,
+        gpu: bool = True,
     ) -> None:
         if heartbeat.lost.is_set():
             raise LeaseLost("lease lost before the stage started")
 
-        # The stage process loads a model onto the card, so it holds the shared
-        # GPU lease for as long as the process lives. Releasing before the
-        # process exits would let a translation start on the same card.
-        if not self._acquire_gpu(heartbeat):
-            raise RuntimeError("GPU is busy with another job.")
-        heartbeat.hold_gpu()
+        # A stage that loads a model onto the card holds the shared GPU lease for
+        # as long as the process lives. Releasing before the process exits would
+        # let a translation start on the same card.
+        if gpu:
+            if not self._acquire_gpu(heartbeat):
+                raise RuntimeError("GPU is busy with another job.")
+            heartbeat.hold_gpu()
 
         log_handle, log_name = tempfile.mkstemp(prefix="asr-stage-", suffix=".log")
         os.close(log_handle)
@@ -383,11 +423,12 @@ class Pipeline:
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait(timeout=30)
-            heartbeat.drop_gpu()
-            try:
-                self.client.gpu_release(self.owner)
-            except Exception as error:  # noqa: BLE001 - the lease expires on its own
-                log.warning("could not release the GPU lease: %s", error)
+            if gpu:
+                heartbeat.drop_gpu()
+                try:
+                    self.client.gpu_release(self.owner)
+                except Exception as error:  # noqa: BLE001 - the lease expires on its own
+                    log.warning("could not release the GPU lease: %s", error)
             log_path.unlink(missing_ok=True)
 
     def _result_target(self, file_version: int, asset_id: str) -> tuple[Path, str]:
@@ -406,7 +447,12 @@ class Pipeline:
         return target, relative
 
     def _write_no_speech(
-        self, job_id: str, duration_ms: int, file_version: int, asset_id: str
+        self,
+        job_id: str,
+        duration_ms: int,
+        file_version: int,
+        asset_id: str,
+        decision: LanguageDecision,
     ) -> None:
         """A file with no dialogue still records a transcript.
 
@@ -418,6 +464,7 @@ class Pipeline:
             "assetId": asset_id,
             "fileVersion": file_version,
             "language": "",
+            "languageDecision": decision.as_dict(),
             "hasSpeech": False,
             "modelId": self.config.model_id,
             "modelRevision": self.config.model_revision,
@@ -452,7 +499,8 @@ class Pipeline:
         duration_ms: int,
         file_version: int,
         asset_id: str,
-        language: str,
+        decision: LanguageDecision,
+        align_language: str,
     ) -> None:
         chunks = aligned.get("chunks", [])
         segments = build_segments(chunks)
@@ -469,7 +517,8 @@ class Pipeline:
         transcript = {
             "assetId": asset_id,
             "fileVersion": file_version,
-            "language": language,
+            "language": decision.language,
+            "languageDecision": {**decision.as_dict(), "alignLanguage": align_language},
             "modelId": self.config.model_id,
             "modelRevision": self.config.model_revision,
             "alignerId": self.config.aligner_id,
@@ -494,7 +543,7 @@ class Pipeline:
                 "transcriptId": f"{safe_segment(asset_id, 32)}-{uuid.uuid4().hex[:12]}",
                 "resultDir": relative,
                 "plainText": plain_text,
-                "language": language,
+                "language": decision.language,
                 "segments": [
                     {"startMs": segment.start_ms, "endMs": segment.end_ms, "text": segment.text}
                     for segment in segments

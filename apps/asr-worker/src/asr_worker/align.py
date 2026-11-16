@@ -25,7 +25,9 @@ def run(
 
     payload = json.loads(asr_path.read_text(encoding="utf-8"))
     chunks: list[dict[str, Any]] = payload["chunks"]
-    lang = language_hint(language) or "Korean"
+    lang = language_hint(language)
+    if not lang:
+        raise ValueError("the aligner needs a language")
 
     model = load_model(Qwen3ForcedAligner.from_pretrained, aligner_dir, device, "aligner")
 

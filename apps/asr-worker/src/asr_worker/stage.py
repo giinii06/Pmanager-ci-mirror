@@ -32,6 +32,15 @@ def build_parser() -> argparse.ArgumentParser:
     forced.add_argument("--device", required=True)
     forced.add_argument("--language", default="", help="the language the ASR stage detected")
     forced.add_argument("--pid-file", required=True)
+
+    detect = sub.add_parser("detect", help="classify the spoken language of prepared chunks")
+    detect.add_argument("--input", required=True)
+    detect.add_argument("--output", required=True)
+    detect.add_argument("--probe-dir", required=True)
+    detect.add_argument("--samples", type=int, default=5)
+    detect.add_argument("--min-confidence", type=float, default=0.60)
+    detect.add_argument("--min-margin", type=float, default=0.15)
+    detect.add_argument("--pid-file", required=True)
     return parser
 
 
@@ -44,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = build_parser().parse_args(argv)
 
-    # Both stage modules import `device`, which imports torch at module scope, so the
+    # The model stages import `device`, which imports torch at module scope, so the
     # record has to land before the branch that could allocate on the card.
     record_self(Path(args.pid_file))
     try:
@@ -59,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
                 Path(args.output),
                 _progress,
             )
-        else:
+        elif args.command == "align":
             from . import align
 
             align.run(
@@ -67,6 +76,18 @@ def main(argv: list[str] | None = None) -> int:
                 args.aligner_dir,
                 args.device,
                 args.language,
+                Path(args.output),
+                _progress,
+            )
+        else:
+            from . import probe
+
+            probe.run(
+                Path(args.input),
+                args.probe_dir,
+                args.samples,
+                args.min_confidence,
+                args.min_margin,
                 Path(args.output),
                 _progress,
             )
