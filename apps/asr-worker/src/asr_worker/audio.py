@@ -12,10 +12,13 @@ _SILENCE_END = re.compile(r"silence_end:\s*(-?\d+(?:\.\d+)?)")
 
 
 def run_ffmpeg(args: list[str], timeout: int = 3600, loglevel: str = "error") -> str:
+    # Media tags reach the log in whatever code page the muxer used, so decode leniently;
+    # only the ASCII silencedetect lines are parsed out of it.
     result = subprocess.run(
         ["ffmpeg", "-hide_banner", "-nostdin", "-v", loglevel, *args],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
     )
     if result.returncode != 0:
