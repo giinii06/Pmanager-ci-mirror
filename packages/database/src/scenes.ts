@@ -3,6 +3,7 @@ import type { SceneJobState, SceneStage } from '@mediavault/shared'
 import { newId } from '@mediavault/shared'
 import type { Db } from './db'
 import { LEASE_IS_LIVE, RENEW_LEASE } from './leases'
+import { asFloats } from './vectors'
 import type {
   SceneJobRecord,
   SceneSearchHit,
@@ -457,8 +458,7 @@ export function searchScenes(
          AND s.model_sha256 = ? AND s.pipeline_version = ?
          AND e.dimensions = ?`,
     )
-    .all(fingerprint.modelSha256, fingerprint.pipelineVersion, fingerprint.dimensions)
-  const materializedAt = performance.now()
+    .iterate(fingerprint.modelSha256, fingerprint.pipelineVersion, fingerprint.dimensions)
 
   const queries: Record<'visual' | 'audio' | 'av', Float32Array> = {
     visual: query.visual,
@@ -467,8 +467,10 @@ export function searchScenes(
   }
 
   const best = new Map<string, SceneSearchHit>()
+  let scanned = 0
   for (const row of rows) {
-    const candidate = new Float32Array(row.vector.slice().buffer)
+    scanned += 1
+    const candidate = asFloats(row.vector, fingerprint.dimensions)
     const score = dot(queries[row.modality], candidate)
     const previous = best.get(row.sceneId)
     if (!previous || score > previous.score) {
@@ -484,6 +486,7 @@ export function searchScenes(
       })
     }
   }
+  const materializedAt = performance.now()
 
   const ranked = [...best.values()].sort(
     (a, b) => b.score - a.score || a.sceneId.localeCompare(b.sceneId),
@@ -492,7 +495,7 @@ export function searchScenes(
   console.info(
     JSON.stringify({
       event: 'search.scenes',
-      rows: rows.length,
+      rows: scanned,
       materializeMs: Math.round((materializedAt - startedAt) * 10) / 10,
       rankMs: Math.round((rankedAt - materializedAt) * 10) / 10,
       totalMs: Math.round((rankedAt - startedAt) * 10) / 10,

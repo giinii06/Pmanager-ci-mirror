@@ -4,6 +4,7 @@ import { newId } from '@mediavault/shared'
 import { assetsByIds } from './assets'
 import type { Db } from './db'
 import { LEASE_IS_LIVE, RENEW_LEASE } from './leases'
+import { asFloats } from './vectors'
 import type {
   AssetRecord,
   EmbeddingFingerprint,
@@ -481,7 +482,7 @@ export function relatedByEmbedding(
          AND e.model_sha256 = ? AND e.pipeline_version = ? AND e.dimensions = ?
          AND e.source_transcript_id IS ${currentTranscript('e')}`,
     )
-    .all(
+    .iterate(
       assetId,
       fingerprint.modelSha256,
       fingerprint.pipelineVersion,
@@ -491,7 +492,7 @@ export function relatedByEmbedding(
   const best = new Map<string, number>()
   for (const row of rows) {
     if (row.filename === source.filename && row.sizeBytes === source.sizeBytes) continue
-    const candidate = toFloats(row.vector)
+    const candidate = asFloats(row.vector, fingerprint.dimensions)
     let top = best.get(row.assetId) ?? -Infinity
     for (const stored of mine) {
       const score = dot(stored.vector, candidate)

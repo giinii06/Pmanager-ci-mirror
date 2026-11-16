@@ -26,6 +26,7 @@ import { MIGRATIONS, SCHEMA_VERSION } from './schema'
 import type { CompleteSceneJobInput, CreateSceneJobInput } from './scenes'
 import type { Db } from './db'
 import type { NewAsset } from './assets'
+import type { SceneSearchHit } from './types'
 
 const DIMENSIONS = 4
 const SHA = 'scene-sha-1'
@@ -115,6 +116,66 @@ function completeInput(overrides: Partial<CompleteSceneJobInput> = {}): Complete
 function claim(db: Db, now = 5_000) {
   createSceneJob(db, jobInput(), now)
   return claimSceneJob(db, 'worker-a', 60_000, now)!
+}
+
+/** The pre-Phase-3 algorithm, kept here so the iterator can be compared with it. */
+function fullSearch(
+  db: Db,
+  query: { visual: Float32Array; audio: Float32Array; av: Float32Array },
+  fingerprint: { modelSha256: string; pipelineVersion: string; dimensions: number },
+  limit: number,
+): SceneSearchHit[] {
+  const rows = db
+    .query<
+      {
+        sceneId: string
+        assetId: string
+        seq: number
+        startMs: number
+        endMs: number
+        thumbnailPath: string | null
+        modality: 'visual' | 'audio' | 'av'
+        vector: Uint8Array
+      },
+      [string, string, number]
+    >(
+      `SELECT s.id AS sceneId, s.asset_id AS assetId, s.seq, s.start_ms AS startMs,
+              s.end_ms AS endMs, s.thumbnail_path AS thumbnailPath, e.modality, e.vector
+       FROM scene_embeddings e
+       JOIN video_scenes s ON s.id = e.scene_id
+       JOIN assets a ON a.id = s.asset_id
+       WHERE a.deleted_at IS NULL
+         AND s.file_version = a.file_version
+         AND s.model_sha256 = ? AND s.pipeline_version = ?
+         AND e.dimensions = ?`,
+    )
+    .all(fingerprint.modelSha256, fingerprint.pipelineVersion, fingerprint.dimensions)
+
+  const queries = { visual: query.visual, audio: query.audio, av: query.av }
+  const best = new Map<string, SceneSearchHit>()
+  for (const row of rows) {
+    const candidate = new Float32Array(row.vector.slice().buffer)
+    let score = 0
+    for (let index = 0; index < queries[row.modality].length; index += 1) {
+      score += queries[row.modality][index]! * candidate[index]!
+    }
+    const previous = best.get(row.sceneId)
+    if (!previous || score > previous.score) {
+      best.set(row.sceneId, {
+        sceneId: row.sceneId,
+        assetId: row.assetId,
+        seq: row.seq,
+        startMs: row.startMs,
+        endMs: row.endMs,
+        thumbnailPath: row.thumbnailPath,
+        score,
+        modality: row.modality,
+      })
+    }
+  }
+  return [...best.values()]
+    .sort((a, b) => b.score - a.score || a.sceneId.localeCompare(b.sceneId))
+    .slice(0, limit)
 }
 
 describe('scene job lifecycle', () => {
@@ -344,6 +405,36 @@ describe('scene search', () => {
     expect(
       searchScenes(db, query, { modelSha256: SHA, pipelineVersion: PIPELINE, dimensions: 8 }, 10),
     ).toHaveLength(0)
+  })
+
+  test('the iterator returns the same top 10 as a full materialization', () => {
+    const db = seed()
+    claim(db)
+    const scenes = Array.from({ length: 100 }, (_, index) => {
+      const value = index + 1
+      return scene(
+        index,
+        [Math.sin(value), Math.cos(value), Math.sin(value * 2), Math.cos(value * 2)],
+        [Math.cos(value), Math.sin(value), Math.cos(value * 2), Math.sin(value * 2)],
+        [Math.sin(value * 3), Math.cos(value * 3), Math.sin(value * 4), Math.cos(value * 4)],
+      )
+    })
+    completeSceneJob(db, completeInput({ scenes }), 6_000)
+    const query = {
+      visual: unit([1, 0, 0, 0]),
+      audio: unit([0, 1, 0, 0]),
+      av: unit([0, 0, 1, 0]),
+    }
+    const fingerprint = { modelSha256: SHA, pipelineVersion: PIPELINE, dimensions: DIMENSIONS }
+
+    const expected = fullSearch(db, query, fingerprint, 10)
+    const actual = searchScenes(db, query, fingerprint, 10)
+
+    expect(actual.map((hit) => hit.sceneId)).toEqual(expected.map((hit) => hit.sceneId))
+    expect(actual.map((hit) => hit.modality)).toEqual(expected.map((hit) => hit.modality))
+    for (let index = 0; index < actual.length; index += 1) {
+      expect(actual[index]!.score).toBeCloseTo(expected[index]!.score, 6)
+    }
   })
 })
 
