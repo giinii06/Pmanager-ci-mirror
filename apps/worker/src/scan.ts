@@ -1,6 +1,8 @@
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  countAssets,
+  countMissingAssets,
   deleteStaleFolders,
   enqueueJob,
   findAssetForScan,
@@ -223,6 +225,24 @@ export async function scanLibrary(
 
   await walk(root, '', null, 0)
   flush()
+
+  const total = countAssets(db, libraryId)
+  const missing = countMissingAssets(db, libraryId, scanId)
+  const threshold = Math.max(50, Math.floor(total * config.scanDeleteGuardRatio))
+  if (!config.scanDeleteForce && missing > threshold) {
+    console.warn(
+      JSON.stringify({
+        event: 'scan.delete_guard',
+        libraryId,
+        total,
+        missing,
+        threshold,
+      }),
+    )
+    throw new Error(
+      `refusing to soft-delete ${missing} of ${total} assets; set SCAN_DELETE_FORCE=1 to allow it`,
+    )
+  }
 
   summary.removed = softDeleteMissing(db, libraryId, scanId, Date.now())
   deleteStaleFolders(db, libraryId, scanId)

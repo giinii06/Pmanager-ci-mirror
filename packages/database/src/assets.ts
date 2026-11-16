@@ -305,6 +305,19 @@ export function countAssets(db: Db, libraryId: string): number {
   )
 }
 
+/** The rows a scan did not see, which `softDeleteMissing` would hide. */
+export function countMissingAssets(db: Db, libraryId: string, scanId: string): number {
+  return (
+    db
+      .query<{ n: number }, Params>(
+        `SELECT COUNT(*) AS n FROM assets
+         WHERE library_id = ? AND deleted_at IS NULL
+           AND (last_seen_scan IS NULL OR last_seen_scan <> ?)`,
+      )
+      .get(libraryId, scanId)?.n ?? 0
+  )
+}
+
 /**
  * The videos an index pass may enqueue work for. A file with no duration has no
  * windows and no frames to sample, so it is skipped until a scan fills it in.

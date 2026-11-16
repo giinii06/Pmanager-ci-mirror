@@ -11,6 +11,10 @@ export interface WorkerConfig {
   /** The card ASR and translation workers also lease, so an encode collides with them. */
   gpuResource: string
   workerId: string
+  /** A scan that would hide more than this share of a library is refused. */
+  scanDeleteGuardRatio: number
+  /** The operator's explicit override for a deletion the guard would refuse. */
+  scanDeleteForce: boolean
 }
 
 export async function loadWorkerConfig(
@@ -31,5 +35,12 @@ export async function loadWorkerConfig(
     once: env.WORKER_ONCE === '1',
     gpuResource: env.GPU_RESOURCE?.trim() || 'gpu:0',
     workerId: env.WORKER_ID?.trim() || `worker-${process.pid}`,
+    scanDeleteGuardRatio: resolveGuardRatio(env.SCAN_DELETE_GUARD_RATIO),
+    scanDeleteForce: env.SCAN_DELETE_FORCE === '1',
   }
+}
+
+function resolveGuardRatio(raw: string | undefined): number {
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 && value <= 1 ? value : 0.2
 }

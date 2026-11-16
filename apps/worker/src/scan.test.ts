@@ -59,6 +59,8 @@ async function harness(): Promise<ScanHarness> {
       once: true,
       gpuResource: 'gpu:0',
       workerId: 'test',
+      scanDeleteGuardRatio: 0.2,
+      scanDeleteForce: false,
     },
   }
 }
@@ -90,6 +92,44 @@ function imageAsset(
     indexedAt: 1,
     scanId: 'seed',
   }
+}
+
+async function seedUnchanged(h: ScanHarness, count: number, prefix = 'file'): Promise<void> {
+  for (let index = 0; index < count; index += 1) {
+    const name = `${prefix}-${index}.jpg`
+    const file = path.join(h.root, name)
+    await writeFile(file, '')
+    const info = await stat(file)
+    insertAsset(
+      h.db,
+      imageAsset(
+        `${prefix}-${index}`,
+        h.folderId,
+        name,
+        info.size,
+        Math.round(info.mtimeMs),
+      ),
+    )
+  }
+}
+
+function seedMissing(h: ScanHarness, count: number, prefix = 'gone'): void {
+  for (let index = 0; index < count; index += 1) {
+    insertAsset(
+      h.db,
+      imageAsset(`${prefix}-${index}`, h.folderId, `${prefix}-${index}.jpg`, 0, 1),
+    )
+  }
+}
+
+function deletedCount(h: ScanHarness): number {
+  return (
+    h.db
+      .query<{ n: number }, []>(
+        'SELECT COUNT(*) AS n FROM assets WHERE deleted_at IS NOT NULL',
+      )
+      .get()?.n ?? 0
+  )
 }
 
 describe('scan writes', () => {
@@ -217,6 +257,59 @@ describe('scan writes', () => {
       )
       .get()
     expect(stale?.n).toBe(0)
+    h.db.close()
+  })
+})
+
+describe('delete guard', () => {
+  test('an empty readable root aborts the scan', async () => {
+    const h = await harness()
+    seedMissing(h, 100)
+
+    await expect(scanLibrary(h.db, h.config, 'lib1')).rejects.toThrow(
+      'refusing to soft-delete 100 of 100 assets',
+    )
+
+    expect(deletedCount(h)).toBe(0)
+    h.db.close()
+  })
+
+  test('a small deletion is allowed', async () => {
+    const h = await harness()
+    await seedUnchanged(h, 90)
+    seedMissing(h, 10)
+
+    const summary = await scanLibrary(h.db, h.config, 'lib1')
+
+    expect(summary.removed).toBe(10)
+    expect(deletedCount(h)).toBe(10)
+    h.db.close()
+  })
+
+  test('the guard ratio is configurable', async () => {
+    const h = await harness()
+    await seedUnchanged(h, 120)
+    seedMissing(h, 80)
+
+    await expect(scanLibrary(h.db, h.config, 'lib1')).rejects.toThrow(
+      'refusing to soft-delete 80 of 200 assets',
+    )
+
+    h.config.scanDeleteGuardRatio = 0.5
+    const summary = await scanLibrary(h.db, h.config, 'lib1')
+
+    expect(summary.removed).toBe(80)
+    h.db.close()
+  })
+
+  test('the force flag allows an intentional deletion', async () => {
+    const h = await harness()
+    h.config.scanDeleteForce = true
+    seedMissing(h, 100)
+
+    const summary = await scanLibrary(h.db, h.config, 'lib1')
+
+    expect(summary.removed).toBe(100)
     h.db.close()
   })
 })
