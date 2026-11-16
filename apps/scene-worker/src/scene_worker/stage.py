@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 import tempfile
@@ -156,6 +157,26 @@ def write_thumbnail(source: str, at_ms: int, dest: Path) -> None:
     )
 
 
+def write_window_thumbnail(
+    media_path: str,
+    clip: Path,
+    start_ms: int,
+    end_ms: int,
+    dest: Path,
+    *,
+    from_clip: bool,
+) -> None:
+    """Writes the window thumbnail before the caller deletes the clip.
+
+    The clip starts at `start_ms`, so its own timestamp for the midpoint is the
+    midpoint minus the window start.
+    """
+    if from_clip:
+        write_thumbnail(str(clip), (start_ms + end_ms) // 2 - start_ms, dest)
+    else:
+        write_thumbnail(media_path, (start_ms + end_ms) // 2, dest)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Embed the windows of one video with PE-AV.")
     parser.add_argument("--claim", required=True)
@@ -191,6 +212,7 @@ def main() -> int:
         log.info("the asset has no audio track, so every window gets silence")
 
     expected = int(claim["dimensions"])
+    thumbnail_from_clip = os.environ.get("SCENE_THUMBNAIL_FROM_CLIP", "0") == "1"
     scenes: list[dict[str, Any]] = []
     cut_ms = 0.0
     thumbnail_ms = 0.0
@@ -212,17 +234,21 @@ def main() -> int:
                     raise RuntimeError(
                         f"the model returned {len(visual_vector)} dimensions, expected {expected}"
                     )
+
+                thumb_rel = f"scenes/{claim['assetId']}/{index:04d}.jpg"
+                thumb_started = time.perf_counter()
+                write_window_thumbnail(
+                    claim["mediaPath"],
+                    clip,
+                    start_ms,
+                    end_ms,
+                    Path(claim["cacheDir"]) / thumb_rel,
+                    from_clip=thumbnail_from_clip,
+                )
+                thumbnail_ms += (time.perf_counter() - thumb_started) * 1000
             finally:
                 clip.unlink(missing_ok=True)
 
-            thumb_rel = f"scenes/{claim['assetId']}/{index:04d}.jpg"
-            thumb_started = time.perf_counter()
-            write_thumbnail(
-                claim["mediaPath"],
-                (start_ms + end_ms) // 2,
-                Path(claim["cacheDir"]) / thumb_rel,
-            )
-            thumbnail_ms += (time.perf_counter() - thumb_started) * 1000
             scenes.append(
                 {
                     "seq": index,

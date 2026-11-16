@@ -32,6 +32,9 @@ services:
       SCENE_MODEL_REVISION: ${SCENE_MODEL_REVISION:?set SCENE_MODEL_REVISION to a commit SHA}
       SCENE_TEMP_DIR: /scene-tmp
       SCENE_CACHE_DIR: /cache
+      # Reuses the cut clip for the thumbnail, which saves a second seek into
+      # the original file. Off by default because the clip is padded square.
+      SCENE_THUMBNAIL_FROM_CLIP: ${SCENE_THUMBNAIL_FROM_CLIP:-0}
       # Bounds how long one scene job can hold the shared GPU, so ASR is not starved.
       SCENE_MAX_WINDOWS: ${SCENE_MAX_WINDOWS:-120}
       # The card is shared with ASR, translation and embedding, and the kind that
