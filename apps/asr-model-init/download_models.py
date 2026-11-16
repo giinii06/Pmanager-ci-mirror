@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Download the ASR and aligner checkpoints into a host-mounted model directory.
+"""Download the ASR, aligner and language probe checkpoints into a host-mounted
+model directory.
 
 The image never contains weights. This script runs at container start, is
 idempotent, and swaps a verified download into place only after every required
@@ -26,6 +27,19 @@ REQUIRED_FILES = (
     "preprocessor_config.json",
     "tokenizer_config.json",
 )
+# Whisper needs the processor and the tokenizer at classification time, and the
+# generation config carries the language token ids.
+LANGID_REQUIRED_FILES = (
+    "config.json",
+    "model.safetensors",
+    "preprocessor_config.json",
+    "generation_config.json",
+    "tokenizer.json",
+    "vocab.json",
+    "merges.txt",
+)
+# Without the patterns the hub also fetches the flax, tf and pytorch-bin copies.
+LANGID_ALLOW_PATTERNS = ["*.json", "*.txt", "model.safetensors"]
 MIN_WEIGHT_BYTES = 50 * 1024 * 1024
 
 
@@ -60,9 +74,9 @@ def safetensors_ok(path: Path) -> bool:
     return True
 
 
-def inspect(directory: Path) -> list[str]:
+def inspect(directory: Path, required: tuple[str, ...] = REQUIRED_FILES) -> list[str]:
     problems: list[str] = []
-    for name in REQUIRED_FILES:
+    for name in required:
         path = directory / name
         if not path.is_file():
             problems.append(f"missing {name}")
@@ -96,13 +110,21 @@ def disk_free_gb(path: Path) -> float:
     return shutil.disk_usage(probe).free / 1_000_000_000
 
 
-def ensure_model(label: str, repo_id: str, revision: str, target: Path, token: str | None) -> None:
+def ensure_model(
+    label: str,
+    repo_id: str,
+    revision: str,
+    target: Path,
+    token: str | None,
+    required: tuple[str, ...] = REQUIRED_FILES,
+    allow_patterns: list[str] | None = None,
+) -> None:
     if not repo_id:
         fail(f"{label}: the model id is empty.")
 
     manifest = read_manifest(target)
     if manifest and manifest.get("requestedRevision") == revision:
-        problems = inspect(target)
+        problems = inspect(target, required)
         if not problems:
             log(f"{label}: {repo_id}@{manifest.get('commit', revision)} already present, skipping")
             return
@@ -131,12 +153,13 @@ def ensure_model(label: str, repo_id: str, revision: str, target: Path, token: s
             revision=commit,
             local_dir=str(staging),
             token=token,
+            allow_patterns=allow_patterns,
         )
     except Exception as error:  # noqa: BLE001
         shutil.rmtree(staging, ignore_errors=True)
         fail(f"{label}: download failed: {error}")
 
-    problems = inspect(staging)
+    problems = inspect(staging, required)
     if problems:
         shutil.rmtree(staging, ignore_errors=True)
         fail(f"{label}: downloaded files failed verification: {', '.join(problems)}")
@@ -170,16 +193,30 @@ def ensure_model(label: str, repo_id: str, revision: str, target: Path, token: s
 def main() -> int:
     asr_id = os.environ.get("ASR_MODEL_ID", "TeamUNIVA/qwen3_asr_1.7b_ko").strip()
     align_id = os.environ.get("ALIGN_MODEL_ID", "Qwen/Qwen3-ForcedAligner-0.6B").strip()
+    lang_id = os.environ.get("LANGID_MODEL_ID", "openai/whisper-small").strip()
     asr_revision = os.environ.get("ASR_MODEL_REVISION", "").strip()
     align_revision = os.environ.get("ALIGN_MODEL_REVISION", "").strip()
+    lang_revision = os.environ.get("LANGID_MODEL_REVISION", "").strip()
     token = os.environ.get("HF_TOKEN", "").strip() or None
 
-    if not asr_revision or not align_revision:
-        fail("ASR_MODEL_REVISION and ALIGN_MODEL_REVISION must be pinned to a commit SHA.")
+    if not asr_revision or not align_revision or not lang_revision:
+        fail(
+            "ASR_MODEL_REVISION, ALIGN_MODEL_REVISION and LANGID_MODEL_REVISION "
+            "must be pinned to a commit SHA."
+        )
 
     MODEL_ROOT.mkdir(parents=True, exist_ok=True)
     ensure_model("asr", asr_id, asr_revision, MODEL_ROOT / "asr", token)
     ensure_model("aligner", align_id, align_revision, MODEL_ROOT / "aligner", token)
+    ensure_model(
+        "langid",
+        lang_id,
+        lang_revision,
+        MODEL_ROOT / "langid",
+        token,
+        LANGID_REQUIRED_FILES,
+        LANGID_ALLOW_PATTERNS,
+    )
 
     log("all models verified")
     return 0

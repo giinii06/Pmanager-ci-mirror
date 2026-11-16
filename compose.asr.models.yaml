@@ -14,8 +14,10 @@ services:
     environment:
       ASR_MODEL_ID: ${ASR_MODEL_ID:-TeamUNIVA/qwen3_asr_1.7b_ko}
       ALIGN_MODEL_ID: ${ALIGN_MODEL_ID:-Qwen/Qwen3-ForcedAligner-0.6B}
+      LANGID_MODEL_ID: ${LANGID_MODEL_ID:-openai/whisper-small}
       ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:?set ASR_MODEL_REVISION to a commit SHA}
       ALIGN_MODEL_REVISION: ${ALIGN_MODEL_REVISION:?set ALIGN_MODEL_REVISION to a commit SHA}
+      LANGID_MODEL_REVISION: ${LANGID_MODEL_REVISION:?set LANGID_MODEL_REVISION to a commit SHA}
       HF_TOKEN: ${HF_TOKEN:-}
     volumes:
       - ./models:/models

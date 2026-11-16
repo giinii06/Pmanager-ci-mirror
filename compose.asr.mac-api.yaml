@@ -16,6 +16,6 @@ services:
       ASR_RESULT_DIR: /asr-results
       ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:?set ASR_MODEL_REVISION to a commit SHA}
       ALIGN_MODEL_REVISION: ${ALIGN_MODEL_REVISION:?set ALIGN_MODEL_REVISION to a commit SHA}
-      ASR_PIPELINE_VERSION: ${ASR_PIPELINE_VERSION:-2}
+      ASR_PIPELINE_VERSION: ${ASR_PIPELINE_VERSION:-3}
     volumes:
       - ./asr-results:/asr-results
