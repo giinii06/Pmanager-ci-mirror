@@ -16,6 +16,7 @@ import {
   renamePerson,
   setPersonState,
   splitPerson,
+  updateAssetFile,
   upsertFolder,
 } from './index'
 import type { CompleteFaceJobInput, CreateFaceJobInput } from './people'
@@ -132,6 +133,50 @@ describe('face job lifecycle', () => {
     expect(claimFaceJob(db, 'worker-a', 60_000, 2_000)?.assetId).toBe('asset1')
     expect(claimFaceJob(db, 'worker-b', 60_000, 2_000)?.assetId).toBe('asset2')
     expect(claimFaceJob(db, 'worker-c', 60_000, 2_000)).toBeNull()
+  })
+
+  test('a complete for a file version the asset no longer has is rejected', () => {
+    const db = seed()
+    createFaceJob(db, jobInput(), 1_000)
+    claimFaceJob(db, 'worker-a', 60_000, 2_000)
+
+    updateAssetFile(db, 'asset1', {
+      folderId: 'folder1',
+      filename: 'asset1.mp4',
+      mimeType: 'video/mp4',
+      sizeBytes: 2_000,
+      mtimeMs: 2_000,
+      width: 1_080,
+      height: 1_920,
+      durationMs: 30_000,
+      takenAt: 10_000,
+      videoCodec: 'h264',
+      audioCodec: 'aac',
+      container: 'mov,mp4',
+      indexedAt: 20_000,
+      scanId: 'scan2',
+    })
+
+    expect(
+      completeFaceJob(
+        db,
+        {
+          jobId: 'face1',
+          owner: 'worker-a',
+          matchThreshold: MATCH,
+          candidateThreshold: CANDIDATE,
+          faces: [face(0, unit([1, 0, 0, 0]))],
+        },
+        3_000,
+      ),
+    ).toBe(false)
+
+    const stale = db
+      .query<{ n: number }, []>(
+        "SELECT COUNT(*) AS n FROM face_detections WHERE asset_id = 'asset1' AND file_version = 1",
+      )
+      .get()
+    expect(stale?.n).toBe(0)
   })
 
   test('a complete from a stale owner is ignored', () => {
