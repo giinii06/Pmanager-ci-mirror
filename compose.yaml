@@ -12,6 +12,8 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
       SCAN_INTERVAL_MINUTES: ${SCAN_INTERVAL_MINUTES:-15}
       GPU_RESOURCE: ${GPU_RESOURCE:-gpu:0}
+      # Test seam for a full cursor walk. Leave unset in normal operation.
+      PIPELINE_BATCH: ${PIPELINE_BATCH:-500}
     volumes:
       - ${MEDIA_ROOT:-./sample-media}:/media:ro
       - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra:ro
@@ -36,6 +38,8 @@ services:
     environment:
       HWACCEL: ${HWACCEL:-}
       GPU_RESOURCE: ${GPU_RESOURCE:-gpu:0}
+      SCAN_DELETE_GUARD_RATIO: ${SCAN_DELETE_GUARD_RATIO:-0.2}
+      SCAN_DELETE_FORCE: ${SCAN_DELETE_FORCE:-0}
     volumes:
       - ${MEDIA_ROOT:-./sample-media}:/media:ro
       - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra:ro
