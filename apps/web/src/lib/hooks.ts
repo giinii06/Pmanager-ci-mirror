@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 export function useDebounced<T>(value: T, delay = 300): T {
   const [debounced, setDebounced] = useState(value)
@@ -32,4 +32,47 @@ export function useElementWidth<T extends HTMLElement>(): [
   }, [node])
 
   return [setNode, width]
+}
+
+/**
+ * Measures an element that mounts conditionally and also exposes it as a ref,
+ * for APIs such as the Fullscreen one that need the node outside an effect.
+ */
+export function useMeasuredElement<T extends HTMLElement>(): {
+  ref: RefObject<T | null>
+  attach: (node: T | null) => void
+  width: number
+  height: number
+} {
+  const ref = useRef<T | null>(null)
+  const observerRef = useRef<ResizeObserver | null>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+
+  const attach = useCallback((node: T | null) => {
+    observerRef.current?.disconnect()
+    observerRef.current = null
+    ref.current = node
+    if (!node) {
+      setSize({ width: 0, height: 0 })
+      return
+    }
+
+    const measure = () => {
+      const rect = node.getBoundingClientRect()
+      const width = Math.floor(rect.width)
+      const height = Math.floor(rect.height)
+      setSize((current) =>
+        current.width === width && current.height === height ? current : { width, height },
+      )
+    }
+
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    observerRef.current = observer
+    measure()
+  }, [])
+
+  useEffect(() => () => observerRef.current?.disconnect(), [])
+
+  return { ref, attach, width: size.width, height: size.height }
 }
