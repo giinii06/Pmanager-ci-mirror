@@ -77,9 +77,10 @@ interface ImageSlotProps {
 }
 
 /**
- * Two stacked layers: the 640px thumbnail the gallery already cached, and the
- * preview decoded on top of it. The thumbnail is visible from the first frame,
- * so opening never flashes a spinner or an empty box.
+ * Three stacked layers: the 320px thumbnail the gallery already has cached, a
+ * 640px pass that arrives almost as fast, and the decoded preview on top.
+ * The gallery's own bitmap is visible from the first frame, so opening never
+ * flashes a spinner or an empty box.
  */
 export function ImageSlot({ asset, width, height, full, selected, onSelect }: ImageSlotProps) {
   return (
@@ -93,12 +94,13 @@ export function ImageSlot({ asset, width, height, full, selected, onSelect }: Im
       onClick={onSelect}
     >
       <img
-        src={asset.thumbnails.medium}
+        src={asset.thumbnails.small}
         alt=""
         aria-hidden
         draggable={false}
         className="absolute inset-0 h-full w-full object-contain"
       />
+      <DecodedImage src={asset.thumbnails.medium} alt="" />
       <DecodedImage src={asset.previewUrl} alt={asset.filename} />
       {full ? <DecodedImage src={asset.streamUrl} alt="" /> : null}
     </div>
