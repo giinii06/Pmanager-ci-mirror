@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import os
+import stat
 import struct
 import wave
 from pathlib import Path
@@ -57,3 +59,19 @@ def test_cut_lands_on_a_silence_midpoint(tmp_path: Path) -> None:
     chunks = plan_chunks(6500, silences, min_ms=1500, max_ms=3000)
 
     assert chunks[0] == (0, 2900)
+
+
+def test_detect_silences_reads_a_log_written_in_a_legacy_codepage(tmp_path, monkeypatch):
+    fake = tmp_path / "ffmpeg"
+    fake.write_text(
+        "#!/bin/sh\n"
+        "printf 'copyright : www.example.la \\263\\326\\320\\370\\n' >&2\n"
+        "printf '[silencedetect @ 0x1] silence_start: 1.5\\n' >&2\n"
+        "printf '[silencedetect @ 0x1] silence_end: 2.5 | silence_duration: 1\\n' >&2\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+    assert detect_silences(Path("audio.wav")) == [(1500, 2500)]
