@@ -95,6 +95,13 @@ def test_progress_is_clamped_and_rounded(api: StubApi) -> None:
     assert body["progress"] == 99
 
 
+def test_a_long_failure_message_is_truncated_to_the_api_limit(api: StubApi) -> None:
+    api.reply(200, {"state": "queued"})
+    WorkerClient(api.base_url, "test-token").fail("job1", "worker-a", "x" * 3_000)
+    _, body, _ = api.requests[0]
+    assert len(body["message"]) == 2_000
+
+
 def test_server_errors_are_retried(api: StubApi) -> None:
     api.reply(500, {"error": "boom"})
     api.reply(204, {})

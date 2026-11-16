@@ -536,6 +536,41 @@ describe('translation routes', () => {
     await h.app.close()
   })
 
+  test('a completion larger than the global 1 MB limit is accepted', async () => {
+    const h = await harness('ja')
+    await h.app.inject({
+      method: 'POST',
+      url: '/api/assets/asset1/translations',
+      headers: auth(h),
+      payload: {},
+    })
+    const claim = await h.app.inject({
+      method: 'POST',
+      url: '/worker/translation/claim',
+      headers: worker(),
+      payload: { owner: 'worker-a' },
+    })
+    const jobId = claim.json().job.id
+
+    const done = await h.app.inject({
+      method: 'POST',
+      url: `/worker/translation/jobs/${jobId}/complete`,
+      headers: worker(),
+      payload: {
+        owner: 'worker-a',
+        translationId: 'translation1',
+        resultDir: 'asset1/1/translations/transcript1/ko/fp',
+        plainText: '가'.repeat(1_200_000),
+        segments: [
+          { seq: 0, startMs: 0, endMs: 2_000, text: '저기, 진짜 심각하지 않아?' },
+          { seq: 1, startMs: 2_000, endMs: 4_000, text: '정말?' },
+        ],
+      },
+    })
+    expect(done.statusCode).toBe(200)
+    await h.app.close()
+  })
+
   test('the worker routes reject a missing token', async () => {
     const h = await harness('ja')
     const claim = await h.app.inject({

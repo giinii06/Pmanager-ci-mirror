@@ -23,6 +23,13 @@ const WORKER_PREFIX = '/worker/asr'
 const LEASE_MS = 120_000
 const MAX_LEASE_MS = 600_000
 
+/**
+ * The global limit is 1 MB, but the schema accepts 20,000 segments. The
+ * largest transcript in the library is 42 KB, so this is room for a much
+ * longer video without letting an unbounded body through.
+ */
+const COMPLETE_BODY_LIMIT = 16 * 1024 * 1024
+
 const idParams = z.object({ id: z.string().min(1).max(64) })
 const owner = z.string().min(1).max(128)
 
@@ -191,7 +198,7 @@ export function registerWorkerAsrRoutes(app: FastifyInstance, ctx: AppContext): 
       reply.code(204).send()
     })
 
-    scope.post(`${WORKER_PREFIX}/jobs/:id/complete`, async (request, reply) => {
+    scope.post(`${WORKER_PREFIX}/jobs/:id/complete`, { bodyLimit: COMPLETE_BODY_LIMIT }, async (request, reply) => {
       const params = parseInput(idParams, request.params, reply)
       if (!params) return
       const body = parseInput(completeBody, request.body ?? {}, reply)

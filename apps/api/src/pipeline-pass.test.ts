@@ -11,6 +11,7 @@ import {
   insertAsset,
   openDatabase,
   setPipelineCursor,
+  setScanState,
   upsertFolder,
   type Db,
   type NewAsset,
@@ -220,7 +221,7 @@ describe('pipeline pass', () => {
     expect(jobCount(h, 'asr_jobs', 'video1')).toBe(1)
   })
 
-  test('a video with no audio stream is never transcribed', async () => {
+  test('a video with no audio stream is never transcribed but is still embedded', async () => {
     const h = await harness()
     h.scannedAt(NOW - 60_000)
     h.addVideo('silent', null)
@@ -229,6 +230,18 @@ describe('pipeline pass', () => {
 
     expect(result.asr).toBe(0)
     expect(jobCount(h, 'asr_jobs', 'silent')).toBe(0)
+    expect(result.embeddings).toBe(1)
+    expect(result.translations).toBe(0)
+
+    const embedding = h.db
+      .query<{ sourceTranscriptId: string | null }, string>(
+        'SELECT source_transcript_id AS sourceTranscriptId FROM embedding_jobs WHERE asset_id = ?',
+      )
+      .get('silent')
+    expect(embedding?.sourceTranscriptId).toBeNull()
+
+    const second = ensurePipelineJobs(h.ctx, NOW + 1_000)
+    expect(second.embeddings).toBe(0)
   })
 
   test('a current transcript gets no ASR job but does get a translation and an embedding', async () => {
@@ -402,6 +415,21 @@ describe('pipeline pass', () => {
 
     expect(result.scanned).toBe(0)
     expect(jobCount(h, 'jobs')).toBe(0)
+  })
+
+  test('a scan state left without a job is repaired on the next pass', async () => {
+    const h = await harness()
+    h.scannedAt(NOW - 1_000)
+    // The crash window: the state was written, the job was not.
+    setScanState(h.db, 'lib1', 'queued')
+
+    const first = ensurePipelineJobs(h.ctx, NOW)
+    expect(first.scanned).toBe(1)
+    expect(jobCount(h, 'jobs')).toBe(1)
+
+    const second = ensurePipelineJobs(h.ctx, NOW + 1_000)
+    expect(second.scanned).toBe(0)
+    expect(jobCount(h, 'jobs')).toBe(1)
   })
 
   test('scene and face jobs still queue for a new video', async () => {

@@ -283,4 +283,15 @@ describe('an unknown spoken language', () => {
     expect(activeTranslationJob(h.db, done.json().transcriptId, 'ko')).not.toBeNull()
     await h.app.close()
   })
+
+  test('a completion larger than the global 1 MB limit is accepted', async () => {
+    const h = await harness()
+    const done = await complete(h, {
+      language: 'ko',
+      plainText: '가'.repeat(1_200_000),
+      segments: [{ startMs: 0, endMs: 1_000, text: '안녕하세요' }],
+    })
+    expect(done.statusCode).toBe(200)
+    await h.app.close()
+  })
 })

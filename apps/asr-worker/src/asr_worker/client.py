@@ -101,7 +101,11 @@ class WorkerClient:
         return self._post(f"/worker/asr/jobs/{job_id}/complete", {"owner": owner, **payload})
 
     def fail(self, job_id: str, owner: str, message: str) -> dict[str, Any]:
-        return self._post(f"/worker/asr/jobs/{job_id}/fail", {"owner": owner, "message": message})
+        # The API rejects a message longer than 2000 characters, and a rejected
+        # failure report leaves the job leased until the lease expires.
+        return self._post(
+            f"/worker/asr/jobs/{job_id}/fail", {"owner": owner, "message": message[:2000]}
+        )
 
     def gpu_acquire(self, owner: str, task_kind: str, lease_ms: int) -> bool:
         payload = self._post(

@@ -5,6 +5,7 @@ import {
   createAsrJob,
   enqueueJob,
   getPipelineCursor,
+  hasActiveJob,
   listLibraries,
   listVideosForIndexingAfter,
   setPipelineCursor,
@@ -77,7 +78,11 @@ export function ensurePipelineJobs(ctx: AppContext, now: number, limit = BATCH):
     if (transcript) {
       const translation = enqueueTranslation(ctx, transcript, now)
       if (translation && queuedByThisPass(translation, now)) result.translations += 1
+    }
 
+    // A file with no audio never gets a transcript, but the worker still
+    // embeds its filename so the video is not invisible to related search.
+    if (transcript || video.audioCodec === null) {
       const embedding = enqueueEmbedding(ctx, video.id, video.fileVersion, now)
       if (embedding && queuedByThisPass(embedding, now)) result.embeddings += 1
     }
@@ -142,22 +147,28 @@ function shouldTranscribe(
 function ensureScans(ctx: AppContext, now: number): number {
   let queued = 0
   for (const library of listLibraries(ctx.db)) {
-    if (library.scanState === 'queued' || library.scanState === 'scanning') continue
-    if (library.lastScanAt !== null && now - library.lastScanAt < ctx.config.scanIntervalMs) {
+    const inScan = library.scanState === 'queued' || library.scanState === 'scanning'
+    // A scan state without a job is a crash between the two writes, so it is
+    // repaired even when the last scan was recent. Otherwise the library would
+    // never be walked again.
+    if (inScan && hasActiveJob(ctx.db, `scan:${library.id}`)) continue
+    if (!inScan && library.lastScanAt !== null && now - library.lastScanAt < ctx.config.scanIntervalMs) {
       continue
     }
 
-    setScanState(ctx.db, library.id, 'queued')
-    enqueueJob(
-      ctx.db,
-      {
-        dedupeKey: `scan:${library.id}`,
-        kind: 'scan_library',
-        priority: PRIORITY.next,
-        libraryId: library.id,
-      },
-      now,
-    )
+    ctx.db.transaction(() => {
+      setScanState(ctx.db, library.id, 'queued')
+      enqueueJob(
+        ctx.db,
+        {
+          dedupeKey: `scan:${library.id}`,
+          kind: 'scan_library',
+          priority: PRIORITY.next,
+          libraryId: library.id,
+        },
+        now,
+      )
+    })()
     queued += 1
   }
   return queued
