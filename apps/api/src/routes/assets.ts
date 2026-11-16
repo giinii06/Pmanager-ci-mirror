@@ -18,7 +18,7 @@ import {
   type AssetRecord,
 } from '@mediavault/database'
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PRIORITY, newId } from '@mediavault/shared'
-import { fileExists, thumbnailPath } from '@mediavault/media'
+import { fileExists, posterPath } from '@mediavault/media'
 import type { AppContext } from '../context'
 import { decodeCursor, encodeCursor } from '../cursor'
 import { toAssetDTO, toEmbeddingJobDTO, toPlaybackDTO, toReviewDTO } from '../dto'
@@ -76,7 +76,7 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     const missingPosters: AssetRecord[] = []
     for (const asset of records) {
       if (asset.kind !== 'video') continue
-      const poster = thumbnailPath(ctx.config.cacheDir, asset.id, asset.fileVersion, 320)
+      const poster = posterPath(ctx.config.cacheDir, asset.id, asset.fileVersion, 320)
       if (!(await fileExists(poster))) missingPosters.push(asset)
     }
     if (missingPosters.length > 0) {

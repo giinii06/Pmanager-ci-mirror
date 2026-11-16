@@ -7,6 +7,13 @@ export const THUMBNAIL_QUALITY = 78
 export const PREVIEW_SIZE = 1600
 export const PREVIEW_QUALITY = 82
 
+/**
+ * Part of the poster cache path and the thumbnail URL, so bump it whenever the
+ * poster extraction rule changes. A poster that already exists is skipped, and
+ * browsers keep one for a year, so a rule change alone rebuilds nothing.
+ */
+export const POSTER_SCHEME = 2
+
 export const DEFAULT_PAGE_SIZE = 60
 export const MAX_PAGE_SIZE = 200
 

@@ -10,6 +10,7 @@ import {
   fileExists,
   hlsDir,
   hlsPlaylistPath,
+  posterPath,
   resolveInside,
   thumbnailPath,
 } from '@mediavault/media'
@@ -18,7 +19,11 @@ import { accelPathFor, sendFile } from '../http'
 import { parseInput } from '../validate'
 
 const idParams = z.object({ id: z.string().min(1).max(64) })
-const thumbnailQuery = z.object({ size: z.enum(['320', '640']).optional(), v: z.string().optional() })
+const thumbnailQuery = z.object({
+  size: z.enum(['320', '640']).optional(),
+  v: z.string().optional(),
+  p: z.string().optional(),
+})
 const hlsParams = z.object({ id: z.string().min(1).max(64), file: z.string().min(1).max(64) })
 const streamQuery = z.object({ v: z.string().optional(), download: z.enum(['0', '1']).optional() })
 
@@ -57,7 +62,10 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
       return
     }
 
-    const target = thumbnailPath(ctx.config.cacheDir, info.id, info.fileVersion, size)
+    const target =
+      info.kind === 'video'
+        ? posterPath(ctx.config.cacheDir, info.id, info.fileVersion, size)
+        : thumbnailPath(ctx.config.cacheDir, info.id, info.fileVersion, size)
     if (!(await fileExists(target))) {
       if (info.kind === 'video') {
         enqueueJob(

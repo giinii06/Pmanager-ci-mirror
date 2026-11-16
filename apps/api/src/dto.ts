@@ -18,7 +18,7 @@ import type {
   WorkItemDTO,
   WorkQueueDTO,
 } from '@mediavault/shared'
-import { playbackModeFor } from '@mediavault/shared'
+import { POSTER_SCHEME, playbackModeFor } from '@mediavault/shared'
 import type {
   AsrJobRecord,
   AssetRecord,
@@ -78,6 +78,7 @@ export function toFolderDTO(folder: FolderRecord): FolderDTO {
 
 export function toAssetDTO(asset: AssetRecord): AssetDTO {
   const version = asset.fileVersion
+  const posterQuery = asset.kind === 'video' ? `&p=${POSTER_SCHEME}` : ''
   return {
     id: asset.id,
     libraryId: asset.libraryId,
@@ -103,8 +104,8 @@ export function toAssetDTO(asset: AssetRecord): AssetDTO {
       audioCodec: asset.audioCodec,
     }),
     thumbnails: {
-      small: `/api/assets/${asset.id}/thumbnail?size=320&v=${version}`,
-      medium: `/api/assets/${asset.id}/thumbnail?size=640&v=${version}`,
+      small: `/api/assets/${asset.id}/thumbnail?size=320&v=${version}${posterQuery}`,
+      medium: `/api/assets/${asset.id}/thumbnail?size=640&v=${version}${posterQuery}`,
     },
     previewUrl: `/api/assets/${asset.id}/preview?v=${version}`,
     streamUrl: `/api/assets/${asset.id}/stream?v=${version}`,

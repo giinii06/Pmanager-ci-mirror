@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { mkdir } from 'node:fs/promises'
+import { POSTER_SCHEME } from '@mediavault/shared'
 
 const ASSET_ID = /^[a-z0-9]{6,32}$/
 
@@ -28,6 +29,21 @@ export function thumbnailPath(
   size: number,
 ): string {
   return path.join(cacheDir, 'thumbs', assertAssetId(assetId), `v${version}`, `${size}.webp`)
+}
+
+export function posterPath(
+  cacheDir: string,
+  assetId: string,
+  version: number,
+  size: number,
+): string {
+  return path.join(
+    cacheDir,
+    'thumbs',
+    assertAssetId(assetId),
+    `v${version}`,
+    `p${POSTER_SCHEME}-${size}.webp`,
+  )
 }
 
 export function previewPath(cacheDir: string, assetId: string, version: number): string {

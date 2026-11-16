@@ -10,7 +10,7 @@ import {
   THUMBNAIL_QUALITY,
   THUMBNAIL_SIZES,
 } from '@mediavault/shared'
-import { ensureDir, previewPath, thumbnailPath } from './paths'
+import { ensureDir, posterPath, previewPath, thumbnailPath } from './paths'
 
 const run = promisify(execFile)
 
@@ -88,25 +88,56 @@ export async function ensurePreview(
   return target
 }
 
+export const POSTER_CUT_AFTER_MS = 15_000
+export const POSTER_CUT_WINDOW_SECONDS = 20
+export const POSTER_SCENE_THRESHOLD = 0.3
+
+export type PosterPlan =
+  | { kind: 'early'; seconds: number }
+  | { kind: 'cut'; fromSeconds: number; windowSeconds: number }
+
+/**
+ * Past the cut point the poster comes from a scene change after it, so it is not
+ * the opening seconds. A shorter video has no such region and keeps the early frame.
+ */
+export function planVideoPoster(durationMs: number | null): PosterPlan {
+  if (durationMs === null || durationMs <= POSTER_CUT_AFTER_MS) {
+    return {
+      kind: 'early',
+      seconds: durationMs && durationMs > 1000 ? Math.min(2, durationMs / 4000) : 0,
+    }
+  }
+  return {
+    kind: 'cut',
+    fromSeconds: POSTER_CUT_AFTER_MS / 1000,
+    windowSeconds: POSTER_CUT_WINDOW_SECONDS,
+  }
+}
+
+function posterArgs(src: string, frame: string, plan: PosterPlan): string[] {
+  const args = ['-v', 'error', '-y', '-ss']
+  args.push(plan.kind === 'early' ? plan.seconds.toFixed(2) : plan.fromSeconds.toFixed(2))
+  if (plan.kind === 'cut') args.push('-t', String(plan.windowSeconds))
+  args.push('-i', src)
+  if (plan.kind === 'cut') args.push('-vf', `select='gt(scene,${POSTER_SCENE_THRESHOLD})'`)
+  args.push('-frames:v', '1', '-q:v', '3', frame)
+  return args
+}
+
 async function extractVideoFrame(src: string, durationMs: number | null): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'mediavault-poster-'))
   const frame = path.join(dir, 'frame.jpg')
-  const seconds = durationMs && durationMs > 1000 ? Math.min(2, durationMs / 4000) : 0
+  const plan = planVideoPoster(durationMs)
   try {
-    await run('ffmpeg', [
-      '-v',
-      'error',
-      '-y',
-      '-ss',
-      seconds.toFixed(2),
-      '-i',
-      src,
-      '-frames:v',
-      '1',
-      '-q:v',
-      '3',
-      frame,
-    ])
+    if (plan.kind === 'early') {
+      await run('ffmpeg', posterArgs(src, frame, plan))
+      return frame
+    }
+    // No scene change in the window makes ffmpeg exit non-zero without a frame,
+    // so the fallback reads the file rather than the exit code.
+    await run('ffmpeg', posterArgs(src, frame, plan)).catch(() => undefined)
+    if (await fileExists(frame)) return frame
+    await run('ffmpeg', posterArgs(src, frame, { kind: 'early', seconds: plan.fromSeconds }))
     return frame
   } catch (error) {
     await rm(dir, { recursive: true, force: true })
@@ -121,7 +152,7 @@ export async function generateVideoThumbnails(
   version: number,
   durationMs: number | null,
 ): Promise<string[]> {
-  const targets = THUMBNAIL_SIZES.map((size) => thumbnailPath(cacheDir, assetId, version, size))
+  const targets = THUMBNAIL_SIZES.map((size) => posterPath(cacheDir, assetId, version, size))
   const missing = [] as number[]
   for (const [index, target] of targets.entries()) {
     if (!(await fileExists(target))) missing.push(index)
