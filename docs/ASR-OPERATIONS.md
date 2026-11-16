@@ -7,6 +7,7 @@ MediaVault의 AI 자막 파이프라인을 설치하고 운영하는 방법입�
 자막은 기존 스택과 분리된 큐에서 처리됩니다.
 
 - 한국어 음성 인식은 `TeamUNIVA/qwen3_asr_1.7b_ko`, 단어 단위 시간 정렬은 `Qwen/Qwen3-ForcedAligner-0.6B`를 사용합니다.
+- 음성 언어는 전사 전에 `openai/whisper-small`로 분류합니다. 분류 결과를 ASR과 정렬 단계에 강제로 넘기므로 제목이나 파일명이 아니라 실제 음성이 언어를 정합니다.
 - 모델 가중치는 이미지에 들어가지 않습니다. `asr-model-init` 컨테이너가 시작할 때 `./models`로 내려받고, 이후 재빌드해도 다시 받지 않습니다.
 - 작업 큐는 기존 `jobs` 테이블이 아니라 `asr_jobs` 테이블에 있습니다. 사진·동영상 갤러리의 썸네일/HLS 작업과 서로 밀어내지 않습니다.
 - Python 워커는 SQLite를 직접 쓰지 않습니다. 모든 상태 변경은 Fastify API의 `/worker/asr/*` 엔드포인트를 통합니다.
@@ -26,12 +27,13 @@ MediaVault의 AI 자막 파이프라인을 설치하고 운영하는 방법입�
 
 ## 1. 모델 내려받기
 
-`.env.asr.example`을 `.env.asr`로 복사하고 값을 채웁니다. 최소한 아래 세 개가 필요합니다.
+`.env.asr.example`을 `.env.asr`로 복사하고 값을 채웁니다. 최소한 아래 네 개가 필요합니다.
 
 ```bash
 ASR_WORKER_TOKEN=$(openssl rand -hex 32)
 ASR_MODEL_REVISION=a8b7485274ac50e80a685f3813489fed475adc5f
 ALIGN_MODEL_REVISION=c7cbfc2048c462b0d63a45797104fc9db3ad62b7
+LANGID_MODEL_REVISION=973afd24965f72e36ca33b3055d56a652f456b4d
 ```
 
 Compose는 `.env`만 기본으로 읽고 `.env.asr`은 스스로 읽지 않습니다. 이 문서의 ASR 명령에는 `--env-file .env --env-file .env.asr`을 붙입니다.
@@ -42,15 +44,16 @@ Compose는 `.env`만 기본으로 읽고 `.env.asr`은 스스로 읽지 않습�
 mkdir -p models asr-results
 docker compose --env-file .env --env-file .env.asr \
   -f compose.yaml -f compose.asr.models.yaml run --rm asr-model-init
-ls -lah models/asr models/aligner
+ls -lah models/asr models/aligner models/langid
 ```
 
-`models/asr/model-manifest.json`과 `models/aligner/model-manifest.json`에 실제 커밋 SHA, 파일 목록, 다운로드 시각이 기록됩니다.
+`models/asr/model-manifest.json`, `models/aligner/model-manifest.json`, `models/langid/model-manifest.json`에 실제 커밋 SHA, 파일 목록, 다운로드 시각이 기록됩니다.
 
 동작 방식:
 
 - 요청한 리비전과 매니페스트가 같고 필수 파일 검사(가중치 헤더 파싱 포함)가 통과하면 즉시 종료합니다.
 - 새 리비전이면 `.staging/`에 받아 검증한 뒤에만 `models/asr`로 교체합니다. 기존 모델은 `.archive/asr-<시각>`으로 이동하므로 롤백은 디렉터리를 되돌리는 것으로 끝납니다.
+- langid는 `model.safetensors`와 토크나이저·전처리 설정만 받습니다. flax, tf, `pytorch_model.bin` 사본은 내려받지 않습니다.
 - 실패하면 기존 모델은 그대로 남습니다.
 
 ## 2-A. WSL2 / Linux에서 GPU 워커 실행
@@ -90,11 +93,13 @@ uv sync --python 3.12 --extra dev
 ASR_WORKER_TOKEN=<.env.asr과 같은 값> \
 ASR_MODEL_REVISION=a8b7485274ac50e80a685f3813489fed475adc5f \
 ALIGN_MODEL_REVISION=c7cbfc2048c462b0d63a45797104fc9db3ad62b7 \
-ASR_PIPELINE_VERSION=1 \
+LANGID_MODEL_REVISION=973afd24965f72e36ca33b3055d56a652f456b4d \
+ASR_PIPELINE_VERSION=3 \
 API_BASE_URL=http://127.0.0.1:8788 \
 ASR_DEVICE=mps \
 ASR_MODEL_DIR=../../models/asr \
 ALIGN_MODEL_DIR=../../models/aligner \
+LANGID_MODEL_DIR=../../models/langid \
 MEDIA_ROOT=../../sample-media \
 RESULT_DIR=../../asr-results \
 HF_HUB_OFFLINE=1 \
@@ -115,10 +120,17 @@ MPS 지원은 실기기에서 확인해야 합니다. 특정 연산이 실패하
 | `ASR_RESULT_DIR` | `./asr-results` | 결과 파일 루트 |
 | `ASR_MODEL_REVISION` | `main` | 결과 캐시 키에 포함 |
 | `ALIGN_MODEL_REVISION` | `main` | 결과 캐시 키에 포함 |
-| `ASR_PIPELINE_VERSION` | `1` | 청킹/자막 로직 변경 시 올림 |
+| `ASR_PIPELINE_VERSION` | `3` | 청킹/자막/언어 로직 변경 시 올림 |
+| `ASR_LANGUAGE` | 없음 | 설정하면 언어 분류를 건너뛰고 이 언어를 강제. 지원 코드만 허용 |
 | `ASR_DEVICE` | `auto` | `cuda` / `mps` / `cpu` / `auto` |
 | `ASR_MODEL_DIR` | `/models/asr` | 워커가 읽는 ASR 경로 |
 | `ALIGN_MODEL_DIR` | `/models/aligner` | 워커가 읽는 정렬기 경로 |
+| `LANGID_MODEL_DIR` | `/models/langid` | 워커가 읽는 언어 분류 모델 경로 |
+| `LANGID_MODEL_ID` | `openai/whisper-small` | 언어 분류 모델 |
+| `LANGID_MODEL_REVISION` | 없음(필수) | 모델 다운로드에 필요. 결과에 기록 |
+| `LANGID_SAMPLES` | `5` | 분류에 쓰는 청크 수 |
+| `LANGID_MIN_CONFIDENCE` | `0.60` | 이보다 낮으면 언어를 저장하지 않음 |
+| `LANGID_MIN_MARGIN` | `0.15` | 1위와 2위 차이가 이보다 작으면 저장하지 않음 |
 | `MEDIA_ROOT` | `/media` | 읽기 전용 원본 루트 |
 | `RESULT_DIR` | `/asr-results` | 워커의 결과 루트 |
 | `ASR_MIN_CHUNK_MS` / `ASR_MAX_CHUNK_MS` | 15000 / 30000 | 음성 청크 길이 |
@@ -130,10 +142,11 @@ MPS 지원은 실기기에서 확인해야 합니다. 특정 연산이 실패하
 
 1. 원본 경로를 `realpath`로 검증한 뒤 `ffmpeg`로 16kHz 모노 PCM을 뽑습니다.
 2. `silencedetect`로 무음 구간을 찾아 청크를 만듭니다. 무음 중간점에서 자르므로 어절이 잘리지 않고, 무음이 없으면 `ASR_MAX_CHUNK_MS`(기본 30초)에서 자릅니다. 마지막 청크는 3초까지 짧아질 수 있고, 3초 미만이면 앞 청크에 합쳐져 그 청크가 최대 길이를 조금 넘습니다. 입력이 30초 이하면 나누지 않습니다.
-3. 별도 프로세스에서 ASR을 실행하고 청크마다 체크포인트를 남깁니다.
-4. ASR 프로세스가 끝나면 모델을 내리고, 별도 프로세스에서 정렬기를 실행합니다. 8GB 카드에서 두 모델이 동시에 상주하지 않습니다. 각 프로세스는 시작 전에 GPU lease를 잡고 끝난 뒤에 놓으므로, 같은 카드에서 번역 worker가 동시에 돌지 않습니다. 각 단계 프로세스는 모델을 올리기 전에 `ASR_TEMP_DIR/asr-stage.pid`에 자기 pid와 시작 시각을 쓰고, 다음 단계는 그 기록을 먼저 정리한 뒤 시작합니다.
-5. 청크 오프셋을 더해 전역 타임라인을 만듭니다. `start <= end`, 청크 범위, 비감소 순서를 검사하고 300ms를 넘는 역전은 그 청크를 버립니다.
-6. 문장 단위로 묶어 VTT/SRT/JSON/TXT를 원자적으로 씁니다.
+3. 별도 CPU 프로세스에서 `openai/whisper-small`로 음성 언어를 분류합니다. 계획에서 고르게 다섯 청크를 골라 각 30초를 읽고 확률을 평균 냅니다. 확신도가 `LANGID_MIN_CONFIDENCE`와 `LANGID_MIN_MARGIN`을 넘으면 그 언어를 저장하고, 넘지 못하면 1위 언어를 ASR에만 강제하고 저장은 비웁니다. 분류할 수 없는 파일은 빈 언어를 저장하고 작업은 그대로 완료합니다. 이 단계는 CPU만 쓰므로 GPU lease를 잡지 않습니다.
+4. 별도 프로세스에서 ASR을 실행하고 청크마다 체크포인트를 남깁니다. 분류된 언어를 `--language`로 넘기므로 모델이 다른 언어로 답하지 않습니다.
+5. ASR 프로세스가 끝나면 모델을 내리고, 별도 프로세스에서 정렬기를 실행합니다. 정렬기에는 강제 언어, 없으면 ASR 텍스트의 문자 체계로 정한 언어를 넘깁니다. 8GB 카드에서 두 모델이 동시에 상주하지 않습니다. 각 프로세스는 시작 전에 GPU lease를 잡고 끝난 뒤에 놓으므로, 같은 카드에서 번역 worker가 동시에 돌지 않습니다. 각 단계 프로세스는 모델을 올리기 전에 `ASR_TEMP_DIR/asr-stage.pid`에 자기 pid와 시작 시각을 쓰고, 다음 단계는 그 기록을 먼저 정리한 뒤 시작합니다.
+6. 청크 오프셋을 더해 전역 타임라인을 만듭니다. `start <= end`, 청크 범위, 비감소 순서를 검사하고 300ms를 넘는 역전은 그 청크를 버립니다.
+7. 문장 단위로 묶어 VTT/SRT/JSON/TXT를 원자적으로 씁니다.
 
 정렬에 실패한 구간은 자막에 넣지 않습니다. 임의 타임스탬프를 만들지 않습니다.
 
@@ -148,6 +161,8 @@ asr-results/{asset_id}/{file_version}/{asr_rev}_{aligner_rev}_{pipeline}/
 ```
 
 `asset_id + file_version + model_revision + aligner_revision + pipeline_version`이 결과의 정체성입니다. 영상 파일이 바뀌면 `file_version`이 올라가므로 이전 자막을 재생하지 않습니다. 모델이나 파이프라인 버전이 바뀌면 새 작업이 만들어집니다.
+
+`transcript.json`의 `languageDecision`에는 분류 상태, 확률, 사용한 probe 모델 리비전, 정렬기에 넘긴 `alignLanguage`가 남습니다. 분류에 실패한 파일은 `language`가 빈 문자열입니다.
 
 ## API 계약
 
