@@ -198,7 +198,8 @@ export interface TranscriptDTO {
   id: string
   assetId: string
   fileVersion: number
-  language: string
+  language: string | null
+  hasSpeech: boolean
   plainText: string
   segments: TranscriptSegmentDTO[]
   createdAt: string
@@ -206,7 +207,9 @@ export interface TranscriptDTO {
 
 export interface TranscriptSummaryDTO {
   id: string
-  language: string
+  /** Null when the file has no speech, because the language is then unknown. */
+  language: string | null
+  hasSpeech: boolean
   segmentCount: number
   createdAt: string
 }

@@ -172,7 +172,8 @@ export function toTranscriptSummaryDTO(
 ): TranscriptSummaryDTO {
   return {
     id: transcript.id,
-    language: transcript.language,
+    language: transcript.hasSpeech === 1 ? transcript.language : null,
+    hasSpeech: transcript.hasSpeech === 1,
     segmentCount,
     createdAt: new Date(transcript.createdAt).toISOString(),
   }
@@ -184,7 +185,8 @@ export function toTranscriptDTO(stored: TranscriptWithSegments): TranscriptDTO {
     id: transcript.id,
     assetId: transcript.assetId,
     fileVersion: transcript.fileVersion,
-    language: transcript.language,
+    language: transcript.hasSpeech === 1 ? transcript.language : null,
+    hasSpeech: transcript.hasSpeech === 1,
     plainText: transcript.plainText,
     segments: segments.map((segment) => ({
       seq: segment.seq,

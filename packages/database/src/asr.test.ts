@@ -261,6 +261,32 @@ describe('transcripts', () => {
     db.close()
   })
 
+  test('a file with no speech stores a transcript without segments', () => {
+    const db = seed()
+    createAsrJob(db, jobInput(), 1_000)
+    claimAsrJob(db, 'worker-a', 30_000, 1_100)
+
+    completeAsrJob(
+      db,
+      {
+        jobId: 'job1',
+        transcriptId: 'tr1',
+        resultDir: 'asset1/1/key',
+        plainText: '',
+        language: '',
+        hasSpeech: false,
+        segments: [],
+      },
+      1_500,
+    )
+
+    const stored = getTranscript(db, 'asset1', 1)
+    expect(stored?.transcript.hasSpeech).toBe(0)
+    expect(stored?.segments).toHaveLength(0)
+    expect(latestAsrJob(db, 'asset1', 1)?.state).toBe('completed')
+    db.close()
+  })
+
   test('a stale file version keeps its own transcript', () => {
     const db = seed()
     createAsrJob(db, jobInput(), 1_000)

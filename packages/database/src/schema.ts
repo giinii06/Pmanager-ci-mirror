@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 10
+export const SCHEMA_VERSION = 11
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -461,4 +461,7 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   // A released lease keeps its row so the next acquire can see which kind just
   // let go of the card and step back for one turn.
   (exec) => exec('ALTER TABLE gpu_leases ADD COLUMN released_at INTEGER'),
+  // Having no dialogue is a property of the file, so a run that found none
+  // still writes a transcript row and the queue stops retrying that file.
+  (exec) => exec('ALTER TABLE transcripts ADD COLUMN has_speech INTEGER NOT NULL DEFAULT 1'),
 ]

@@ -98,6 +98,7 @@ export function resolveSubtitleSource(
 ): SubtitleSource | null {
   const transcript = currentTranscript(ctx, info.id, info.fileVersion)
   if (!transcript) return null
+  if (transcript.transcript.hasSpeech === 0) return null
 
   if (!lang || lang === ORIGINAL || lang === transcript.transcript.language) {
     return {

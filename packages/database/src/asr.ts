@@ -24,9 +24,9 @@ const JOB_COLUMNS = `
 
 const TRANSCRIPT_COLUMNS = `
   id, job_id AS jobId, asset_id AS assetId, file_version AS fileVersion, language,
-  result_dir AS resultDir, plain_text AS plainText, model_revision AS modelRevision,
-  aligner_revision AS alignerRevision, pipeline_version AS pipelineVersion,
-  created_at AS createdAt
+  has_speech AS hasSpeech, result_dir AS resultDir, plain_text AS plainText,
+  model_revision AS modelRevision, aligner_revision AS alignerRevision,
+  pipeline_version AS pipelineVersion, created_at AS createdAt
 `
 
 export interface CreateAsrJobInput {
@@ -45,6 +45,7 @@ export interface CompleteAsrJobInput {
   resultDir: string
   plainText: string
   language: string
+  hasSpeech?: boolean
   segments: TranscriptSegmentRecord[]
 }
 
@@ -197,9 +198,9 @@ export function completeAsrJob(
     transcript = db
       .query<TranscriptRecord, Params>(
         `INSERT INTO transcripts (
-           id, job_id, asset_id, file_version, language, result_dir, plain_text,
+           id, job_id, asset_id, file_version, language, has_speech, result_dir, plain_text,
            model_revision, aligner_revision, pipeline_version, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING ${TRANSCRIPT_COLUMNS}`,
       )
       .get(
@@ -208,6 +209,7 @@ export function completeAsrJob(
         job.assetId,
         job.fileVersion,
         input.language,
+        input.hasSpeech === false ? 0 : 1,
         input.resultDir,
         input.plainText,
         job.modelRevision,

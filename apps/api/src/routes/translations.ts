@@ -76,7 +76,11 @@ export function registerTranslationRoutes(app: FastifyInstance, ctx: AppContext)
     }
 
     const target = body.targetLanguage ?? ctx.config.translation.targetLanguage
-    if (baseLanguage(target) === baseLanguage(transcript.transcript.language)) {
+    // A file with no speech has no source language and no cues to translate.
+    if (
+      transcript.transcript.hasSpeech === 0 ||
+      baseLanguage(target) === baseLanguage(transcript.transcript.language)
+    ) {
       reply.send({ job: null, translation: null })
       return
     }
@@ -177,7 +181,7 @@ export function registerTranslationRoutes(app: FastifyInstance, ctx: AppContext)
     }
 
     const transcript = currentTranscript(ctx, info.id, info.fileVersion)
-    if (!transcript) {
+    if (!transcript || transcript.transcript.hasSpeech === 0) {
       reply.send({ tracks: [], defaultLanguage: null })
       return
     }

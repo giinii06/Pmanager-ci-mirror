@@ -40,22 +40,50 @@ const progressBody = z.object({
   progress: z.number().min(0).max(99),
 })
 
-const completeBody = z.object({
-  owner,
-  transcriptId: z.string().min(6).max(64),
-  resultDir: z.string().min(1).max(512),
-  plainText: z.string().max(4_000_000),
-  language: z.string().min(2).max(16),
-  segments: z
-    .array(
-      z.object({
-        startMs: z.number().int().min(0),
-        endMs: z.number().int().min(0),
-        text: z.string().min(1).max(2_000),
-      }),
-    )
-    .max(20_000),
-})
+const completeBody = z
+  .object({
+    owner,
+    transcriptId: z.string().min(6).max(64),
+    resultDir: z.string().min(1).max(512),
+    plainText: z.string().max(4_000_000),
+    language: z.string().max(16),
+    hasSpeech: z.boolean().optional(),
+    segments: z
+      .array(
+        z.object({
+          startMs: z.number().int().min(0),
+          endMs: z.number().int().min(0),
+          text: z.string().min(1).max(2_000),
+        }),
+      )
+      .max(20_000),
+  })
+  .superRefine((body, ctx) => {
+    if (body.hasSpeech !== false) {
+      if (body.language.length < 2) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['language'],
+          message: 'A transcript with speech needs a language.',
+        })
+      }
+      return
+    }
+    if (body.segments.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['segments'],
+        message: 'A file with no speech has no segments.',
+      })
+    }
+    if (body.language !== '') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['language'],
+        message: 'A file with no speech has no language.',
+      })
+    }
+  })
 
 const failBody = z.object({ owner, message: z.string().min(1).max(2_000) })
 
@@ -189,6 +217,7 @@ export function registerWorkerAsrRoutes(app: FastifyInstance, ctx: AppContext): 
           resultDir: body.resultDir,
           plainText: body.plainText,
           language: body.language,
+          hasSpeech: body.hasSpeech !== false,
           segments,
         },
         Date.now(),

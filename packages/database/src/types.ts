@@ -144,6 +144,8 @@ export interface TranscriptRecord {
   assetId: string
   fileVersion: number
   language: string
+  /** 0 when the file carries no speech, which leaves the language meaningless. */
+  hasSpeech: 0 | 1
   resultDir: string
   plainText: string
   modelRevision: string

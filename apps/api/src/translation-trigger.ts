@@ -14,10 +14,12 @@ function baseLanguage(tag: string): string {
 
 /**
  * A Korean source is already the Korean track, so no job is created. Returns
- * null when translation is off or the source already speaks the target.
+ * null when translation is off, the file has no speech, or the source already
+ * speaks the target.
  */
 export function translationTarget(ctx: AppContext, transcript: TranscriptRecord): string | null {
   if (!ctx.config.translation.enabled) return null
+  if (transcript.hasSpeech === 0) return null
   const target = ctx.config.translation.targetLanguage
   if (baseLanguage(transcript.language) === baseLanguage(target)) return null
   return target
