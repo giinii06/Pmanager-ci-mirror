@@ -9,6 +9,7 @@ import {
   createAsrJob,
   createEmbeddingJob,
   createLibrary,
+  deleteLibrary,
   enqueueJob,
   failAsrJob,
   failEmbeddingJob,
@@ -324,6 +325,23 @@ describe('work queue', () => {
 
     expect(queue.failures).toHaveLength(0)
     expect(queue.queued.some((item) => item.id === 'asr2')).toBe(true)
+  })
+
+  test('a failure for a library that no longer exists is not listed', () => {
+    const db = seed()
+    createLibrary(db, { id: 'lib2', name: 'Gone', rootPath: 'Gone', createdAt: 1 })
+    enqueueJob(
+      db,
+      { dedupeKey: 'scan:lib2', kind: 'scan_library', priority: 2, libraryId: 'lib2', maxAttempts: 1 },
+      1_000,
+    )
+    const job = claimNextJob(db, 1_000)!
+    failJob(db, job.id, 'library lib2 no longer exists', 2_000)
+    deleteLibrary(db, 'lib2')
+
+    const queue = workQueue(db, 3_000, RESOURCE)
+
+    expect(queue.failures).toHaveLength(0)
   })
 
   test('lastCompletedAt is the newest finish across the queues', () => {

@@ -356,9 +356,11 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
                 j.started_at AS startedAt, j.updated_at AS updatedAt,
                 NULL AS leaseExpiresAt, j.last_error AS errorMessage
          FROM jobs j LEFT JOIN assets a ON a.id = j.asset_id
-         WHERE j.state = 'failed' AND NOT EXISTS (
-           SELECT 1 FROM jobs n WHERE n.dedupe_key = j.dedupe_key AND n.updated_at > j.updated_at
-         )
+         LEFT JOIN libraries l ON l.id = j.library_id
+         WHERE j.state = 'failed' AND (j.library_id IS NULL OR l.id IS NOT NULL)
+           AND NOT EXISTS (
+             SELECT 1 FROM jobs n WHERE n.dedupe_key = j.dedupe_key AND n.updated_at > j.updated_at
+           )
          UNION ALL
          SELECT j.id, 'asr', j.asset_id, a.filename, j.state, j.stage, j.progress,
                 NULL, j.started_at, j.updated_at, NULL, j.error_message
