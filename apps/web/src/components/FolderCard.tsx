@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ChevronRight, Folder as FolderIcon } from 'lucide-react'
-import type { FolderDTO } from '@mediavault/shared'
+import { POSTER_SCHEME, type FolderDTO } from '@mediavault/shared'
 import { formatCount } from '../lib/format'
 import { Thumb } from './Thumb'
 
@@ -13,7 +13,7 @@ export function FolderCard({ folder, count }: { folder: FolderDTO; count?: numbe
       <div className="relative aspect-[4/3] overflow-hidden bg-panel-2">
         {folder.coverAssetId ? (
           <Thumb
-            src={`/api/assets/${folder.coverAssetId}/thumbnail?size=640`}
+            src={`/api/assets/${folder.coverAssetId}/thumbnail?size=640&p=${POSTER_SCHEME}`}
             alt=""
             className="h-full w-full"
             imageClassName="transition-transform duration-500 ease-out group-hover:scale-[1.03]"

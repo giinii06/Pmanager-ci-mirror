@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Images, Play, ScanSearch, Volume2 } from 'lucide-react'
-import type { SemanticHitDTO } from '@mediavault/shared'
+import { POSTER_SCHEME, type SemanticHitDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatDuration } from '../lib/format'
@@ -30,7 +30,7 @@ function timeLabel(hit: SemanticHitDTO): string {
 }
 
 function thumbnailFor(hit: SemanticHitDTO): string {
-  return hit.thumbnailUrl ?? `/api/assets/${hit.assetId}/thumbnail`
+  return hit.thumbnailUrl ?? `/api/assets/${hit.assetId}/thumbnail?p=${POSTER_SCHEME}`
 }
 
 /** Why this row matched, when the row has no dialogue line to quote. */
