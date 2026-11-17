@@ -98,7 +98,8 @@ def run_job(
     detect_error: str | None = None,
     language: str = "",
     text: str = "こんにちは。",
-) -> tuple[RecordingClient, list[list[str]], dict[str, Any]]:
+    align_chunks: list[dict[str, Any]] | None = None,
+) -> tuple[RecordingClient, list[tuple[list[str], bool]], dict[str, Any]]:
     client = RecordingClient()
     pipeline = make_pipeline(client, tmp_path, language)
     monkeypatch.setattr(Pipeline, "_device", lambda self: "cpu")
@@ -142,7 +143,9 @@ def run_job(
             output.write_text(
                 json.dumps(
                     {
-                        "chunks": [
+                        "chunks": align_chunks
+                        if align_chunks is not None
+                        else [
                             {
                                 "index": 0,
                                 "start_ms": 0,
@@ -239,3 +242,52 @@ def test_a_file_with_no_speech_writes_a_transcript_and_completes(tmp_path):
     assert sent["language"] == ""
     assert sent["plainText"] == ""
     assert sent["segments"] == []
+
+
+def test_unalignable_hallucination_records_no_speech_and_completes(monkeypatch, tmp_path):
+    target = (
+        tmp_path
+        / "results"
+        / safe_segment("asset1", 32)
+        / "3"
+        / "asr-rev-1_aligner-rev-1_pipeline-1"
+    )
+    target.mkdir(parents=True, exist_ok=True)
+    for stale in ("subtitles.vtt", "subtitles.srt", "transcript.txt"):
+        (target / stale).write_text("stale", encoding="utf-8")
+
+    client, _, transcript = run_job(
+        monkeypatch,
+        tmp_path,
+        payload=decision_payload(),
+        text="음",
+        align_chunks=[
+            {
+                "index": 0,
+                "start_ms": 0,
+                "end_ms": 1_000,
+                "wav": "chunk-0000.wav",
+                "status": "align_failed",
+                "align_error": "no timestamps",
+                "text": "음",
+                "words": [],
+            }
+        ],
+    )
+
+    assert len(client.completions) == 1
+    sent = client.completions[0]
+    assert sent["hasSpeech"] is False
+    assert sent["language"] == ""
+    assert sent["plainText"] == ""
+    assert sent["segments"] == []
+
+    assert transcript["hasSpeech"] is False
+    assert transcript["language"] == ""
+    assert transcript["segments"] == []
+    assert transcript["languageDecision"]["alignLanguage"] == "ja"
+    assert transcript["chunks"][0]["status"] == "align_failed"
+    assert transcript["chunks"][0]["align_error"] == "no timestamps"
+
+    for stale in ("subtitles.vtt", "subtitles.srt", "transcript.txt"):
+        assert not (target / stale).exists()

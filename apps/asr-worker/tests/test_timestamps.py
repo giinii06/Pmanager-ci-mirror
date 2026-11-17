@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
+import pytest
+
+from asr_worker import align
 from asr_worker.audio import plan_chunks
 from asr_worker.timeline import MAX_INVERSION_MS, attach_source_text, clean_words
 
@@ -112,3 +118,121 @@ def test_punctuation_without_a_space_moves_to_the_previous_word() -> None:
     ]
     attach_source_text(words, "끝.다음")
     assert [word["text"] for word in words] == ["끝.", "다음"]
+
+
+class StubAligner:
+    def __init__(self, responses: dict[str, list[list[SimpleNamespace]] | Exception]) -> None:
+        self.responses = responses
+
+    def align(self, *, audio: str, text: str, language: str) -> list[list[SimpleNamespace]]:
+        outcome = self.responses[audio]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+def _run_align_with_stub(
+    monkeypatch,
+    tmp_path: Path,
+    chunks: list[dict[str, Any]],
+    responses: dict[str, list[list[SimpleNamespace]] | Exception],
+) -> tuple[dict[str, Any], Path]:
+    asr_path = tmp_path / "asr.json"
+    output_path = tmp_path / "aligned.json"
+    asr_path.write_text(json.dumps({"chunks": chunks}), encoding="utf-8")
+    monkeypatch.setattr(align, "load_model", lambda *args, **kwargs: StubAligner(responses))
+    monkeypatch.setattr(align, "empty_cache", lambda device: None)
+    result = align.run(asr_path, "/models/aligner", "cpu", "ko", output_path)
+    return result, output_path
+
+
+def test_align_marks_zero_duration_tokens_as_align_failed_without_raising(
+    monkeypatch, tmp_path: Path
+) -> None:
+    result, output_path = _run_align_with_stub(
+        monkeypatch,
+        tmp_path,
+        [
+            {
+                "index": 0,
+                "start_ms": 0,
+                "end_ms": 5000,
+                "wav": "chunk-0000.wav",
+                "status": "transcribed",
+                "text": "음",
+            }
+        ],
+        {"chunk-0000.wav": [[word("음", 0.0, 0.0)]]},
+    )
+
+    written = json.loads(output_path.read_text(encoding="utf-8"))
+    for payload in (result, written):
+        assert payload["chunks"][0]["status"] == "align_failed"
+        assert payload["chunks"][0]["align_error"] == "no timestamps"
+        assert payload["chunks"][0]["words"] == []
+
+
+@pytest.mark.parametrize(
+    ("chunks", "responses", "expected_match"),
+    [
+        pytest.param(
+            [
+                {
+                    "index": 0,
+                    "start_ms": 0,
+                    "end_ms": 5000,
+                    "wav": "chunk-0000.wav",
+                    "status": "transcribed",
+                    "text": "음",
+                },
+                {
+                    "index": 1,
+                    "start_ms": 5000,
+                    "end_ms": 10000,
+                    "wav": "chunk-0001.wav",
+                    "status": "transcribed",
+                    "text": "아",
+                },
+            ],
+            {
+                "chunk-0000.wav": [[word("음", 0.0, 0.0)]],
+                "chunk-0001.wav": RuntimeError("CUDA out of memory"),
+            },
+            "CUDA out of memory",
+            id="align_error",
+        ),
+        pytest.param(
+            [
+                {
+                    "index": 0,
+                    "start_ms": 0,
+                    "end_ms": 5000,
+                    "wav": "chunk-0000.wav",
+                    "status": "failed",
+                    "error": "RuntimeError: transcribe boom",
+                    "text": "",
+                },
+                {
+                    "index": 1,
+                    "start_ms": 5000,
+                    "end_ms": 10000,
+                    "wav": "chunk-0001.wav",
+                    "status": "transcribed",
+                    "text": "음",
+                },
+            ],
+            {"chunk-0001.wav": [[word("음", 0.0, 0.0)]]},
+            "transcribe boom",
+            id="transcribe_error",
+        ),
+    ],
+)
+def test_align_raises_when_an_execution_error_leaves_no_words(
+    monkeypatch,
+    tmp_path: Path,
+    chunks: list[dict[str, Any]],
+    responses: dict[str, list[list[SimpleNamespace]] | Exception],
+    expected_match: str,
+) -> None:
+    with pytest.raises(RuntimeError, match=expected_match):
+        _run_align_with_stub(monkeypatch, tmp_path, chunks, responses)
