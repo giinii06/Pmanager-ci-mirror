@@ -19,7 +19,7 @@ from .config import Config
 from .jsonio import write_json_atomic
 from .language import LanguageDecision, code_for, has_speech, resolve_align_language
 from .stage_pid import reap_stale_stage, stage_pid_file
-from .subtitles import build_segments, to_srt, to_txt, to_vtt
+from .subtitles import Segment, build_segments, to_srt, to_txt, to_vtt
 
 log = logging.getLogger(__name__)
 
@@ -464,42 +464,18 @@ class Pipeline:
         asset_id: str,
         decision: LanguageDecision,
     ) -> None:
-        """A file with no dialogue still records a transcript.
-
-        The row is what tells the queue this file has been examined, so without it
-        the reconciler would keep queuing the same silent file.
-        """
-        target, relative = self._result_target(file_version, asset_id)
-        transcript = {
-            "assetId": asset_id,
-            "fileVersion": file_version,
-            "language": "",
-            "languageDecision": decision.as_dict(),
-            "hasSpeech": False,
-            "modelId": self.config.model_id,
-            "modelRevision": self.config.model_revision,
-            "alignerId": self.config.aligner_id,
-            "alignerRevision": self.config.aligner_revision,
-            "pipelineVersion": self.config.pipeline_version,
-            "device": None,
-            "durationMs": duration_ms,
-            "createdAt": int(time.time() * 1000),
-            "segments": [],
-            "chunks": [],
-        }
-        write_json_atomic(target / "transcript.json", transcript)
-
-        self.client.complete(
+        self._commit_transcript(
             job_id,
-            self.owner,
-            {
-                "transcriptId": f"{safe_segment(asset_id, 32)}-{uuid.uuid4().hex[:12]}",
-                "resultDir": relative,
-                "plainText": "",
-                "language": "",
-                "hasSpeech": False,
-                "segments": [],
-            },
+            duration_ms,
+            file_version,
+            asset_id,
+            language="",
+            language_decision=decision.as_dict(),
+            has_speech=False,
+            device=None,
+            plain_text="",
+            segments=[],
+            chunks=[],
         )
 
     def _write_results(
@@ -513,6 +489,23 @@ class Pipeline:
         align_language: str,
     ) -> None:
         chunks = aligned.get("chunks", [])
+        language_decision = {**decision.as_dict(), "alignLanguage": align_language}
+        if not any(chunk.get("words") for chunk in chunks):
+            self._commit_transcript(
+                job_id,
+                duration_ms,
+                file_version,
+                asset_id,
+                language="",
+                language_decision=language_decision,
+                has_speech=False,
+                device=aligned.get("device"),
+                plain_text="",
+                segments=[],
+                chunks=chunks,
+            )
+            return
+
         segments = build_segments(chunks)
         if not segments:
             raise RuntimeError("No subtitle line could be placed on the timeline.")
@@ -522,29 +515,61 @@ class Pipeline:
             for chunk in chunks
             if str(chunk.get("text", "")).strip()
         )
-        target, relative = self._result_target(file_version, asset_id)
+        self._commit_transcript(
+            job_id,
+            duration_ms,
+            file_version,
+            asset_id,
+            language=decision.language,
+            language_decision=language_decision,
+            has_speech=True,
+            device=aligned.get("device"),
+            plain_text=plain_text,
+            segments=segments,
+            chunks=chunks,
+        )
 
+    def _commit_transcript(
+        self,
+        job_id: str,
+        duration_ms: int,
+        file_version: int,
+        asset_id: str,
+        *,
+        language: str,
+        language_decision: dict[str, Any],
+        has_speech: bool,
+        device: str | None,
+        plain_text: str,
+        segments: list[Segment],
+        chunks: list[dict[str, Any]],
+    ) -> None:
+        target, relative = self._result_target(file_version, asset_id)
         transcript = {
             "assetId": asset_id,
             "fileVersion": file_version,
-            "language": decision.language,
-            "languageDecision": {**decision.as_dict(), "alignLanguage": align_language},
+            "language": language,
+            "languageDecision": language_decision,
+            "hasSpeech": has_speech,
             "modelId": self.config.model_id,
             "modelRevision": self.config.model_revision,
             "alignerId": self.config.aligner_id,
             "alignerRevision": self.config.aligner_revision,
             "pipelineVersion": self.config.pipeline_version,
-            "device": aligned.get("device"),
+            "device": device,
             "durationMs": duration_ms,
             "createdAt": int(time.time() * 1000),
             "segments": [segment.as_dict() for segment in segments],
             "chunks": chunks,
         }
-
         write_json_atomic(target / "transcript.json", transcript)
-        _write_text_atomic(target / "subtitles.vtt", to_vtt(segments))
-        _write_text_atomic(target / "subtitles.srt", to_srt(segments))
-        _write_text_atomic(target / "transcript.txt", to_txt(segments))
+        if has_speech:
+            _write_text_atomic(target / "subtitles.vtt", to_vtt(segments))
+            _write_text_atomic(target / "subtitles.srt", to_srt(segments))
+            _write_text_atomic(target / "transcript.txt", to_txt(segments))
+        else:
+            for stale in ("subtitles.vtt", "subtitles.srt", "transcript.txt"):
+                (target / stale).unlink(missing_ok=True)
 
         self.client.complete(
             job_id,
@@ -553,7 +578,8 @@ class Pipeline:
                 "transcriptId": f"{safe_segment(asset_id, 32)}-{uuid.uuid4().hex[:12]}",
                 "resultDir": relative,
                 "plainText": plain_text,
-                "language": decision.language,
+                "language": language,
+                "hasSpeech": has_speech,
                 "segments": [
                     {"startMs": segment.start_ms, "endMs": segment.end_ms, "text": segment.text}
                     for segment in segments
