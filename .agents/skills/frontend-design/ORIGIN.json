@@ -1,0 +1,20 @@
+{
+  "name": "frontend-design",
+  "scope": "project-local",
+  "path": ".agents/skills/frontend-design/SKILL.md",
+  "source": {
+    "repository": "https://github.com/anthropics/skills",
+    "subpath": "skills/frontend-design",
+    "commit": "41bbe19d1a1a7eaab5e7bb9050a417e5c6cffc8f",
+    "license": "LICENSE.txt (Anthropic skills LICENSE.txt)"
+  },
+  "installedAt": "2026-11-18T11:41:13+09:00",
+  "selectionRationale": {
+    "chosen": "anthropics/skills@frontend-design — actionable visual direction, color/type token planning, layout composition, restraint, copy discipline, and direct generation guidance tailored for building custom media/player/explorer UI without templated AI chrome.",
+    "comparedAgainst": [
+      "vercel-labs/web-interface-guidelines (agent-skills/web-design-guidelines v1.0.0) — strong post-hoc a11y/focus/form audit checklist, used as an engineering QA checklist alongside frontend-design, but less focused on cohesive design-system architecture and visual composition.",
+      "nextlevelbuilder/ui-ux-pro-max-skill — broad marketing/preset database, noisier and less aligned with dark/light dense workstation media library tools.",
+      "ibelick/ui-skills — upstream URL returned 404 during inspection."
+    ]
+  }
+}
