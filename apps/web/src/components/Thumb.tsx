@@ -39,12 +39,16 @@ export function Thumb({
   const loaded = loadedSrc === current
 
   useEffect(() => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current)
+      timer.current = null
+    }
     setAttempt(0)
   }, [src])
 
   useEffect(() => {
     const image = imageRef.current
-    if (image?.complete && image.naturalWidth > 0 && image.currentSrc === current) {
+    if (image?.complete && image.naturalWidth > 0) {
       setLoadedSrc(current)
     }
   }, [current])
@@ -68,8 +72,9 @@ export function Thumb({
 
   return (
     <div className={cn('relative overflow-hidden bg-panel-2', className)}>
-      {!loaded ? <div className="absolute inset-0 animate-pulse bg-raised/70" /> : null}
+      {!loaded ? <div className="absolute inset-0 bg-raised/60" /> : null}
       <img
+        key={current}
         ref={imageRef}
         src={current}
         srcSet={srcSet ? withRetrySrcSet(srcSet) : undefined}

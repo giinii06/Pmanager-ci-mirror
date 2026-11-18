@@ -1,12 +1,22 @@
-import { useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Eye, FolderPlus, Images, ThumbsUp } from 'lucide-react'
 import type { FolderDTO, FolderSort } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { invalidateVoteCaches } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
+import {
+  FOLDER_HEADER_HEIGHT,
+  buildFlatFolderMasonry,
+  buildFolderMasonry,
+  collectVisibleFolderNodes,
+  type FolderSectionInput,
+  type PlacedFolderCard,
+} from '../lib/folderLayout'
 import { formatCount } from '../lib/format'
+import { useElementWidth, useMeasuredElement } from '../lib/hooks'
 import { useUi } from '../store/ui'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { EmptyState } from '../components/EmptyState'
@@ -16,8 +26,6 @@ import { PageHeading } from '../components/PageHeading'
 import { Button } from '../components/ui/Button'
 import { AssetGallery } from '../components/AssetGallery'
 
-const CARD_GRID = 'columns-2 gap-3 sm:columns-3 lg:columns-4'
-
 const FOLDER_SORTS: Array<{ value: FolderSort; label: string }> = [
   { value: 'views', label: '조회수순' },
   { value: 'votes', label: 'Vote순' },
@@ -25,11 +33,69 @@ const FOLDER_SORTS: Array<{ value: FolderSort; label: string }> = [
   { value: 'date', label: '날짜순' },
 ]
 
+function PositionedFolderCard({
+  node,
+  count,
+  priority = false,
+  onVote,
+}: {
+  node: PlacedFolderCard
+  count?: number
+  priority?: boolean
+  onVote: (folderId: string) => void
+}) {
+  return (
+    <div
+      className="absolute left-0 top-0"
+      style={{
+        width: node.width,
+        transform: `translate3d(${node.left}px, ${node.top}px, 0)`,
+      }}
+    >
+      <FolderCard
+        folder={node.folder}
+        count={count}
+        width={node.width}
+        imageHeight={node.imageHeight}
+        priority={priority}
+        onVote={onVote}
+      />
+    </div>
+  )
+}
+
+function SubfolderGrid({
+  folders,
+  onVote,
+}: {
+  folders: FolderDTO[]
+  onVote: (folderId: string) => void
+}) {
+  const [widthRef, width] = useElementWidth<HTMLDivElement>()
+  const layout = useMemo(() => buildFlatFolderMasonry(folders, width), [folders, width])
+
+  return (
+    <div ref={widthRef} className="relative mb-5" style={{ height: layout.totalHeight }}>
+      {layout.cards.map((node) => (
+        <PositionedFolderCard
+          key={node.key}
+          node={node}
+          count={node.folder.assetCount}
+          onVote={onVote}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function FoldersPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
   const [sort, setSort] = useState<FolderSort>('views')
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const { attach: attachHeader, height: headerHeight } = useMeasuredElement<HTMLDivElement>()
+  const [widthRef, width] = useElementWidth<HTMLDivElement>()
 
   const libraries = useQuery({ queryKey: ['libraries'], queryFn: api.libraries })
   const folders = useQuery({
@@ -48,50 +114,83 @@ export function FoldersPage() {
     onError: () => toast('폴더 투표를 저장하지 못했습니다.', 'error'),
   })
 
-  if (libraries.isPending || folders.isPending) {
-    return (
-      <div className="h-full overflow-y-auto px-6">
-        <LoadingBlock />
-      </div>
-    )
-  }
+  const handleVote = useCallback((id: string) => vote.mutate(id), [vote.mutate])
 
-  const collections = (folders.data ?? []).filter((folder) => folder.directImageCount > 0)
-  const sections = (libraries.data ?? [])
-    .map((library) => ({
-      library,
-      folders: collections.filter((folder) => folder.libraryId === library.id),
-    }))
-    .filter((section) => section.folders.length > 0)
+  const collections = useMemo(
+    () => (folders.data ?? []).filter((folder) => folder.directImageCount > 0),
+    [folders.data],
+  )
+
+  const sectionInputs = useMemo<FolderSectionInput[]>(() => {
+    const byLib = new Map<string, FolderDTO[]>()
+    for (const folder of collections) {
+      const list = byLib.get(folder.libraryId)
+      if (list) list.push(folder)
+      else byLib.set(folder.libraryId, [folder])
+    }
+    return (libraries.data ?? [])
+      .map((library) => ({
+        libraryId: library.id,
+        libraryName: library.name,
+        folders: byLib.get(library.id) ?? [],
+      }))
+      .filter((section) => section.folders.length > 0)
+  }, [libraries.data, collections])
+
+  const layout = useMemo(() => buildFolderMasonry(sectionInputs, width), [sectionInputs, width])
+
+  const virtualizer = useVirtualizer({
+    count: layout.bandCount,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => layout.bandHeight,
+    overscan: 2,
+    scrollMargin: headerHeight,
+  })
+
+  const virtualItems = virtualizer.getVirtualItems()
+  const visibleNodes = useMemo(
+    () =>
+      collectVisibleFolderNodes(
+        layout,
+        virtualItems.map((item) => item.index),
+      ),
+    [layout, virtualItems],
+  )
+
+  const loading = libraries.isPending || folders.isPending
 
   return (
-    <div className="h-full overflow-y-auto px-6 pb-24">
-      <PageHeading
-        title="사진"
-        meta={`${formatCount(collections.length)}개 폴더`}
-        actions={
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="폴더 정렬">
-            {FOLDER_SORTS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setSort(option.value)}
-                aria-pressed={sort === option.value}
-                className={cn(
-                  'h-8 rounded-lg border px-2.5 text-[12px] font-medium transition-colors',
-                  sort === option.value
-                    ? 'border-accent/50 bg-accent/15 text-accent'
-                    : 'border-line bg-panel text-muted hover:border-line-strong hover:text-ink',
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        }
-      />
+    <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
+      <div ref={attachHeader}>
+        <PageHeading
+          title="사진"
+          meta={loading ? '불러오는 중' : `${formatCount(collections.length)}개 폴더`}
+          actions={
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="폴더 정렬">
+              {FOLDER_SORTS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setSort(option.value)}
+                  aria-pressed={sort === option.value}
+                  className={cn(
+                    'h-8 rounded-lg border px-2.5 text-[12px] font-medium transition-colors',
+                    sort === option.value
+                      ? 'border-accent/50 bg-accent/15 text-accent'
+                      : 'border-line bg-panel text-muted hover:border-line-strong hover:text-ink',
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          }
+        />
+      </div>
 
-      {sections.length === 0 ? (
+      {loading ? (
+        <LoadingBlock />
+      ) : sectionInputs.length === 0 ? (
         <EmptyState
           title="사진 폴더가 없습니다"
           body="설정에서 폴더를 라이브러리로 등록하면 폴더별로 사진이 모입니다."
@@ -99,26 +198,33 @@ export function FoldersPage() {
           action={<Button onClick={() => navigate('/settings')}>라이브러리 추가</Button>}
         />
       ) : (
-        sections.map((section) => (
-          <section key={section.library.id} className="mb-9">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <h2 className="text-[14px] font-semibold text-ink">{section.library.name}</h2>
-              <span className="text-[11.5px] text-muted">
-                {formatCount(section.folders.length)}개 폴더
-              </span>
-            </div>
-            <div className={CARD_GRID}>
-              {section.folders.map((folder) => (
-                <FolderCard
-                  key={folder.id}
-                  folder={folder}
-                  count={folder.directImageCount}
-                  onVote={(id) => vote.mutate(id)}
-                />
-              ))}
-            </div>
-          </section>
-        ))
+        <div ref={widthRef} className="relative" style={{ height: layout.totalHeight }}>
+          {visibleNodes.map((node) =>
+            node.kind === 'header' ? (
+              <div
+                key={node.key}
+                className="absolute left-0 top-0 flex w-full items-center gap-2"
+                style={{
+                  height: FOLDER_HEADER_HEIGHT,
+                  transform: `translate3d(0, ${node.top}px, 0)`,
+                }}
+              >
+                <h2 className="text-[14px] font-semibold text-ink">{node.libraryName}</h2>
+                <span className="text-[11.5px] text-muted">
+                  {formatCount(node.folderCount)}개 폴더
+                </span>
+              </div>
+            ) : (
+              <PositionedFolderCard
+                key={node.key}
+                node={node}
+                count={node.folder.directImageCount}
+                priority={node.index < 12}
+                onVote={handleVote}
+              />
+            ),
+          )}
+        </div>
       )}
     </div>
   )
@@ -154,6 +260,8 @@ export function FolderPage() {
     },
     onError: () => toast('폴더 투표를 저장하지 못했습니다.', 'error'),
   })
+
+  const handleSubfolderVote = useCallback((id: string) => vote.mutate(id), [vote.mutate])
 
   if (!folderId) {
     return (
@@ -218,15 +326,7 @@ export function FolderPage() {
       breadcrumb={<Breadcrumbs trail={breadcrumb} />}
       subheader={
         children.length > 0 ? (
-          <div className={`${CARD_GRID} pb-5`}>
-            {children.map((child) => (
-              <FolderCard
-                key={child.id}
-                folder={child}
-                onVote={(id) => vote.mutate(id)}
-              />
-            ))}
-          </div>
+          <SubfolderGrid folders={children} onVote={handleSubfolderVote} />
         ) : null
       }
       hideEmpty={children.length > 0}

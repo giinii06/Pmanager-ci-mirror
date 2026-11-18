@@ -3,29 +3,41 @@ import { Link } from 'react-router-dom'
 import { Eye, Folder as FolderIcon, Info, Percent, ThumbsUp } from 'lucide-react'
 import { POSTER_SCHEME, type FolderDTO } from '@mediavault/shared'
 import { cn } from '../lib/cn'
+import { CARD_CAPTION_HEIGHT, clampedCoverAspectRatio } from '../lib/folderLayout'
 import { formatCount, formatRate } from '../lib/format'
 import { Thumb } from './Thumb'
 
 export function FolderCard({
   folder,
   count,
+  width,
+  imageHeight,
+  priority = false,
   onVote,
 }: {
   folder: FolderDTO
   count?: number
+  width?: number
+  imageHeight?: number
+  priority?: boolean
   onVote?: (folderId: string) => void
 }) {
   const [infoOpen, setInfoOpen] = useState(false)
   const photoCount = count ?? folder.assetCount
-  const aspectW = folder.coverWidth && folder.coverWidth > 0 ? folder.coverWidth : 4
-  const aspectH = folder.coverHeight && folder.coverHeight > 0 ? folder.coverHeight : 3
-  const clampedRatio = Math.min(2.4, Math.max(0.45, aspectW / aspectH))
-  const coverSrc = folder.coverAssetId
-    ? `/api/assets/${folder.coverAssetId}/thumbnail?size=640&v=${folder.coverFileVersion}&pv=${folder.coverPosterVersion}&p=${POSTER_SCHEME}`
+  const cover = folder.coverAssetId
+    ? (() => {
+        const versionSuffix = `v=${folder.coverFileVersion}&pv=${folder.coverPosterVersion}&p=${POSTER_SCHEME}`
+        const small = `/api/assets/${folder.coverAssetId}/thumbnail?size=320&${versionSuffix}`
+        const medium = `/api/assets/${folder.coverAssetId}/thumbnail?size=640&${versionSuffix}`
+        return { src: medium, srcSet: `${small} 320w, ${medium} 640w` }
+      })()
     : null
+  const coverSizes = width
+    ? `${Math.round(width)}px`
+    : '(min-width: 960px) 25vw, (min-width: 600px) 33vw, 50vw'
 
   return (
-    <div className="group relative mb-3 break-inside-avoid overflow-hidden rounded-panel border border-line bg-panel transition-colors duration-150 hover:border-line-strong">
+    <div className="group relative overflow-hidden rounded-panel border border-line bg-panel transition-colors duration-150 hover:border-line-strong">
       <Link
         to={`/folders/${folder.id}`}
         aria-label={`${folder.name} (${formatCount(photoCount)}장)`}
@@ -33,15 +45,21 @@ export function FolderCard({
       >
         <div
           className="relative w-full overflow-hidden bg-panel-2"
-          style={{ aspectRatio: String(clampedRatio) }}
+          style={
+            imageHeight !== undefined
+              ? { height: imageHeight }
+              : { aspectRatio: String(clampedCoverAspectRatio(folder.coverWidth, folder.coverHeight)) }
+          }
         >
-          {coverSrc ? (
+          {cover ? (
             <Thumb
-              src={coverSrc}
+              src={cover.src}
+              srcSet={cover.srcSet}
+              sizes={coverSizes}
               alt={folder.name}
               fit="contain"
+              priority={priority}
               className="h-full w-full"
-              imageClassName="transition-transform duration-500 ease-out group-hover:scale-[1.025]"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-faint">
@@ -51,8 +69,10 @@ export function FolderCard({
 
           <div
             className={cn(
-              'pointer-events-none absolute inset-0 flex max-h-full flex-col justify-end overflow-y-auto bg-gradient-to-t from-black/85 via-black/45 to-black/10 p-3 transition-opacity duration-200',
-              infoOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+              'pointer-events-none absolute inset-0 flex flex-col justify-end overflow-hidden bg-gradient-to-t from-black/85 via-black/45 to-black/10 p-3 transition-opacity duration-150',
+              infoOpen
+                ? 'opacity-100'
+                : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:opacity-100',
             )}
           >
             <p className="truncate text-[13.5px] font-semibold tracking-tight text-white">
@@ -88,7 +108,10 @@ export function FolderCard({
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-2 px-3 py-2">
+        <div
+          className="flex items-center justify-between gap-2 px-3"
+          style={{ height: CARD_CAPTION_HEIGHT }}
+        >
           <p className="min-w-0 truncate text-[12.5px] font-medium text-ink">{folder.name}</p>
           <span className="shrink-0 text-[11px] tabular-nums text-faint">
             {formatCount(photoCount)}
@@ -107,8 +130,8 @@ export function FolderCard({
           aria-label={`${folder.name} 정보 보기`}
           aria-pressed={infoOpen}
           className={cn(
-            'inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/80',
-            infoOpen && 'bg-accent text-white',
+            'inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/75 text-white/95 transition-colors hover:bg-black/90',
+            infoOpen && 'bg-accent text-white hover:bg-accent',
           )}
         >
           <Info size={12} />
@@ -122,7 +145,7 @@ export function FolderCard({
               onVote(folder.id)
             }}
             aria-label={`${folder.name} 폴더 Vote (${formatCount(folder.voteCount)})`}
-            className="inline-flex h-7 items-center gap-1 rounded-full bg-black/55 px-2 text-[11px] font-medium tabular-nums text-white backdrop-blur-sm transition-colors hover:bg-[#f97316]"
+            className="inline-flex h-7 items-center gap-1 rounded-full bg-black/75 px-2 text-[11px] font-medium tabular-nums text-white transition-colors hover:bg-[#f97316]"
           >
             <ThumbsUp size={11} />
             <span>{formatCount(folder.voteCount)}</span>
