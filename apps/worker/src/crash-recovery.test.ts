@@ -9,6 +9,7 @@ import {
   countAssets,
   createDatabaseBackup,
   createLibrary,
+  createScanRun,
   enqueueJob,
   getJob,
   getLatestRecoveryLog,
@@ -225,11 +226,21 @@ describe('crash recovery & durability release gates', () => {
     await utimes(staleTmp, oldTime, oldTime)
 
     // Lease expired at baseNow + 10_000; run recovery at baseNow + 200_000.
+    createScanRun(db, {
+      id: 'orphan-run',
+      libraryId: 'lib1',
+      rootPath: 'Pics',
+      phase: 'index',
+      status: 'running',
+      startedAt: baseNow - 5000,
+    })
     const recovery = await runWorkerRecovery(db, config, { now: baseNow + 200_000, reconcileThumbs: true })
     expect(recovery.recoveredJobs).toBe(1)
     expect(recovery.cleanedTempFiles).toBe(1)
     expect(recovery.dbIntegrity).toBe('ok')
     expect(getLatestRecoveryLog(db)?.cleanedTempFiles).toBe(1)
+    const orphanStatus = db.query<{ status: string }, []>("SELECT status FROM scan_runs WHERE id = 'orphan-run'").get()
+    expect(orphanStatus?.status).toBe('failed')
 
     const claimB = claimNextJob(db, baseNow + 200_100, { workerId: 'worker-b', leaseMs: 30_000 })
     expect(claimB).not.toBeNull()

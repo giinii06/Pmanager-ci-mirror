@@ -217,8 +217,9 @@ export async function runWorkerRecovery(
   const recoveredJobs = recoverExpiredJobs(db, now)
   db.query<null, [number, number]>(
     `UPDATE scan_runs SET
-       phase = 'interrupted',
-       status = 'interrupted',
+       phase = 'failed',
+       status = 'failed',
+       error_message = COALESCE(error_message, 'interrupted by worker restart'),
        completed_at = COALESCE(completed_at, ?),
        updated_at = ?
      WHERE status = 'running'
