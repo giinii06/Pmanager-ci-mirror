@@ -3,13 +3,31 @@ import { MIGRATIONS, SCHEMA_VERSION } from './schema'
 
 export type Db = Database
 
+function runBusyRetry<T>(fn: () => T): T {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      return fn()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      if (msg.includes('SQLITE_BUSY') || msg.includes('database is locked')) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * (attempt + 1))
+        continue
+      }
+      throw error
+    }
+  }
+  return fn()
+}
+
 export function openDatabase(filename: string): Db {
   const db = new Database(filename, { create: true })
-  db.exec('PRAGMA journal_mode = WAL')
-  db.exec('PRAGMA synchronous = FULL')
-  db.exec('PRAGMA foreign_keys = ON')
-  db.exec('PRAGMA busy_timeout = 5000')
-  migrate(db)
+  db.exec('PRAGMA busy_timeout = 10000')
+  runBusyRetry(() => {
+    db.exec('PRAGMA journal_mode = WAL')
+    db.exec('PRAGMA synchronous = FULL')
+    db.exec('PRAGMA foreign_keys = ON')
+    migrate(db)
+  })
   return db
 }
 

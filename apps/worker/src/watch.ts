@@ -7,6 +7,26 @@ import { enqueueArchivesInDir } from './archives'
 import type { WorkerConfig } from './config'
 
 const ARCHIVE_FILE_RE = /\.(rar|r\d{2,})$/i
+const BLOCKED_WATCH_DIRS = new Set([
+  '$recycle.bin',
+  'system volume information',
+  'windows',
+  'program files',
+  'program files (x86)',
+  'programdata',
+  'recovery',
+  'appdata',
+])
+const WATCH_REFRESH_MS = 15_000
+
+function collectLibraryRoots(db: Db, mediaRoot: string): string[] {
+  const roots: string[] = []
+  for (const lib of listLibraries(db)) {
+    const abs = resolveInside(mediaRoot, lib.rootPath)
+    if (abs) roots.push(abs)
+  }
+  return roots
+}
 
 function findOwningLibrary(
   db: Db,
@@ -86,20 +106,55 @@ export function startMediaWatcher(db: Db, config: WorkerConfig): FSWatcher {
     }
   }
 
-  const watcher = chokidar.watch(config.mediaRoot, {
+  const watchedRoots = new Set(collectLibraryRoots(db, config.mediaRoot))
+  const drivesMount = path.join(config.mediaRoot, 'drives')
+  const extraMount = path.join(config.mediaRoot, 'extra')
+
+  const watcher = chokidar.watch(Array.from(watchedRoots), {
     ignoreInitial: true,
+    followSymlinks: false,
     usePolling: config.watchPolling ?? false,
     interval: 2_000,
     binaryInterval: 3_000,
     ignored: (filePath: string) => {
       const base = path.basename(filePath)
-      return base.startsWith('.') || isTempDownloadFile(base)
+      const lower = base.toLowerCase()
+      if (base.startsWith('.') || isTempDownloadFile(base) || BLOCKED_WATCH_DIRS.has(lower)) {
+        return true
+      }
+      if (
+        watchedRoots.has(config.mediaRoot) &&
+        (filePath === drivesMount ||
+          filePath.startsWith(`${drivesMount}${path.sep}`) ||
+          filePath === extraMount ||
+          filePath.startsWith(`${extraMount}${path.sep}`))
+      ) {
+        return true
+      }
+      return false
     },
     awaitWriteFinish: {
       stabilityThreshold: config.archiveStableMs ?? 1_500,
       pollInterval: 300,
     },
   })
+
+  const syncRootsTimer = setInterval(() => {
+    const desired = new Set(collectLibraryRoots(db, config.mediaRoot))
+    for (const dir of desired) {
+      if (!watchedRoots.has(dir)) {
+        watchedRoots.add(dir)
+        watcher.add(dir)
+      }
+    }
+    for (const dir of Array.from(watchedRoots)) {
+      if (!desired.has(dir)) {
+        watchedRoots.delete(dir)
+        void watcher.unwatch(dir)
+      }
+    }
+  }, WATCH_REFRESH_MS)
+  syncRootsTimer.unref()
 
   watcher.on('add', handleFile)
   watcher.on('change', handleFile)
@@ -109,6 +164,7 @@ export function startMediaWatcher(db: Db, config: WorkerConfig): FSWatcher {
 
   const origClose = watcher.close.bind(watcher)
   watcher.close = async () => {
+    clearInterval(syncRootsTimer)
     for (const timer of archiveTimers.values()) clearTimeout(timer)
     for (const timer of scanTimers.values()) clearTimeout(timer)
     archiveTimers.clear()
