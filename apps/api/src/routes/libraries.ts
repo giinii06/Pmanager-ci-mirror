@@ -14,6 +14,7 @@ import {
   listFolders,
   listLibraries,
   resumeJob,
+  setFolderCover,
   setScanState,
   voteFolder,
 } from '@mediavault/database'
@@ -34,6 +35,10 @@ const createBody = z.object({
 const folderQuery = z.object({
   libraryId: z.string().max(64).optional(),
   sort: z.enum(FOLDER_SORTS).optional(),
+})
+
+const folderCoverBody = z.object({
+  assetId: z.string().min(1).max(64),
 })
 
 function toPosix(value: string): string {
@@ -190,5 +195,25 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
       return
     }
     reply.send(toFolderDTO(folder))
+  })
+
+  app.put('/api/folders/:id/cover', async (request, reply) => {
+    const params = parseInput(idParams, request.params, reply)
+    if (!params) return
+    const body = parseInput(folderCoverBody, request.body, reply)
+    if (!body) return
+    const result = setFolderCover(ctx.db, params.id, body.assetId)
+    if (result.status === 'folder_not_found') {
+      reply.code(404).send({ error: 'not_found', message: 'Folder not found.' })
+      return
+    }
+    if (result.status === 'invalid_asset') {
+      reply.code(400).send({
+        error: 'invalid_cover_asset',
+        message: '폴더 안에 있는 사진만 썸네일로 지정할 수 있습니다.',
+      })
+      return
+    }
+    reply.send(toFolderDTO(result.folder))
   })
 }

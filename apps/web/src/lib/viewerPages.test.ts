@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  buildCoverActions,
   fitPage,
   groupViewerItems,
   pageAt,
@@ -117,5 +118,42 @@ describe('fitPage', () => {
 
   test('returns nothing before the stage is measured', () => {
     expect(fitPage([portrait()], { start: 0, end: 1 }, { width: 0, height: 0 })).toEqual([])
+  })
+})
+
+describe('buildCoverActions', () => {
+  test('returns a single action when viewing one image inside a folder', () => {
+    expect(buildCoverActions([{ id: 'a1', kind: 'image', folderId: 'f1' }], false)).toEqual([
+      { key: 'a1', label: '썸네일로', assetId: 'a1', folderId: 'f1' },
+    ])
+  })
+
+  test('returns nothing for root assets without a folderId or during fullscreen', () => {
+    expect(buildCoverActions([{ id: 'a1', kind: 'image', folderId: null }], false)).toEqual([])
+    expect(buildCoverActions([{ id: 'a1', kind: 'image', folderId: 'f1' }], true)).toEqual([])
+    expect(
+      buildCoverActions(
+        [
+          { id: 'a1', kind: 'image', folderId: 'f1' },
+          { id: 'a2', kind: 'image', folderId: 'f1' },
+        ],
+        true,
+      ),
+    ).toEqual([])
+  })
+
+  test('returns left and right cover actions when viewing two paired portraits', () => {
+    expect(
+      buildCoverActions(
+        [
+          { id: 'a1', kind: 'image', folderId: 'f1' },
+          { id: 'a2', kind: 'image', folderId: 'f2' },
+        ],
+        false,
+      ),
+    ).toEqual([
+      { key: 'left:a1', label: '왼쪽 썸네일로', assetId: 'a1', folderId: 'f1' },
+      { key: 'right:a2', label: '오른쪽 썸네일로', assetId: 'a2', folderId: 'f2' },
+    ])
   })
 })

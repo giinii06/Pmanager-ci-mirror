@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 14
+export const SCHEMA_VERSION = 15
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -562,4 +562,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
     )`),
   (exec) => exec(OVERHAUL_V13_SQL),
   (exec) => exec(V14_RESILIENCE_AND_VOTES_SQL),
+  (exec) => exec('ALTER TABLE folders ADD COLUMN pinned_cover_asset_id TEXT'),
 ]

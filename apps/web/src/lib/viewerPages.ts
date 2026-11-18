@@ -126,3 +126,36 @@ export function fitPage(
     height: Math.max(1, Math.round(fitted)),
   }))
 }
+
+export interface CoverAction {
+  key: string
+  label: '썸네일로' | '왼쪽 썸네일로' | '오른쪽 썸네일로'
+  assetId: string
+  folderId: string
+}
+
+export function buildCoverActions(
+  visibleItems: Array<{ id: string; kind: 'image' | 'video'; folderId: string | null }>,
+  fullscreenActive: boolean,
+): CoverAction[] {
+  if (fullscreenActive) return []
+  const images = visibleItems.filter((item) => item.kind === 'image')
+  if (images.length === 1) {
+    const single = images[0]
+    if (!single?.folderId) return []
+    return [{ key: single.id, label: '썸네일로', assetId: single.id, folderId: single.folderId }]
+  }
+  if (images.length === 2) {
+    const actions: CoverAction[] = []
+    const left = images[0]
+    const right = images[1]
+    if (left?.folderId) {
+      actions.push({ key: `left:${left.id}`, label: '왼쪽 썸네일로', assetId: left.id, folderId: left.folderId })
+    }
+    if (right?.folderId) {
+      actions.push({ key: `right:${right.id}`, label: '오른쪽 썸네일로', assetId: right.id, folderId: right.folderId })
+    }
+    return actions
+  }
+  return []
+}

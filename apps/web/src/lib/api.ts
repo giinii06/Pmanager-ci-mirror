@@ -126,6 +126,11 @@ export const api = {
   },
   folder: (id: string) => request<FolderDetail>(`/api/folders/${id}`),
   voteFolder: (id: string) => request<FolderDTO>(`/api/folders/${id}/vote`, { method: 'POST' }),
+  setFolderCover: (id: string, assetId: string) =>
+    request<FolderDTO>(`/api/folders/${encodeURIComponent(id)}/cover`, {
+      method: 'PUT',
+      body: JSON.stringify({ assetId }),
+    }),
 
   assets: (query: AssetQuery) => request<Page<AssetDTO>>(`/api/assets${queryString(query)}`),
   assetIds: (query: AssetQuery) => request<{ ids: string[] }>(`/api/assets/ids${queryString(query)}`),

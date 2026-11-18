@@ -136,6 +136,68 @@ export function breadcrumb(db: Db, folderId: string): FolderRecord[] {
   return trail
 }
 
+export type SetFolderCoverResult =
+  | { status: 'ok'; folder: FolderRecord }
+  | { status: 'folder_not_found' }
+  | { status: 'invalid_asset' }
+
+export function setFolderCover(db: Db, folderId: string, assetId: string): SetFolderCoverResult {
+  const outcome = db
+    .transaction(
+      (): SetFolderCoverResult | { status: 'updated'; libraryId: string; parentId: string | null } => {
+        const folder = db
+          .query<{ id: string; libraryId: string; parentId: string | null }, Params>(
+            'SELECT id, library_id AS libraryId, parent_id AS parentId FROM folders WHERE id = ?',
+          )
+          .get(folderId)
+        if (!folder) return { status: 'folder_not_found' }
+
+        const asset = db
+          .query<
+            {
+              id: string
+              folderId: string | null
+              kind: string
+              deletedAt: number | null
+              width: number | null
+              height: number | null
+              posterVersion: number
+            },
+            Params
+          >(
+            `SELECT id, folder_id AS folderId, kind, deleted_at AS deletedAt,
+                    width, height, poster_version AS posterVersion
+             FROM assets WHERE id = ?`,
+          )
+          .get(assetId)
+
+        if (!asset || asset.deletedAt !== null || asset.kind !== 'image' || asset.folderId !== folderId) {
+          return { status: 'invalid_asset' }
+        }
+
+        db.query<null, Params>(
+          `UPDATE folders SET
+             pinned_cover_asset_id = ?,
+             cover_asset_id = ?,
+             cover_width = ?,
+             cover_height = ?,
+             cover_poster_version = ?
+           WHERE id = ?`,
+        ).run(asset.id, asset.id, asset.width, asset.height, asset.posterVersion, folderId)
+
+        return { status: 'updated', libraryId: folder.libraryId, parentId: folder.parentId }
+      },
+    )
+    .immediate()
+
+  if (outcome.status !== 'updated') return outcome
+  if (outcome.parentId !== null) recomputeFolderCounts(db, outcome.libraryId)
+
+  const updated = getFolder(db, folderId)
+  if (!updated) return { status: 'folder_not_found' }
+  return { status: 'ok', folder: updated }
+}
+
 interface CoverCandidate {
   id: string
   width: number | null
@@ -161,8 +223,8 @@ export function recomputeFolderCounts(db: Db, libraryId: string): void {
   for (const row of rows) direct.set(row.folderId, row.n)
 
   const folders = db
-    .query<{ id: string; parentId: string | null; depth: number }, Params>(
-      'SELECT id, parent_id AS parentId, depth FROM folders WHERE library_id = ?',
+    .query<{ id: string; parentId: string | null; depth: number; pinnedCoverAssetId: string | null }, Params>(
+      'SELECT id, parent_id AS parentId, depth, pinned_cover_asset_id AS pinnedCoverAssetId FROM folders WHERE library_id = ?',
     )
     .all(libraryId)
   const children = new Map<string, string[]>()
@@ -196,6 +258,7 @@ export function recomputeFolderCounts(db: Db, libraryId: string): void {
 
   const subtree = new Map<string, number>()
   const covers = new Map<string, CoverCandidate>()
+  const pinnedIds = new Map<string, string | null>()
   const deepestFirst = [...folders].sort((a, b) => b.depth - a.depth)
   for (const folder of deepestFirst) {
     const total = (direct.get(folder.id) ?? 0) + (subtree.get(folder.id) ?? 0)
@@ -204,9 +267,14 @@ export function recomputeFolderCounts(db: Db, libraryId: string): void {
       subtree.set(folder.parentId, (subtree.get(folder.parentId) ?? 0) + total)
     }
 
-    const middle = pickMiddleCover(imagesByFolder.get(folder.id) ?? [])
-    if (middle) {
-      covers.set(folder.id, middle)
+    const folderImages = imagesByFolder.get(folder.id) ?? []
+    const pinned = folder.pinnedCoverAssetId
+      ? (folderImages.find((img) => img.id === folder.pinnedCoverAssetId) ?? null)
+      : null
+    pinnedIds.set(folder.id, pinned ? pinned.id : null)
+    const directCover = pinned ?? pickMiddleCover(folderImages)
+    if (directCover) {
+      covers.set(folder.id, directCover)
       continue
     }
     let inherited: CoverCandidate | undefined
@@ -220,6 +288,7 @@ export function recomputeFolderCounts(db: Db, libraryId: string): void {
   const update = db.query<null, Params>(
     `UPDATE folders SET
        asset_count = ?,
+       pinned_cover_asset_id = ?,
        cover_asset_id = ?,
        cover_width = ?,
        cover_height = ?,
@@ -231,6 +300,7 @@ export function recomputeFolderCounts(db: Db, libraryId: string): void {
       const cover = covers.get(folder.id)
       update.run(
         subtree.get(folder.id) ?? 0,
+        pinnedIds.get(folder.id) ?? null,
         cover?.id ?? null,
         cover?.width ?? null,
         cover?.height ?? null,

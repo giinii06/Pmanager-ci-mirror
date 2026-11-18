@@ -362,6 +362,7 @@ describe('FS explorer, security guards, health, backups, votes activity, and job
       scanId: 's1',
     })
     await writeFile(path.join(h.mediaRoot, 'drives/d/Media/vid.mp4'), '1234')
+    await writeFile(path.join(h.mediaRoot, 'drives/d/Media/a.jpg'), 'img1')
     await writeFile(path.join(h.mediaRoot, 'drives/d/Media/readme.txt'), '0123456789')
     await writeFile(path.join(h.mediaRoot, 'drives/d/Media/partial.tmp'), 'x'.repeat(100))
     insertAsset(h.db, {
@@ -384,6 +385,26 @@ describe('FS explorer, security guards, health, backups, votes activity, and job
       indexedAt: 1000,
       scanId: 's1',
     })
+    insertAsset(h.db, {
+      id: 'img1',
+      libraryId: 'lib-s',
+      folderId: fId,
+      relativePath: 'a.jpg',
+      filename: 'a.jpg',
+      kind: 'image',
+      mimeType: 'image/jpeg',
+      sizeBytes: 4,
+      mtimeMs: 1000,
+      width: 800,
+      height: 1200,
+      durationMs: null,
+      takenAt: 1000,
+      videoCodec: null,
+      audioCodec: null,
+      container: 'jpg',
+      indexedAt: 1000,
+      scanId: 's1',
+    })
 
     const storageRes = await h.app.inject({
       method: 'GET',
@@ -393,8 +414,44 @@ describe('FS explorer, security guards, health, backups, votes activity, and job
     expect(storageRes.statusCode).toBe(200)
     const storage = storageRes.json()
     expect(storage.videoBytes).toBe(4)
+    expect(storage.imageBytes).toBe(4)
     expect(storage.tempBytes).toBe(100)
-    expect(storage.totalLibraryBytes).toBe(14)
+    expect(storage.totalLibraryBytes).toBe(18)
+
+    const unauthCover = await h.app.inject({
+      method: 'PUT',
+      url: `/api/folders/${fId}/cover`,
+      payload: { assetId: 'img1' },
+    })
+    expect(unauthCover.statusCode).toBe(401)
+
+    const okCover = await h.app.inject({
+      method: 'PUT',
+      url: `/api/folders/${fId}/cover`,
+      headers: { cookie: h.cookie },
+      payload: { assetId: 'img1' },
+    })
+    expect(okCover.statusCode).toBe(200)
+    expect(okCover.json().coverAssetId).toBe('img1')
+    expect(okCover.json().coverWidth).toBe(800)
+    expect(okCover.json().coverHeight).toBe(1200)
+
+    const videoCover = await h.app.inject({
+      method: 'PUT',
+      url: `/api/folders/${fId}/cover`,
+      headers: { cookie: h.cookie },
+      payload: { assetId: 'vid1' },
+    })
+    expect(videoCover.statusCode).toBe(400)
+    expect(videoCover.json().error).toBe('invalid_cover_asset')
+
+    const missingFolderCover = await h.app.inject({
+      method: 'PUT',
+      url: '/api/folders/no-such-folder/cover',
+      headers: { cookie: h.cookie },
+      payload: { assetId: 'img1' },
+    })
+    expect(missingFolderCover.statusCode).toBe(404)
 
     enqueueJob(h.db, { dedupeKey: 'scan:lib-s', kind: 'scan_library', priority: 2, libraryId: 'lib-s' }, 100)
     const claimed = claimNextJob(h.db, 100, { workerId: 'w1', leaseMs: 10_000 })!
