@@ -5,9 +5,11 @@ $script:WslUser = if ($env:MV_WSL_USER) { $env:MV_WSL_USER } else { "giini" }
 $script:RepoDir = if ($env:MV_REPO_DIR) { $env:MV_REPO_DIR } else { "/home/giini/Pmanager" }
 $script:TaskName = "MediaVault-Supervisor"
 $script:StateDir = "C:\ProgramData\MediaVault"
+$script:BinDir = "C:\ProgramData\MediaVault\bin"
 $script:LogDir = "C:\ProgramData\MediaVault\logs"
 $script:LogFile = "C:\ProgramData\MediaVault\logs\supervisor.log"
 $script:StopFlag = "C:\ProgramData\MediaVault\stop.flag"
+$script:WslExe = if (Test-Path "C:\Program Files\WSL\wsl.exe") { "C:\Program Files\WSL\wsl.exe" } else { "C:\Windows\System32\wsl.exe" }
 $script:ComposeArgs = @(
     "--env-file .env",
     "--env-file .env.asr",
@@ -55,7 +57,7 @@ function Invoke-WslBash {
     $prevPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $output = & wsl.exe -d $script:WslDistro -u $targetUser -- bash -lc $Command 2>&1
+        $output = & $script:WslExe -d $script:WslDistro -u $targetUser -- bash -lc $Command 2>&1
         $exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $prevPreference

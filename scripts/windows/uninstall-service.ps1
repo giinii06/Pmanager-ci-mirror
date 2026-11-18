@@ -13,3 +13,6 @@ if (Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue) 
 } else {
     Write-Host "Scheduled task '$($script:TaskName)' was not registered."
 }
+if (Test-Path $script:BinDir) {
+    Remove-Item -Path $script:BinDir -Recurse -Force -ErrorAction SilentlyContinue
+}

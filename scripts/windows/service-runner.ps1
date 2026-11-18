@@ -15,6 +15,20 @@ if (-not $createdNew) {
     exit 0
 }
 
+$script:KeepAliveProc = $null
+
+function Ensure-WslKeepAlive {
+    try {
+        if ($null -eq $script:KeepAliveProc -or $script:KeepAliveProc.HasExited) {
+            $script:KeepAliveProc = Start-Process -FilePath $script:WslExe `
+                -ArgumentList @("-d", $script:WslDistro, "-u", "root", "--exec", "/bin/sleep", "infinity") `
+                -WindowStyle Hidden -PassThru
+        }
+    } catch {
+        Write-MvLog "WSL keepalive start skipped: $($_.Exception.Message)" "WARN"
+    }
+}
+
 function Wait-WslAndDocker {
     for ($attempt = 1; $attempt -le 24; $attempt++) {
         $probe = Invoke-WslBash -Command "systemctl is-active docker && systemctl is-active ssh" -AsRoot
@@ -105,6 +119,7 @@ try {
         Write-MvLog "Docker or SSH systemd service did not become active in time." "ERROR"
         exit 1
     }
+    Ensure-WslKeepAlive
     $null = Wait-DrivesReady
     Ensure-PortProxy
     $null = Start-ComposeStack
@@ -112,6 +127,7 @@ try {
     $failures = 0
     $ticks = 0
     while (-not (Test-Path $script:StopFlag)) {
+        Ensure-WslKeepAlive
         $ticks++
         if ($ticks % 4 -eq 0) {
             Ensure-PortProxy
@@ -140,6 +156,9 @@ try {
         }
     }
     Write-MvLog "Stop flag detected; supervisor exiting gracefully."
+    if ($script:KeepAliveProc -and -not $script:KeepAliveProc.HasExited) {
+        Stop-Process -Id $script:KeepAliveProc.Id -Force -ErrorAction SilentlyContinue
+    }
 } finally {
     $mutex.ReleaseMutex()
     $mutex.Dispose()

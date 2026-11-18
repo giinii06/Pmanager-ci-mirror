@@ -26,7 +26,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\install-service.ps1 -
 - 기본값은 비밀번호 저장 없는 `S4U` 로그온입니다.
 - 만약 특정 Windows 11 빌드에서 DrvFS(`D:\`, `E:\`) 접근에 전체 사용자 토큰이 필요한 경우 `-UsePasswordLogon` 옵션을 사용하면 Windows 자격 증명 대화상자를 통해 비밀번호를 안전하게 등록합니다 (스크립트나 저장소에는 비밀번호가 저장되지 않습니다).
 - Windows 자체 OpenSSH Server도 함께 활성화하려면 `-EnableWindowsOpenSSH`를 추가합니다.
-- 이 스크립트는 AC 전원 절전/최대절전(`powercfg /change standby-timeout-ac 0`, `hibernate-timeout-ac 0`, `powercfg /hibernate off`)을 자동으로 비활성화하고 기존 중복 `Interactive` 부팅 작업을 정리합니다.
+- 이 스크립트는 실행 파일들을 로컬 NTFS 경로(`C:\ProgramData\MediaVault\bin\`)로 스테이징해 `S4U` 컨텍스트의 `\\wsl.localhost` UNC 제한을 피하고, 네이티브 Win32 바이너리(`C:\Program Files\WSL\wsl.exe`) 호출, `.wslconfig` `vmIdleTimeout=-1` 설정, `/bin/sleep infinity` 유휴 방지, 설치 직후 `State = Running` 자가 검증, AC 전원 절전/최대절전 비활성화, 기존 중복 부팅 작업 비활성화를 함께 수행합니다.
 
 ## 3. ASRock B650M PG Lightning UEFI 정전 자동 복구 설정
 
