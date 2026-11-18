@@ -139,9 +139,13 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
   const media = db
     .query<RawItem, Params>(
       `SELECT j.id, j.kind, j.asset_id AS assetId, a.filename AS assetName,
-              j.state, NULL AS stage, NULL AS progress, NULL AS onGpu,
+              j.state, j.phase AS stage,
+              CASE WHEN j.progress_total > 0
+                THEN MIN(100, CAST(ROUND((j.progress_current * 100.0) / j.progress_total) AS INTEGER))
+                ELSE NULL END AS progress,
+              NULL AS onGpu,
               j.started_at AS startedAt, j.updated_at AS updatedAt,
-              NULL AS leaseExpiresAt, j.last_error AS errorMessage
+              j.lease_expires_at AS leaseExpiresAt, j.last_error AS errorMessage
        FROM jobs j LEFT JOIN assets a ON a.id = j.asset_id
        WHERE j.state IN ('queued','running')
        ORDER BY CASE j.state WHEN 'running' THEN 0 ELSE 1 END, j.priority ASC, j.id ASC

@@ -38,8 +38,12 @@ export interface FolderRecord {
   assetCount: number
   directImageCount: number
   coverAssetId: string | null
+  coverWidth: number | null
+  coverHeight: number | null
+  coverPosterVersion: number
   viewCount: number
   voteCount: number
+  rate: number | null
   createdAt: number
 }
 
@@ -106,9 +110,77 @@ export interface JobRecord {
   payload: string | null
   attempts: number
   maxAttempts: number
+  workerId: string | null
+  leaseEpoch: number
+  leaseExpiresAt: number | null
+  progressCurrent: number
+  progressTotal: number | null
+  phase: string | null
+  checkpoint: string | null
+  pauseRequested: 0 | 1
+  cancelRequested: 0 | 1
   lastError: string | null
   startedAt: number | null
+  completedAt: number | null
   updatedAt: number
+}
+
+export interface ScanRunRecord {
+  id: string
+  libraryId: string
+  rootPath: string
+  phase: string
+  status: string
+  resumedFromRunId: string | null
+  filesSeen: number
+  filesAdded: number
+  filesUpdated: number
+  filesSkipped: number
+  filesRemoved: number
+  readErrors: number
+  errorMessage: string | null
+  startedAt: number
+  updatedAt: number
+  completedAt: number | null
+}
+
+export interface ScanCheckpointRecord {
+  libraryId: string
+  scanId: string
+  startedAt: number
+  lastDirRel: string
+  lastRelPath: string
+  processedFiles: number
+  totalEstimate: number | null
+  updatedAt: number
+}
+
+export interface VoteEventRecord {
+  id: string
+  targetType: 'asset' | 'folder'
+  targetId: string
+  title: string
+  dayKey: string
+  createdAt: number
+}
+
+export interface RecoveryLogRecord {
+  id: number
+  workerId: string
+  recoveredJobs: number
+  cleanedTempFiles: number
+  requeuedThumbnails: number
+  dbIntegrity: string
+  createdAt: number
+}
+
+export interface BackupLogRecord {
+  id: string
+  filename: string
+  sizeBytes: number
+  integrity: string
+  createdAt: number
+  error: string | null
 }
 
 export interface UserRecord {

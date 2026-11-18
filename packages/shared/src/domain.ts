@@ -8,7 +8,7 @@ export type VideoSort = (typeof VIDEO_SORTS)[number]
 export const FOLDER_SORTS = ['views', 'votes', 'name', 'date'] as const
 export type FolderSort = (typeof FOLDER_SORTS)[number]
 
-export type JobState = 'queued' | 'running' | 'done' | 'failed'
+export type JobState = 'queued' | 'running' | 'paused' | 'cancelled' | 'done' | 'failed'
 
 export type ScanState = 'idle' | 'queued' | 'scanning'
 
@@ -60,8 +60,12 @@ export interface FolderDTO {
   /** Images in this folder only, so a collection card matches the gallery it opens. */
   directImageCount: number
   coverAssetId: string | null
+  coverWidth: number | null
+  coverHeight: number | null
+  coverPosterVersion: number
   viewCount: number
   voteCount: number
+  rate: number | null
   createdAt: string
 }
 
@@ -122,6 +126,15 @@ export interface JobDTO {
   libraryId: string | null
   attempts: number
   maxAttempts: number
+  workerId: string | null
+  leaseEpoch: number
+  leaseExpiresAt: string | null
+  progressCurrent: number
+  progressTotal: number | null
+  phase: string | null
+  pauseRequested: boolean
+  cancelRequested: boolean
+  completedAt: string | null
   lastError: string | null
   updatedAt: string
 }
@@ -416,6 +429,101 @@ export interface ActivityStatsDTO {
   videoContributions: number
   activeDays: number
   streakDays: number
+}
+
+export interface VoteActivityItemDTO {
+  id: string
+  targetType: 'asset' | 'folder'
+  targetId: string
+  title: string
+  createdAt: string
+}
+
+export interface VoteActivityDayDTO {
+  date: string
+  count: number
+  level: 0 | 1 | 2 | 3 | 4
+  items: VoteActivityItemDTO[]
+}
+
+export interface VoteActivityStatsDTO {
+  days: VoteActivityDayDTO[]
+  totalVotes: number
+  videoVotes: number
+  folderVotes: number
+  activeDays: number
+  streakDays: number
+}
+
+export interface HostDriveDTO {
+  id: string
+  label: string
+  rootPath: string
+  totalBytes: number | null
+  freeBytes: number | null
+}
+
+export interface HostFolderEntryDTO {
+  name: string
+  path: string
+  hasChildren: boolean
+  modifiedAt: string | null
+}
+
+export interface HostBrowseResponseDTO {
+  currentPath: string
+  parentPath: string | null
+  breadcrumbs: Array<{ name: string; path: string }>
+  folders: HostFolderEntryDTO[]
+}
+
+export interface BackupRecordDTO {
+  id: string
+  filename: string
+  sizeBytes: number
+  integrity: string
+  createdAt: string
+  error: string | null
+}
+
+export interface LibraryHealthDTO {
+  id: string
+  name: string
+  rootPath: string
+  status: 'available' | 'unavailable' | 'scanning' | 'blocked'
+  scanState: ScanState
+  lastError: string | null
+  lastScanAt: string | null
+  assetCount: number
+  scannedFiles: number
+}
+
+export interface SystemStatusDTO {
+  startedAt: string
+  uptimeSeconds: number
+  dbIntegrity: string
+  sqliteVersion: string
+  synchronousMode: string
+  jobCounts: Record<JobState, number>
+  activeWorkers: Array<{
+    workerId: string
+    jobId: number
+    kind: JobKind
+    phase: string | null
+    progressCurrent: number
+    progressTotal: number | null
+    leaseExpiresAt: string | null
+  }>
+  libraries: LibraryHealthDTO[]
+  lastRecovery: {
+    workerId: string
+    recoveredJobs: number
+    cleanedTempFiles: number
+    requeuedThumbnails: number
+    dbIntegrity: string
+    createdAt: string
+  } | null
+  lastBackup: BackupRecordDTO | null
 }
 
 export interface StorageStatsDTO {

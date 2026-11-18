@@ -1,5 +1,6 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
 import type { AssetKind, StatsDTO, VideoSort } from '@mediavault/shared'
+import { deleteAssetVoteEvents, recordVoteEvent } from './contributions'
 import type { Db } from './db'
 import { recomputeFolderCounts } from './folders'
 import { listTagsForAssets } from './tags'
@@ -293,11 +294,21 @@ export function addAssetWatchTime(db: Db, id: string, deltaMs: number): AssetRec
   return getAsset(db, id)
 }
 
-export function voteAsset(db: Db, id: string): AssetRecord | null {
-  const res = db
-    .query<null, Params>('UPDATE assets SET vote_count = vote_count + 1 WHERE id = ? AND deleted_at IS NULL')
-    .run(id)
-  if (res.changes === 0) return null
+export function voteAsset(db: Db, id: string, now = Date.now()): AssetRecord | null {
+  let updated = false
+  db.transaction(() => {
+    const row = db
+      .query<{ filename: string }, Params>(
+        `UPDATE assets SET vote_count = vote_count + 1
+         WHERE id = ? AND deleted_at IS NULL
+         RETURNING filename`,
+      )
+      .get(id)
+    if (!row) return
+    recordVoteEvent(db, 'asset', id, row.filename, now)
+    updated = true
+  }).immediate()
+  if (!updated) return null
   return getAsset(db, id)
 }
 
@@ -366,9 +377,10 @@ export function getAssetDeletePlan(db: Db, id: string): PermanentDeleteResult {
 
 export function commitPermanentDelete(db: Db, id: string, libraryId: string): void {
   db.transaction(() => {
+    deleteAssetVoteEvents(db, id)
     db.query<null, Params>('DELETE FROM jobs WHERE asset_id = ?').run(id)
     db.query<null, Params>('DELETE FROM assets WHERE id = ?').run(id)
-  })()
+  }).immediate()
   recomputeFolderCounts(db, libraryId)
 }
 
@@ -456,6 +468,28 @@ export function findAssetForScan(
       )
       .get(libraryId, relativePath) ?? null
   )
+}
+
+export function preloadLibraryScanIndex(db: Db, libraryId: string): Map<string, ScanAssetRow> {
+  const map = new Map<string, ScanAssetRow>()
+  const rows = db
+    .query<ScanAssetRow & { relativePath: string }, Params>(
+      `SELECT relative_path AS relativePath, id, size_bytes AS sizeBytes, mtime_ms AS mtimeMs,
+              file_version AS fileVersion, deleted_at AS deletedAt, last_seen_scan AS lastSeenScan
+       FROM assets WHERE library_id = ?`,
+    )
+    .all(libraryId)
+  for (const row of rows) {
+    map.set(row.relativePath, {
+      id: row.id,
+      sizeBytes: row.sizeBytes,
+      mtimeMs: row.mtimeMs,
+      fileVersion: row.fileVersion,
+      deletedAt: row.deletedAt,
+      lastSeenScan: row.lastSeenScan,
+    })
+  }
+  return map
 }
 
 export interface AssetFileUpdate {

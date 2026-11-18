@@ -74,7 +74,14 @@ describe('job queue', () => {
     completeJob(db, job.id, 1_200)
 
     enqueueJob(db, { dedupeKey: 'preview:x', kind: 'preview', priority: 2 }, 1_300)
-    expect(jobCounts(db)).toEqual({ queued: 1, running: 0, done: 1, failed: 0 })
+    expect(jobCounts(db)).toEqual({
+      queued: 1,
+      running: 0,
+      paused: 0,
+      cancelled: 0,
+      done: 1,
+      failed: 0,
+    })
     db.close()
   })
 

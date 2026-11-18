@@ -77,8 +77,12 @@ export function toFolderDTO(folder: FolderRecord): FolderDTO {
     assetCount: folder.assetCount,
     directImageCount: folder.directImageCount,
     coverAssetId: folder.coverAssetId,
+    coverWidth: folder.coverWidth,
+    coverHeight: folder.coverHeight,
+    coverPosterVersion: folder.coverPosterVersion,
     viewCount: folder.viewCount,
     voteCount: folder.voteCount,
+    rate: folder.rate,
     createdAt: new Date(folder.createdAt).toISOString(),
   }
 }
@@ -171,6 +175,15 @@ export function toJobDTO(job: JobRecord): JobDTO {
     libraryId: job.libraryId,
     attempts: job.attempts,
     maxAttempts: job.maxAttempts,
+    workerId: job.workerId,
+    leaseEpoch: job.leaseEpoch,
+    leaseExpiresAt: iso(job.leaseExpiresAt),
+    progressCurrent: job.progressCurrent,
+    progressTotal: job.progressTotal,
+    phase: job.phase,
+    pauseRequested: job.pauseRequested === 1,
+    cancelRequested: job.cancelRequested === 1,
+    completedAt: iso(job.completedAt),
     lastError: job.lastError,
     updatedAt: new Date(job.updatedAt).toISOString(),
   }

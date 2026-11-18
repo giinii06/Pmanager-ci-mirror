@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 13
+export const SCHEMA_VERSION = 14
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -437,6 +437,98 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_archive_jobs_sig
 CREATE INDEX IF NOT EXISTS idx_archive_jobs_state ON archive_jobs(state, updated_at DESC);
 `
 
+export const V14_RESILIENCE_AND_VOTES_SQL = `
+ALTER TABLE jobs ADD COLUMN worker_id TEXT;
+ALTER TABLE jobs ADD COLUMN lease_epoch INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN lease_expires_at INTEGER;
+ALTER TABLE jobs ADD COLUMN progress_current INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN progress_total INTEGER;
+ALTER TABLE jobs ADD COLUMN phase TEXT;
+ALTER TABLE jobs ADD COLUMN checkpoint TEXT;
+ALTER TABLE jobs ADD COLUMN pause_requested INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN completed_at INTEGER;
+
+DROP INDEX IF EXISTS ux_jobs_active;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_jobs_active
+  ON jobs(dedupe_key) WHERE state IN ('queued','running','paused');
+CREATE INDEX IF NOT EXISTS idx_jobs_lease ON jobs(state, lease_expires_at);
+
+ALTER TABLE folders ADD COLUMN cover_width INTEGER;
+ALTER TABLE folders ADD COLUMN cover_height INTEGER;
+ALTER TABLE folders ADD COLUMN cover_poster_version INTEGER NOT NULL DEFAULT 1;
+
+UPDATE folders
+SET cover_width = (SELECT width FROM assets WHERE id = folders.cover_asset_id),
+    cover_height = (SELECT height FROM assets WHERE id = folders.cover_asset_id),
+    cover_poster_version = COALESCE(
+      (SELECT poster_version FROM assets WHERE id = folders.cover_asset_id),
+      1
+    )
+WHERE cover_asset_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS scan_runs (
+  id TEXT PRIMARY KEY,
+  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+  root_path TEXT NOT NULL,
+  phase TEXT NOT NULL CHECK (phase IN ('discover','probe','index','verify','reconcile','finalize','completed','blocked','paused','cancelled','failed')),
+  status TEXT NOT NULL CHECK (status IN ('running','paused','cancelled','completed','blocked','failed')),
+  resumed_from_run_id TEXT,
+  files_seen INTEGER NOT NULL DEFAULT 0,
+  files_added INTEGER NOT NULL DEFAULT 0,
+  files_updated INTEGER NOT NULL DEFAULT 0,
+  files_skipped INTEGER NOT NULL DEFAULT 0,
+  files_removed INTEGER NOT NULL DEFAULT 0,
+  read_errors INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT,
+  started_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  completed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_scan_runs_lib ON scan_runs(library_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS scan_checkpoints (
+  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
+  scan_id TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  last_dir_rel TEXT NOT NULL DEFAULT '',
+  last_rel_path TEXT NOT NULL DEFAULT '',
+  processed_files INTEGER NOT NULL DEFAULT 0,
+  total_estimate INTEGER,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS vote_events (
+  id TEXT PRIMARY KEY,
+  target_type TEXT NOT NULL CHECK (target_type IN ('asset','folder')),
+  target_id TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  day_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_vote_events_day ON vote_events(day_key, created_at);
+CREATE INDEX IF NOT EXISTS idx_vote_events_target ON vote_events(target_type, target_id);
+
+CREATE TABLE IF NOT EXISTS recovery_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  worker_id TEXT NOT NULL,
+  recovered_jobs INTEGER NOT NULL DEFAULT 0,
+  cleaned_temp_files INTEGER NOT NULL DEFAULT 0,
+  requeued_thumbnails INTEGER NOT NULL DEFAULT 0,
+  db_integrity TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS backup_logs (
+  id TEXT PRIMARY KEY,
+  filename TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  integrity TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  error TEXT
+);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -469,4 +561,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
       updated_at INTEGER NOT NULL
     )`),
   (exec) => exec(OVERHAUL_V13_SQL),
+  (exec) => exec(V14_RESILIENCE_AND_VOTES_SQL),
 ]
