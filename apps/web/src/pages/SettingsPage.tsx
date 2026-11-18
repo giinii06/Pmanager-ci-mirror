@@ -1,20 +1,24 @@
-import { useState, type ReactNode } from 'react'
+import { cloneElement, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ActivityCalendar } from 'react-activity-calendar'
+import 'react-activity-calendar/tooltips.css'
 import {
+  Archive,
+  CalendarDays,
   Film,
   FolderTree,
   HardDrive,
-  Heart,
   Images,
   Loader2,
   LogOut,
   Plus,
   RefreshCw,
+  Tag,
   Trash2,
 } from 'lucide-react'
-import type { LibraryDTO } from '@mediavault/shared'
+import type { ArchiveJobState, LibraryDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
-import { formatCount, formatDate } from '../lib/format'
+import { formatBytes, formatCount, formatDate } from '../lib/format'
 import { useUi } from '../store/ui'
 import { Dialog } from '../components/ui/Dialog'
 import { Button } from '../components/ui/Button'
@@ -22,6 +26,22 @@ import { Input } from '../components/ui/Input'
 import { PageHeading } from '../components/PageHeading'
 import { Spinner } from '../components/ui/Spinner'
 import { ProcessingPanel } from '../components/ProcessingPanel'
+
+const CALENDAR_THEME = {
+  dark: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
+}
+
+const ARCHIVE_STATE_LABEL: Record<ArchiveJobState, { text: string; tone: string }> = {
+  queued: { text: '대기 중', tone: 'text-muted bg-panel-2 border-line' },
+  extracting: { text: '압축 해제 중', tone: 'text-accent bg-accent/10 border-accent/30' },
+  converting: { text: '변환 중', tone: 'text-accent bg-accent/10 border-accent/30' },
+  completed: { text: '완료', tone: 'text-[#6ee7b7] bg-[#0f2e22] border-[#1f5c43]' },
+  failed_password: {
+    text: '비밀번호 불일치 (원본 보존)',
+    tone: 'text-[#ffd494] bg-[#2d2112] border-[#5b4120]',
+  },
+  failed: { text: '실패', tone: 'text-[#ffc9c9] bg-[#2d1619] border-[#5c282e]' },
+}
 
 function Section({
   title,
@@ -62,6 +82,15 @@ function StatCard({ icon, label, value }: { icon: ReactNode; label: string; valu
   )
 }
 
+function MetricPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-line bg-panel-2 px-3 py-2">
+      <p className="text-[11px] text-muted">{label}</p>
+      <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-ink">{value}</p>
+    </div>
+  )
+}
+
 export function SettingsPage() {
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
@@ -74,12 +103,23 @@ export function SettingsPage() {
       query.state.data?.some((library) => library.scanState !== 'idle') ? 1500 : false,
   })
   const stats = useQuery({ queryKey: ['stats'], queryFn: api.stats })
+  const activity = useQuery({ queryKey: ['stats', 'activity'], queryFn: api.activityStats })
+  const storage = useQuery({
+    queryKey: ['stats', 'storage'],
+    queryFn: () => api.storageStats(false),
+  })
+  const archives = useQuery({
+    queryKey: ['archives'],
+    queryFn: api.archives,
+    refetchInterval: 6000,
+  })
 
   const [addOpen, setAddOpen] = useState(false)
   const [name, setName] = useState('')
   const [rootPath, setRootPath] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<LibraryDTO | null>(null)
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
 
   const invalidateLibraryData = () => {
     queryClient.invalidateQueries({ queryKey: ['libraries'] })
@@ -87,7 +127,17 @@ export function SettingsPage() {
     queryClient.invalidateQueries({ queryKey: ['stats'] })
     queryClient.invalidateQueries({ queryKey: ['jobs'] })
     queryClient.invalidateQueries({ queryKey: ['assets'] })
+    queryClient.invalidateQueries({ queryKey: ['archives'] })
   }
+
+  const refreshStorage = useMutation({
+    mutationFn: () => api.storageStats(true),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['stats', 'storage'], data)
+      toast('저장 공간 통계를 새로고침했습니다.', 'success')
+    },
+    onError: () => toast('저장 공간을 계산하지 못했습니다.', 'error'),
+  })
 
   const scan = useMutation({
     mutationFn: (id: string) => api.scanLibrary(id),
@@ -95,7 +145,8 @@ export function SettingsPage() {
       toast('스캔을 시작했습니다.', 'success')
       invalidateLibraryData()
     },
-    onError: (error) => toast(error instanceof Error ? error.message : '스캔을 시작하지 못했습니다.', 'error'),
+    onError: (error) =>
+      toast(error instanceof Error ? error.message : '스캔을 시작하지 못했습니다.', 'error'),
   })
 
   const create = useMutation({
@@ -123,7 +174,8 @@ export function SettingsPage() {
       setPendingDelete(null)
       invalidateLibraryData()
     },
-    onError: (error) => toast(error instanceof Error ? error.message : '제거하지 못했습니다.', 'error'),
+    onError: (error) =>
+      toast(error instanceof Error ? error.message : '제거하지 못했습니다.', 'error'),
   })
 
   const logout = useMutation({
@@ -139,12 +191,26 @@ export function SettingsPage() {
   })
 
   const scanning = libraries.data?.some((library) => library.scanState !== 'idle') ?? false
+  const dayMap = useMemo(
+    () => new Map((activity.data?.days ?? []).map((day) => [day.date, day])),
+    [activity.data],
+  )
+  const inspectedDay = selectedDay ? dayMap.get(selectedDay) ?? null : null
+  const otherLibraryBytes = storage.data
+    ? Math.max(0, storage.data.totalLibraryBytes - storage.data.videoBytes - storage.data.imageBytes)
+    : 0
+  const storageTotalFootprint = storage.data
+    ? storage.data.totalLibraryBytes +
+      storage.data.thumbnailBytes +
+      storage.data.cacheBytes +
+      storage.data.tempBytes
+    : 0
 
   return (
     <div className="h-full overflow-y-auto px-6 pb-24">
       <PageHeading
         title="설정"
-        meta="원본은 읽기 전용으로 접근하고, 인덱스와 캐시만 이 서버에 저장합니다."
+        meta="라이브러리 관리, 기여 활동 통계 및 저장 공간 분석"
         actions={
           <Button variant="primary" onClick={() => setAddOpen(true)}>
             <Plus size={14} />
@@ -156,13 +222,249 @@ export function SettingsPage() {
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard icon={<Images size={13} />} label="사진" value={stats.data?.images ?? 0} />
         <StatCard icon={<Film size={13} />} label="동영상" value={stats.data?.videos ?? 0} />
-        <StatCard icon={<Heart size={13} />} label="즐겨찾기" value={stats.data?.favorites ?? 0} />
         <StatCard icon={<FolderTree size={13} />} label="폴더" value={stats.data?.folders ?? 0} />
+        <StatCard icon={<Tag size={13} />} label="태그" value={stats.data?.tags ?? 0} />
       </div>
 
       <Section
+        title="라이브러리 기여 통계 (Contributions)"
+        description="사진 폴더 추가당 1점, 사진 폴더 밖의 개별 동영상 추가당 1점으로 최초 추가 시점만 집계합니다."
+      >
+        {activity.isPending ? (
+          <div className="flex justify-center py-8">
+            <Spinner />
+          </div>
+        ) : activity.data ? (
+          <div className="space-y-4 p-4">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+              <MetricPill label="누적 총 기여" value={`${formatCount(activity.data.totalCount)}건`} />
+              <MetricPill
+                label="사진 폴더 기여"
+                value={`${formatCount(activity.data.folderContributions)}개`}
+              />
+              <MetricPill
+                label="개별 동영상 기여"
+                value={`${formatCount(activity.data.videoContributions)}개`}
+              />
+              <MetricPill label="활동 일수" value={`${formatCount(activity.data.activeDays)}일`} />
+              <MetricPill label="연속 스트릭" value={`${formatCount(activity.data.streakDays)}일`} />
+            </div>
+
+            <div className="overflow-x-auto pb-1">
+              <ActivityCalendar
+                data={activity.data.days.map((d) => ({
+                  date: d.date,
+                  count: d.count,
+                  level: d.level,
+                }))}
+                colorScheme="dark"
+                theme={CALENDAR_THEME}
+                blockSize={12}
+                blockMargin={3}
+                blockRadius={2}
+                fontSize={12}
+                labels={{
+                  months: [
+                    '1월',
+                    '2월',
+                    '3월',
+                    '4월',
+                    '5월',
+                    '6월',
+                    '7월',
+                    '8월',
+                    '9월',
+                    '10월',
+                    '11월',
+                    '12월',
+                  ],
+                  weekdays: ['일', '월', '화', '수', '목', '금', '토'],
+                  totalCount: '최근 1년 총 {{count}}건의 기여',
+                  legend: { less: '적음', more: '많음' },
+                }}
+                tooltips={{
+                  activity: {
+                    text: (act) => `${act.date} · ${act.count}건 기여`,
+                  },
+                }}
+                renderBlock={(block, act) =>
+                  cloneElement(block, {
+                    onClick: () => setSelectedDay(act.date),
+                    style: { cursor: 'pointer' },
+                  })
+                }
+              />
+            </div>
+
+            {inspectedDay ? (
+              <div className="rounded-lg border border-line bg-panel-2 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
+                    <CalendarDays size={13} className="text-accent" />
+                    {inspectedDay.date} · {formatCount(inspectedDay.count)}건
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDay(null)}
+                    className="text-[11.5px] text-muted hover:text-ink"
+                  >
+                    닫기
+                  </button>
+                </div>
+                {inspectedDay.items.length === 0 ? (
+                  <p className="mt-1.5 text-[12px] text-muted">이 날짜에 기록된 추가 항목이 없습니다.</p>
+                ) : (
+                  <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-[12px]">
+                    {inspectedDay.items.map((item) => (
+                      <li key={item.id} className="flex items-center gap-2 text-muted">
+                        <span className="rounded border border-line px-1.5 py-0.5 text-[10px] text-ink">
+                          {item.kind === 'folder' ? '폴더' : '동영상'}
+                        </span>
+                        <span className="truncate text-ink">{item.name}</span>
+                        <span className="ml-auto truncate text-[11px] text-faint">
+                          {item.relativePath}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Section>
+
+      <Section
+        title="저장 공간 (Storage)"
+        description="등록된 라이브러리 원본 파일, 생성된 썸네일, AI/스트리밍 캐시, 임시 작업 파일 용량입니다."
+        actions={
+          <Button
+            size="sm"
+            onClick={() => refreshStorage.mutate()}
+            disabled={refreshStorage.isPending}
+          >
+            <RefreshCw size={12} className={refreshStorage.isPending ? 'animate-spin' : undefined} />
+            새로고침
+          </Button>
+        }
+      >
+        {storage.isPending ? (
+          <div className="flex justify-center py-8">
+            <Spinner />
+          </div>
+        ) : storage.data ? (
+          <div className="space-y-4 p-4">
+            <div
+              className={`grid grid-cols-2 gap-2.5 sm:grid-cols-3 ${
+                otherLibraryBytes > 0 ? 'lg:grid-cols-7' : 'lg:grid-cols-6'
+              }`}
+            >
+              <MetricPill label="전체 라이브러리" value={formatBytes(storage.data.totalLibraryBytes)} />
+              <MetricPill
+                label={`동영상 (${formatCount(storage.data.videoCount)}개)`}
+                value={formatBytes(storage.data.videoBytes)}
+              />
+              <MetricPill
+                label={`사진 (${formatCount(storage.data.imageCount)}개)`}
+                value={formatBytes(storage.data.imageBytes)}
+              />
+              {otherLibraryBytes > 0 ? (
+                <MetricPill label="기타/아카이브" value={formatBytes(otherLibraryBytes)} />
+              ) : null}
+              <MetricPill label="썸네일/프리뷰" value={formatBytes(storage.data.thumbnailBytes)} />
+              <MetricPill label="캐시/인덱스" value={formatBytes(storage.data.cacheBytes)} />
+              <MetricPill label="임시 파일" value={formatBytes(storage.data.tempBytes)} />
+            </div>
+
+            {storageTotalFootprint > 0 ? (
+              <div className="space-y-1.5">
+                <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-panel-2">
+                  <div
+                    className="bg-accent"
+                    style={{ width: `${(storage.data.videoBytes / storageTotalFootprint) * 100}%` }}
+                    title="동영상"
+                  />
+                  <div
+                    className="bg-[#38bdf8]"
+                    style={{ width: `${(storage.data.imageBytes / storageTotalFootprint) * 100}%` }}
+                    title="사진"
+                  />
+                  {otherLibraryBytes > 0 ? (
+                    <div
+                      className="bg-[#fb7185]"
+                      style={{ width: `${(otherLibraryBytes / storageTotalFootprint) * 100}%` }}
+                      title="기타/아카이브"
+                    />
+                  ) : null}
+                  <div
+                    className="bg-[#a78bfa]"
+                    style={{ width: `${(storage.data.thumbnailBytes / storageTotalFootprint) * 100}%` }}
+                    title="썸네일"
+                  />
+                  <div
+                    className="bg-[#34d399]"
+                    style={{ width: `${(storage.data.cacheBytes / storageTotalFootprint) * 100}%` }}
+                    title="캐시"
+                  />
+                  <div
+                    className="bg-[#fbbf24]"
+                    style={{ width: `${(storage.data.tempBytes / storageTotalFootprint) * 100}%` }}
+                    title="임시 파일"
+                  />
+                </div>
+                <p className="flex items-center justify-between text-[11px] text-faint">
+                  <span>총 사용량 {formatBytes(storageTotalFootprint)}</span>
+                  <span>측정 시각: {formatDate(storage.data.computedAt)}</span>
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Section>
+
+      <Section
+        title="RAR 압축 해제 · 미디어 변환 이력"
+        description="감지된 .rar 아카이브의 자동 해제, JPEG(95) 이미지 변환, H.264/AAC MP4 변환 결과입니다."
+      >
+        {archives.isPending ? (
+          <div className="flex justify-center py-6">
+            <Spinner />
+          </div>
+        ) : archives.data?.archives.length ? (
+          <div className="divide-y divide-line/70">
+            {archives.data.archives.slice(0, 20).map((job) => {
+              const badge = ARCHIVE_STATE_LABEL[job.state]
+              return (
+                <div key={job.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+                  <Archive size={15} className="shrink-0 text-faint" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12.5px] font-medium text-ink">{job.archivePath}</p>
+                    <p className="mt-0.5 text-[11px] text-muted">
+                      해제 {formatCount(job.extractedFiles)}개 · 이미지 변환{' '}
+                      {formatCount(job.convertedImages)}개 · 영상 변환{' '}
+                      {formatCount(job.convertedVideos)}개
+                      {job.errorMessage ? ` · ${job.errorMessage}` : ''}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${badge.tone}`}
+                  >
+                    {badge.text}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="px-4 py-6 text-center text-[12.5px] text-muted">
+            아직 처리된 압축 파일이 없습니다.
+          </p>
+        )}
+      </Section>
+
+      <Section
         title="라이브러리"
-        description="원본 폴더를 등록하면 파일은 옮기지 않고 인덱스만 만듭니다."
+        description="원본 폴더를 등록하면 파일을 감시하고 자동으로 인덱싱합니다."
         actions={
           scanning ? (
             <span className="flex items-center gap-1.5 text-[11.5px] text-accent">
@@ -236,7 +538,9 @@ export function SettingsPage() {
             {(auth.data?.user?.username ?? '?').slice(0, 1).toUpperCase()}
           </div>
           <div className="flex-1">
-            <p className="text-[13px] font-medium text-ink">{auth.data?.user?.username ?? '알 수 없음'}</p>
+            <p className="text-[13px] font-medium text-ink">
+              {auth.data?.user?.username ?? '알 수 없음'}
+            </p>
             <p className="text-[11.5px] text-muted">관리자</p>
           </div>
           <Button size="sm" onClick={() => logout.mutate()} disabled={logout.isPending}>

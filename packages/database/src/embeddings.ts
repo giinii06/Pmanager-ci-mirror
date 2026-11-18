@@ -458,7 +458,6 @@ export function getCurrentEmbedding(
  */
 export function relatedByEmbedding(
   db: Db,
-  userId: string,
   assetId: string,
   fileVersion: number,
   fingerprint: EmbeddingFingerprint,
@@ -509,7 +508,7 @@ export function relatedByEmbedding(
     .map(([id]) => id)
   if (ranked.length === 0) return []
 
-  const byId = new Map(assetsByIds(db, userId, ranked).map((asset) => [asset.id, asset]))
+  const byId = new Map(assetsByIds(db, ranked).map((asset) => [asset.id, asset]))
   return ranked.flatMap((id) => {
     const asset = byId.get(id)
     return asset ? [asset] : []

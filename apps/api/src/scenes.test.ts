@@ -3,18 +3,14 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
-  claimFaceJob,
   claimSceneJob,
   completeAsrJob,
-  completeFaceJob,
   completeSceneJob,
   createAsrJob,
-  createFaceJob,
   createLibrary,
   createSceneJob,
   createUser,
   insertAsset,
-  listPeople,
   openDatabase,
   upsertFolder,
   type Db,
@@ -28,11 +24,8 @@ import { Semaphore } from './semaphore'
 
 const SECRET = 'test-secret-for-session-signing'
 const SCENE_TOKEN = 'scene-token-0000000'
-const FACE_TOKEN = 'face-token-000000000'
 const SCENE_SHA = 'scene-sha'
 const SCENE_PIPELINE = 'scene-1'
-const FACE_SHA = 'face-sha'
-const FACE_PIPELINE = 'face-1'
 const DIMENSIONS = 4
 
 const dirs: string[] = []
@@ -90,7 +83,7 @@ interface Harness {
   stopQuery: () => void
 }
 
-async function harness(options: { sceneEnabled?: boolean; faceEnabled?: boolean; query?: boolean } = {}): Promise<Harness> {
+async function harness(options: { sceneEnabled?: boolean; query?: boolean } = {}): Promise<Harness> {
   const dataDir = await makeDir()
   const cacheDir = await makeDir()
   const db = openDatabase(':memory:')
@@ -174,58 +167,6 @@ async function harness(options: { sceneEnabled?: boolean; faceEnabled?: boolean;
     4_000,
   )
 
-  // Two faces on asset1: one becomes an approved person, one stays a candidate.
-  createFaceJob(
-    db,
-    {
-      id: 'face1',
-      assetId: 'asset1',
-      fileVersion: 1,
-      modelId: 'antelopev2',
-      modelRevision: 'v0.7',
-      modelSha256: FACE_SHA,
-      pipelineVersion: FACE_PIPELINE,
-      dimensions: DIMENSIONS,
-      sampleMs: 2_000,
-    },
-    5_000,
-  )
-  claimFaceJob(db, 'face-worker', 60_000, 5_000)
-  await mkdir(path.join(cacheDir, 'faces/asset1'), { recursive: true })
-  await writeFile(path.join(cacheDir, 'faces/asset1/000001000-0.jpg'), 'jpeg')
-  completeFaceJob(
-    db,
-    {
-      jobId: 'face1',
-      owner: 'face-worker',
-      matchThreshold: 0.45,
-      candidateThreshold: 0.5,
-      faces: [
-        {
-          frameMs: 1_000,
-          x: 10,
-          y: 10,
-          width: 80,
-          height: 100,
-          score: 0.9,
-          thumbnailPath: 'faces/asset1/000001000-0.jpg',
-          vector: unit([1, 0, 0, 0]),
-        },
-        {
-          frameMs: 3_000,
-          x: 20,
-          y: 20,
-          width: 80,
-          height: 100,
-          score: 0.8,
-          thumbnailPath: 'faces/asset1/000003000-0.jpg',
-          vector: unit([0, 1, 0, 0]),
-        },
-      ],
-    },
-    6_000,
-  )
-
   let queryUrl = 'http://127.0.0.1:1'
   let stopQuery = () => {}
   if (options.query) {
@@ -301,18 +242,6 @@ async function harness(options: { sceneEnabled?: boolean; faceEnabled?: boolean;
       windowMs: 10_000,
       overlapMs: 2_000,
       queryUrl,
-    },
-    face: {
-      enabled: options.faceEnabled ?? true,
-      workerToken: options.faceEnabled === false ? '' : FACE_TOKEN,
-      modelId: 'antelopev2',
-      modelRevision: 'v0.7',
-      modelSha256: FACE_SHA,
-      pipelineVersion: FACE_PIPELINE,
-      dimensions: DIMENSIONS,
-      sampleMs: 2_000,
-      matchThreshold: 0.45,
-      candidateThreshold: 0.5,
     },
   }
 
@@ -676,73 +605,6 @@ describe('worker scene lane', () => {
   })
 })
 
-describe('worker face lane', () => {
-  test('a claim carries the sampling interval', async () => {
-    const h = await harness()
-    await h.app.inject({
-      method: 'POST',
-      url: '/api/assets/asset2/faces',
-      headers: auth(h),
-    })
-
-    const response = await h.app.inject({
-      method: 'POST',
-      url: '/worker/face/claim',
-      headers: { 'x-worker-token': FACE_TOKEN },
-      payload: { owner: 'face-worker' },
-    })
-
-    expect(response.statusCode).toBe(200)
-    const body = response.json() as {
-      job: { assetId: string }
-      media: { path: string }
-      sampleMs: number
-    }
-    expect(body.job.assetId).toBe('asset2')
-    expect(body.sampleMs).toBe(2_000)
-  })
-
-  test('a complete stores the detections', async () => {
-    const h = await harness()
-    const queued = await h.app.inject({
-      method: 'POST',
-      url: '/api/assets/asset2/faces',
-      headers: auth(h),
-    })
-    const jobId = (queued.json() as { jobId: string }).jobId
-    await h.app.inject({
-      method: 'POST',
-      url: '/worker/face/claim',
-      headers: { 'x-worker-token': FACE_TOKEN },
-      payload: { owner: 'face-worker' },
-    })
-
-    const response = await h.app.inject({
-      method: 'POST',
-      url: `/worker/face/jobs/${jobId}/complete`,
-      headers: { 'x-worker-token': FACE_TOKEN },
-      payload: {
-        owner: 'face-worker',
-        faces: [
-          {
-            frameMs: 2_000,
-            x: 10,
-            y: 10,
-            width: 80,
-            height: 100,
-            score: 0.9,
-            thumbnailPath: null,
-            vector: encode([1, 0, 0, 0]),
-          },
-        ],
-      },
-    })
-
-    expect(response.statusCode).toBe(200)
-    expect((response.json() as { faces: number }).faces).toBe(1)
-  })
-})
-
 describe('index pass', () => {
   test('a run queues a pass for every video that has none', async () => {
     const h = await harness()
@@ -753,11 +615,10 @@ describe('index pass', () => {
     })
 
     expect(response.statusCode).toBe(200)
-    const body = response.json() as { considered: number; scenes: number; faces: number }
+    const body = response.json() as { considered: number; scenes: number }
     expect(body.considered).toBe(2)
-    // asset1 already has both passes; only asset2 needs them.
+    // asset1 already has a scene pass; only asset2 needs it.
     expect(body.scenes).toBe(1)
-    expect(body.faces).toBe(1)
   })
 
   test('a second run queues nothing', async () => {
@@ -769,13 +630,12 @@ describe('index pass', () => {
       headers: auth(h),
     })
 
-    const body = response.json() as { scenes: number; faces: number }
+    const body = response.json() as { scenes: number }
     expect(body.scenes).toBe(0)
-    expect(body.faces).toBe(0)
   })
 
   test('the pass answers with counters when no lane is configured', async () => {
-    const h = await harness({ sceneEnabled: false, faceEnabled: false })
+    const h = await harness({ sceneEnabled: false })
     const response = await h.app.inject({
       method: 'POST',
       url: '/api/index/run',
@@ -783,165 +643,6 @@ describe('index pass', () => {
     })
 
     expect(response.statusCode).toBe(200)
-    expect(response.json()).toMatchObject({ scenes: 0, faces: 0, asr: 0 })
-  })
-
-  test('enqueueing faces for a video is refused when faces are off', async () => {
-    const h = await harness({ faceEnabled: false })
-    const response = await h.app.inject({
-      method: 'POST',
-      url: '/api/assets/asset1/faces',
-      headers: auth(h),
-    })
-
-    expect(response.statusCode).toBe(409)
-  })
-})
-
-describe('people routes', () => {
-  test('the list defaults to approved people and reports the counts', async () => {
-    const h = await harness()
-    const response = await h.app.inject({ method: 'GET', url: '/api/people', headers: auth(h) })
-
-    expect(response.statusCode).toBe(200)
-    const body = response.json() as {
-      people: unknown[]
-      counts: { approved: number; candidate: number; excluded: number }
-    }
-    expect(body.people).toHaveLength(0)
-    expect(body.counts).toEqual({ approved: 0, candidate: 2, excluded: 0 })
-  })
-
-  test('approving a candidate puts it in the approved list', async () => {
-    const h = await harness()
-    const candidate = listPeople(h.db, 'candidate', 10)[0]!
-
-    const approved = await h.app.inject({
-      method: 'POST',
-      url: `/api/people/${candidate.id}/approve`,
-      headers: auth(h),
-    })
-    expect(approved.statusCode).toBe(200)
-
-    const list = await h.app.inject({ method: 'GET', url: '/api/people', headers: auth(h) })
-    const body = list.json() as { people: Array<{ id: string; state: string }> }
-    expect(body.people).toHaveLength(1)
-    expect(body.people[0]?.state).toBe('approved')
-  })
-
-  test('an excluded person leaves both lists', async () => {
-    const h = await harness()
-    const candidate = listPeople(h.db, 'candidate', 10)[0]!
-
-    await h.app.inject({ method: 'POST', url: `/api/people/${candidate.id}/exclude`, headers: auth(h) })
-
-    const approved = await h.app.inject({ method: 'GET', url: '/api/people', headers: auth(h) })
-    expect((approved.json() as { people: unknown[] }).people).toHaveLength(0)
-    const candidates = await h.app.inject({
-      method: 'GET',
-      url: '/api/people?state=candidate',
-      headers: auth(h),
-    })
-    expect((candidates.json() as { people: Array<{ id: string }> }).people.map((p) => p.id)).not.toContain(
-      candidate.id,
-    )
-  })
-
-  test('a person detail lists the faces with their file names', async () => {
-    const h = await harness()
-    const candidate = listPeople(h.db, 'candidate', 10)[0]!
-
-    const response = await h.app.inject({
-      method: 'GET',
-      url: `/api/people/${candidate.id}`,
-      headers: auth(h),
-    })
-
-    expect(response.statusCode).toBe(200)
-    const body = response.json() as { faces: Array<{ filename: string; url: string }> }
-    expect(body.faces[0]?.filename).toBe('asset1.mp4')
-    expect(body.faces[0]?.url).toMatch(/^\/api\/faces\/.+\/thumbnail$/)
-  })
-
-  test('rename changes the name and keeps the faces', async () => {
-    const h = await harness()
-    const candidate = listPeople(h.db, 'candidate', 10)[0]!
-
-    const response = await h.app.inject({
-      method: 'POST',
-      url: `/api/people/${candidate.id}/rename`,
-      headers: auth(h),
-      payload: { name: '민수' },
-    })
-
-    expect(response.statusCode).toBe(200)
-    const body = response.json() as { person: { name: string; faceCount: number } }
-    expect(body.person.name).toBe('민수')
-    expect(body.person.faceCount).toBe(1)
-  })
-
-  test('splitting every face is refused', async () => {
-    const h = await harness()
-    const candidate = listPeople(h.db, 'candidate', 10)[0]!
-    const detail = await h.app.inject({
-      method: 'GET',
-      url: `/api/people/${candidate.id}`,
-      headers: auth(h),
-    })
-    const detectionId = (detail.json() as { faces: Array<{ detectionId: string }> }).faces[0]!.detectionId
-
-    const response = await h.app.inject({
-      method: 'POST',
-      url: `/api/people/${candidate.id}/split`,
-      headers: auth(h),
-      payload: { detectionIds: [detectionId] },
-    })
-
-    expect(response.statusCode).toBe(422)
-  })
-
-  test('a rescan is refused when faces are not configured', async () => {
-    const h = await harness({ faceEnabled: false })
-    const response = await h.app.inject({
-      method: 'POST',
-      url: '/api/people/rescan',
-      headers: auth(h),
-    })
-
-    expect(response.statusCode).toBe(409)
-  })
-
-  test('a rescan regroups candidates', async () => {
-    const h = await harness()
-    const response = await h.app.inject({
-      method: 'POST',
-      url: '/api/people/rescan',
-      headers: auth(h),
-    })
-
-    expect(response.statusCode).toBe(200)
-    const body = response.json() as { dropped: number; counts: { candidate: number } }
-    expect(body.dropped).toBe(2)
-    expect(body.counts.candidate).toBe(2)
-  })
-
-  test('a face thumbnail is served from the cache volume', async () => {
-    const h = await harness()
-    const candidate = listPeople(h.db, 'candidate', 10)[0]!
-    const detail = await h.app.inject({
-      method: 'GET',
-      url: `/api/people/${candidate.id}`,
-      headers: auth(h),
-    })
-    const detectionId = (detail.json() as { faces: Array<{ detectionId: string }> }).faces[0]!.detectionId
-
-    const response = await h.app.inject({
-      method: 'GET',
-      url: `/api/faces/${detectionId}/thumbnail`,
-      headers: auth(h),
-    })
-
-    expect(response.statusCode).toBe(200)
-    expect(response.headers['content-type']).toContain('image/jpeg')
+    expect(response.json()).toMatchObject({ scenes: 0, asr: 0 })
   })
 })

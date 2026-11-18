@@ -1,6 +1,12 @@
 export type AssetKind = 'image' | 'video'
 
-export type JobKind = 'scan_library' | 'thumbnail' | 'preview' | 'hls'
+export type JobKind = 'scan_library' | 'thumbnail' | 'preview' | 'hls' | 'process_archive'
+
+export const VIDEO_SORTS = ['rate', 'views', 'latest', 'name', 'watch_time', 'votes'] as const
+export type VideoSort = (typeof VIDEO_SORTS)[number]
+
+export const FOLDER_SORTS = ['views', 'votes', 'name', 'date'] as const
+export type FolderSort = (typeof FOLDER_SORTS)[number]
 
 export type JobState = 'queued' | 'running' | 'done' | 'failed'
 
@@ -28,6 +34,21 @@ export interface LibraryDTO {
   folderCount: number
 }
 
+export interface TagDTO {
+  id: string
+  name: string
+  createdAt: string
+}
+
+export interface TagSummaryDTO {
+  id: string
+  name: string
+  assetCount: number
+  coverAssetId: string | null
+  coverPosterVersion: number | null
+  createdAt: string
+}
+
 export interface FolderDTO {
   id: string
   libraryId: string
@@ -39,6 +60,9 @@ export interface FolderDTO {
   /** Images in this folder only, so a collection card matches the gallery it opens. */
   directImageCount: number
   coverAssetId: string | null
+  viewCount: number
+  voteCount: number
+  createdAt: string
 }
 
 export interface AssetDTO {
@@ -57,7 +81,12 @@ export interface AssetDTO {
   height: number | null
   durationMs: number | null
   takenAt: string
-  favorite: boolean
+  viewCount: number
+  watchTimeMs: number
+  voteCount: number
+  rate: number | null
+  posterVersion: number
+  tags: TagDTO[]
   fileVersion: number
   playback: PlaybackMode
   thumbnails: {
@@ -257,18 +286,6 @@ export type SceneJobState =
 
 export type SceneStage = 'queued' | 'extracting' | 'embedding' | 'writing' | 'completed'
 
-export type FaceJobState =
-  | 'queued'
-  | 'detecting'
-  | 'writing'
-  | 'completed'
-  | 'failed'
-  | 'canceled'
-
-export type FaceStage = 'queued' | 'sampling' | 'detecting' | 'writing' | 'completed'
-
-export type PersonState = 'candidate' | 'approved' | 'excluded'
-
 /** Which part of a window matched. The player labels the hit with this. */
 export type SceneModality = 'visual' | 'audio' | 'av'
 
@@ -278,20 +295,6 @@ export interface EmbeddingJobDTO {
   fileVersion: number
   state: EmbeddingJobState
   stage: EmbeddingStage
-  progress: number
-  attempts: number
-  maxAttempts: number
-  errorMessage: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface FaceJobDTO {
-  id: string
-  assetId: string
-  fileVersion: number
-  state: FaceJobState
-  stage: FaceStage
   progress: number
   attempts: number
   maxAttempts: number
@@ -382,13 +385,72 @@ export interface StatsDTO {
   assets: number
   images: number
   videos: number
-  favorites: number
   libraries: number
   folders: number
-  /** Approved people, the only ones the library lists as a face. */
-  people: number
-  /** Candidate groups waiting for a decision. */
-  peopleCandidates: number
+  totalViews: number
+  totalWatchTimeMs: number
+  totalVotes: number
+  tags: number
+}
+
+export interface ActivityItemDTO {
+  id: string
+  kind: 'folder' | 'video'
+  name: string
+  relativePath: string
+  assetId: string | null
+  folderId: string | null
+}
+
+export interface ActivityDayDTO {
+  date: string
+  count: number
+  level: 0 | 1 | 2 | 3 | 4
+  items: ActivityItemDTO[]
+}
+
+export interface ActivityStatsDTO {
+  days: ActivityDayDTO[]
+  totalCount: number
+  folderContributions: number
+  videoContributions: number
+  activeDays: number
+  streakDays: number
+}
+
+export interface StorageStatsDTO {
+  computedAt: string
+  totalLibraryBytes: number
+  videoBytes: number
+  imageBytes: number
+  thumbnailBytes: number
+  cacheBytes: number
+  tempBytes: number
+  assetCount: number
+  videoCount: number
+  imageCount: number
+}
+
+export type ArchiveJobState =
+  | 'queued'
+  | 'extracting'
+  | 'converting'
+  | 'completed'
+  | 'failed_password'
+  | 'failed'
+
+export interface ArchiveJobDTO {
+  id: string
+  libraryId: string
+  archivePath: string
+  state: ArchiveJobState
+  passwordUsed: string | null
+  extractedFiles: number
+  convertedImages: number
+  convertedVideos: number
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface PlaybackProgressDTO {
@@ -408,7 +470,9 @@ export interface AssetQuery {
   libraryId?: string
   folderId?: string
   kind?: AssetKind
-  favorite?: boolean
+  tagId?: string
+  sort?: VideoSort
+  seed?: number
   q?: string
   cursor?: string | null
   limit?: number
@@ -452,37 +516,4 @@ export interface SemanticSearchDTO {
   hits: SemanticHitDTO[]
   /** False when the scene index could not be reached, so only text ranked. */
   scenesSearched: boolean
-}
-
-export interface PersonDTO {
-  id: string
-  name: string
-  state: PersonState
-  faceCount: number
-  assetCount: number
-  coverUrl: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface PersonFaceDTO {
-  detectionId: string
-  assetId: string
-  filename: string
-  frameMs: number
-  url: string
-}
-
-export interface PersonDetailDTO {
-  person: PersonDTO
-  faces: PersonFaceDTO[]
-}
-
-export interface PersonAssetDTO {
-  assetId: string
-  filename: string
-  durationMs: number | null
-  faceCount: number
-  bestDetectionId: string | null
-  thumbnailUrl: string | null
 }

@@ -468,9 +468,7 @@ describe('embedding queue', () => {
 
 describe('related by embedding', () => {
   function ranked(db: Db, limit = 8): string[] {
-    return relatedByEmbedding(db, 'user1', 'asset1', 1, FINGERPRINT, limit).map(
-      (asset) => asset.id,
-    )
+    return relatedByEmbedding(db, 'asset1', 1, FINGERPRINT, limit).map((asset) => asset.id)
   }
 
   test('orders the other videos by the closest vector pair', () => {

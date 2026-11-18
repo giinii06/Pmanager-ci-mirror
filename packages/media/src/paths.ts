@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { mkdir } from 'node:fs/promises'
+import { access, mkdir } from 'node:fs/promises'
 import { POSTER_SCHEME } from '@mediavault/shared'
 
 const ASSET_ID = /^[a-z0-9]{6,32}$/
@@ -65,4 +65,34 @@ export async function ensureDir(dir: string): Promise<void> {
 export function cacheRelativePath(cacheDir: string, absolutePath: string): string {
   const relative = path.relative(cacheDir, absolutePath)
   return relative.split(path.sep).join('/')
+}
+
+export async function pathExists(target: string): Promise<boolean> {
+  try {
+    await access(target)
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+}
+
+export async function uniqueDestPath(
+  dir: string,
+  stem: string,
+  ext: string,
+  selfPath?: string,
+): Promise<string> {
+  const preferred = path.join(dir, `${stem}${ext}`)
+  if (
+    (selfPath && path.resolve(preferred) === path.resolve(selfPath)) ||
+    !(await pathExists(preferred))
+  ) {
+    return preferred
+  }
+  for (let index = 2; index < 10_000; index += 1) {
+    const candidate = path.join(dir, `${stem} (${index})${ext}`)
+    if (!(await pathExists(candidate))) return candidate
+  }
+  throw new Error(`unable to allocate unique filename in ${dir} for ${stem}${ext}`)
 }

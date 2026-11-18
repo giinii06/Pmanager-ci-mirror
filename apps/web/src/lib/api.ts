@@ -1,19 +1,22 @@
 import type {
+  ActivityStatsDTO,
+  ArchiveJobDTO,
   AssetDTO,
   AssetQuery,
   AuthStatusDTO,
   FolderDTO,
+  FolderSort,
   JobSummaryDTO,
   LibraryDTO,
   Page,
-  PersonAssetDTO,
-  PersonDTO,
-  PersonDetailDTO,
   PlaybackProgressDTO,
   ReviewDTO,
   SemanticSearchDTO,
   StatsDTO,
+  StorageStatsDTO,
   SubtitleTracksDTO,
+  TagDTO,
+  TagSummaryDTO,
   TranscriptDTO,
   TranscriptSearchDTO,
   TranscriptionStatusDTO,
@@ -65,7 +68,9 @@ function queryString(query: AssetQuery): string {
   if (query.libraryId) params.set('libraryId', query.libraryId)
   if (query.folderId) params.set('folderId', query.folderId)
   if (query.kind) params.set('kind', query.kind)
-  if (query.favorite) params.set('favorite', '1')
+  if (query.tagId) params.set('tagId', query.tagId)
+  if (query.sort) params.set('sort', query.sort)
+  if (query.seed !== undefined) params.set('seed', String(query.seed))
   if (query.q) params.set('q', query.q)
   if (query.cursor) params.set('cursor', query.cursor)
   if (query.limit) params.set('limit', String(query.limit))
@@ -73,7 +78,6 @@ function queryString(query: AssetQuery): string {
   return text ? `?${text}` : ''
 }
 
-/** A missing `lang` and `original` both resolve to the source transcript. */
 function withLang(path: string, lang: string | undefined): string {
   if (!lang) return path
   return `${path}${path.includes('?') ? '&' : '?'}lang=${encodeURIComponent(lang)}`
@@ -107,13 +111,55 @@ export const api = {
   scanLibrary: (id: string) => request<{ ok: boolean }>(`/api/libraries/${id}/scan`, { method: 'POST' }),
   deleteLibrary: (id: string) => request<void>(`/api/libraries/${id}`, { method: 'DELETE' }),
 
-  folders: () => request<FolderDTO[]>('/api/folders'),
+  folders: (opts?: { libraryId?: string; sort?: FolderSort }) => {
+    const params = new URLSearchParams()
+    if (opts?.libraryId) params.set('libraryId', opts.libraryId)
+    if (opts?.sort) params.set('sort', opts.sort)
+    const qs = params.toString()
+    return request<FolderDTO[]>(`/api/folders${qs ? `?${qs}` : ''}`)
+  },
   folder: (id: string) => request<FolderDetail>(`/api/folders/${id}`),
+  voteFolder: (id: string) => request<FolderDTO>(`/api/folders/${id}/vote`, { method: 'POST' }),
 
   assets: (query: AssetQuery) => request<Page<AssetDTO>>(`/api/assets${queryString(query)}`),
+  assetIds: (query: AssetQuery) => request<{ ids: string[] }>(`/api/assets/ids${queryString(query)}`),
   asset: (id: string) => request<AssetDTO>(`/api/assets/${id}`),
-  setFavorite: (id: string, favorite: boolean) =>
-    request<void>(`/api/assets/${id}/favorite`, { method: favorite ? 'POST' : 'DELETE' }),
+  incrementView: (id: string) => request<AssetDTO>(`/api/assets/${id}/view`, { method: 'POST' }),
+  addWatchTime: (id: string, deltaMs: number, keepalive = false) =>
+    request<AssetDTO>(`/api/assets/${id}/watch-time`, {
+      method: 'POST',
+      keepalive,
+      body: JSON.stringify({ deltaMs }),
+    }),
+  voteAsset: (id: string) => request<AssetDTO>(`/api/assets/${id}/vote`, { method: 'POST' }),
+  captureThumbnail: (id: string, positionMs: number) =>
+    request<{ asset: AssetDTO }>(`/api/assets/${id}/thumbnail`, {
+      method: 'POST',
+      body: JSON.stringify({ positionMs }),
+    }),
+  deleteAsset: (id: string) => request<void>(`/api/assets/${id}`, { method: 'DELETE' }),
+
+  tags: () => request<{ tags: TagSummaryDTO[] }>('/api/tags'),
+  createTag: (name: string) =>
+    request<{ tag: TagDTO }>('/api/tags', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  renameTag: (id: string, name: string) =>
+    request<{ tag: TagDTO }>(`/api/tags/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+  deleteTag: (id: string) => request<void>(`/api/tags/${id}`, { method: 'DELETE' }),
+  attachTag: (assetId: string, body: { tagId?: string; name?: string }) =>
+    request<{ asset: AssetDTO }>(`/api/assets/${assetId}/tags`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  detachTag: (assetId: string, tagId: string) =>
+    request<{ asset: AssetDTO }>(`/api/assets/${assetId}/tags/${tagId}`, {
+      method: 'DELETE',
+    }),
 
   related: (id: string, limit = 8) =>
     request<{ items: AssetDTO[]; basis: 'semantic' | 'folder' }>(
@@ -136,6 +182,10 @@ export const api = {
     }),
 
   stats: () => request<StatsDTO>('/api/stats'),
+  activityStats: () => request<ActivityStatsDTO>('/api/stats/activity'),
+  storageStats: (refresh = false) =>
+    request<StorageStatsDTO>(`/api/stats/storage${refresh ? '?refresh=1' : ''}`),
+  archives: () => request<{ archives: ArchiveJobDTO[] }>('/api/archives'),
   jobs: () => request<JobSummaryDTO>('/api/jobs'),
   workQueue: () => request<WorkQueueDTO>('/api/queue'),
 
@@ -151,39 +201,7 @@ export const api = {
       translations: number
       embeddings: number
       scenes: number
-      faces: number
     }>('/api/index/run', { method: 'POST' }),
-
-  people: (state: 'approved' | 'candidate' | 'excluded' | 'all' = 'approved', limit = 200) =>
-    request<{
-      people: PersonDTO[]
-      counts: { approved: number; candidate: number; excluded: number }
-    }>(`/api/people?state=${state}&limit=${limit}`),
-  person: (id: string) => request<PersonDetailDTO>(`/api/people/${id}`),
-  personAssets: (id: string) => request<{ assets: PersonAssetDTO[] }>(`/api/people/${id}/assets`),
-  approvePerson: (id: string) =>
-    request<{ person: PersonDTO }>(`/api/people/${id}/approve`, { method: 'POST' }),
-  excludePerson: (id: string) =>
-    request<{ person: PersonDTO }>(`/api/people/${id}/exclude`, { method: 'POST' }),
-  renamePerson: (id: string, name: string) =>
-    request<{ person: PersonDTO }>(`/api/people/${id}/rename`, {
-      method: 'POST',
-      body: JSON.stringify({ name }),
-    }),
-  mergePeople: (id: string, sourceId: string) =>
-    request<{ person: PersonDTO }>(`/api/people/${id}/merge`, {
-      method: 'POST',
-      body: JSON.stringify({ sourceId }),
-    }),
-  splitPerson: (id: string, detectionIds: string[], name?: string) =>
-    request<{ person: PersonDTO }>(`/api/people/${id}/split`, {
-      method: 'POST',
-      body: JSON.stringify({ detectionIds, ...(name ? { name } : {}) }),
-    }),
-  rescanPeople: () =>
-    request<{ dropped: number; counts: { candidate: number } }>('/api/people/rescan', {
-      method: 'POST',
-    }),
 
   transcriptionStatus: (id: string) =>
     request<TranscriptionStatusDTO>(`/api/assets/${id}/transcription/status`),

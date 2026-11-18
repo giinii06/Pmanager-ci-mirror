@@ -25,7 +25,6 @@ const ASR_TOKEN = 'asr-token-0000000000'
 const TRANSLATION_TOKEN = 'translation-token-00000'
 const EMBEDDING_TOKEN = 'embedding-token-000000'
 const SCENE_TOKEN = 'scene-token-0000000000'
-const FACE_TOKEN = 'face-token-00000000000'
 const SECRET = 'test-secret-for-session-signing'
 const ASR_MODEL = 'asr-rev'
 const ALIGNER = 'aligner-rev'
@@ -38,7 +37,7 @@ afterAll(async () => {
   for (const dir of dirs) await rm(dir, { recursive: true, force: true })
 })
 
-function apiConfig(dir: string, options: { scene?: boolean; face?: boolean }): ApiConfig {
+function apiConfig(dir: string, options: { scene?: boolean }): ApiConfig {
   return {
     port: 0,
     host: '127.0.0.1',
@@ -92,18 +91,6 @@ function apiConfig(dir: string, options: { scene?: boolean; face?: boolean }): A
       overlapMs: 2_000,
       queryUrl: 'http://127.0.0.1:1',
     },
-    face: {
-      enabled: options.face ?? false,
-      workerToken: options.face ? FACE_TOKEN : '',
-      modelId: 'antelopev2',
-      modelRevision: 'v0.7',
-      modelSha256: 'sha-face',
-      pipelineVersion: 'face-1',
-      dimensions: 4,
-      sampleMs: 2_000,
-      matchThreshold: 0.45,
-      candidateThreshold: 0.5,
-    },
   }
 }
 
@@ -114,7 +101,7 @@ interface Harness {
   scannedAt: (at: number) => void
 }
 
-async function harness(options: { scene?: boolean; face?: boolean } = {}): Promise<Harness> {
+async function harness(options: { scene?: boolean } = {}): Promise<Harness> {
   const dir = await mkdtemp(path.join(tmpdir(), 'mediavault-pass-'))
   dirs.push(dir)
   const db = openDatabase(':memory:')
@@ -432,15 +419,14 @@ describe('pipeline pass', () => {
     expect(jobCount(h, 'jobs')).toBe(1)
   })
 
-  test('scene and face jobs still queue for a new video', async () => {
-    const h = await harness({ scene: true, face: true })
+  test('scene jobs still queue for a new video', async () => {
+    const h = await harness({ scene: true })
     h.scannedAt(NOW - 60_000)
     h.addVideo('video1', 'aac')
 
     const result = ensurePipelineJobs(h.ctx, NOW)
 
     expect(result.scenes).toBe(1)
-    expect(result.faces).toBe(1)
     expect(result.asr).toBe(1)
   })
 })

@@ -1,27 +1,52 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Captions, Download, Heart, Info, Share2 } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  ArrowLeft,
+  Camera,
+  Captions,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Info,
+  Plus,
+  Share2,
+  Shuffle,
+  Tag as TagIcon,
+  ThumbsUp,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { extensionOf, type AssetDTO, type SubtitleTrackDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
+import { patchAssetInCaches, removeAssetFromCaches } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
-import { formatBytes, formatDay, formatDuration } from '../lib/format'
+import {
+  formatBytes,
+  formatCount,
+  formatDay,
+  formatDuration,
+  formatRate,
+  formatWatchTime,
+} from '../lib/format'
 import { useUi } from '../store/ui'
+import { Dialog } from './ui/Dialog'
+import { Button } from './ui/Button'
+import { Input } from './ui/Input'
 import { RelatedVideos } from './RelatedVideos'
 import { ReviewSection } from './ReviewSection'
 import { TranscriptPanel } from './TranscriptPanel'
 import { VideoPlayer } from './VideoPlayer'
 
 const PILL =
-  'inline-flex h-9 items-center gap-2 rounded-full bg-white/10 px-4 text-[13px] font-medium text-white transition-colors hover:bg-white/15'
-
-interface FavoriteMutation {
-  mutate: (variables: { id: string; favorite: boolean }) => void
-}
+  'inline-flex h-9 items-center gap-2 rounded-full bg-white/10 px-4 text-[13px] font-medium text-white transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45'
 
 export function WatchPage({
   asset,
   libraryName,
-  favorite,
+  shuffle,
+  onToggleShuffle,
+  onPrev,
+  onNext,
   onClose,
   onSelectAsset,
   subtitleUrl,
@@ -38,7 +63,10 @@ export function WatchPage({
 }: {
   asset: AssetDTO
   libraryName?: string
-  favorite: FavoriteMutation
+  shuffle: boolean
+  onToggleShuffle: () => void
+  onPrev: () => void
+  onNext: () => void
   onClose: () => void
   onSelectAsset: (asset: AssetDTO) => void
   subtitleUrl: string | null
@@ -49,16 +77,20 @@ export function WatchPage({
   showTranscript: boolean
   onToggleTranscript: () => void
   onCloseTranscript: () => void
-  /** Bumped by the `i` shortcut so the description can scroll into view. */
   infoSignal: number
   closeRef: RefObject<HTMLButtonElement | null>
   startMs?: number | null
 }) {
+  const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
   const [copied, setCopied] = useState(false)
+  const [paused, setPaused] = useState(true)
+  const [tagInput, setTagInput] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const copyTimer = useRef<number | null>(null)
   const descriptionRef = useRef<HTMLDivElement>(null)
 
+  const tagsQuery = useQuery({ queryKey: ['tags'], queryFn: api.tags })
   const related = useQuery({
     queryKey: ['related', asset.id],
     queryFn: () => api.related(asset.id, 8),
@@ -70,12 +102,65 @@ export function WatchPage({
     staleTime: 30_000,
   })
 
-  const relatedItems = related.data?.items ?? []
-  const reviewCount = review.data?.review ? 1 : 0
+  const vote = useMutation({
+    mutationFn: () => api.voteAsset(asset.id),
+    onSuccess: (updated) => {
+      patchAssetInCaches(queryClient, updated)
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+    },
+    onError: () => toast('투표하지 못했습니다.', 'error'),
+  })
 
-  const scrollToDescription = () => {
-    descriptionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  const capturePoster = useMutation({
+    mutationFn: () => {
+      const el = videoRef.current
+      const positionMs = el && Number.isFinite(el.currentTime) ? Math.round(el.currentTime * 1000) : 0
+      return api.captureThumbnail(asset.id, positionMs)
+    },
+    onSuccess: ({ asset: updated }) => {
+      patchAssetInCaches(queryClient, updated)
+      queryClient.invalidateQueries({ queryKey: ['tags'] })
+      toast('현재 프레임을 썸네일로 저장했습니다.', 'success')
+    },
+    onError: (err) =>
+      toast(err instanceof Error ? err.message : '썸네일을 변경하지 못했습니다.', 'error'),
+  })
+
+  const attachTag = useMutation({
+    mutationFn: (payload: { tagId?: string; name?: string }) => api.attachTag(asset.id, payload),
+    onSuccess: ({ asset: updated }) => {
+      patchAssetInCaches(queryClient, updated)
+      queryClient.invalidateQueries({ queryKey: ['tags'] })
+      setTagInput('')
+    },
+    onError: (err) =>
+      toast(err instanceof Error ? err.message : '태그를 추가하지 못했습니다.', 'error'),
+  })
+
+  const detachTag = useMutation({
+    mutationFn: (tagId: string) => api.detachTag(asset.id, tagId),
+    onSuccess: ({ asset: updated }) => {
+      patchAssetInCaches(queryClient, updated)
+      queryClient.invalidateQueries({ queryKey: ['tags'] })
+    },
+    onError: () => toast('태그를 제거하지 못했습니다.', 'error'),
+  })
+
+  const destroyAsset = useMutation({
+    mutationFn: () => api.deleteAsset(asset.id),
+    onSuccess: () => {
+      setDeleteOpen(false)
+      removeAssetFromCaches(queryClient, asset.id)
+      toast('동영상을 영구 삭제했습니다.')
+    },
+    onError: (err) =>
+      toast(err instanceof Error ? err.message : '영구 삭제하지 못했습니다.', 'error'),
+  })
+
+  useEffect(() => {
+    setDeleteOpen(false)
+    setTagInput('')
+  }, [asset.id])
 
   useEffect(() => {
     if (infoSignal === 0) return
@@ -89,8 +174,6 @@ export function WatchPage({
     [],
   )
 
-  // The pill row mirrors YouTube's, but a share link has to open this video,
-  // so the id travels in the URL and the videos page reads it back.
   const share = async () => {
     const url = `${window.location.origin}/videos?v=${encodeURIComponent(asset.id)}`
     try {
@@ -103,6 +186,11 @@ export function WatchPage({
     }
   }
 
+  const allTags = tagsQuery.data?.tags ?? []
+  const attachedIds = new Set(asset.tags.map((t) => t.id))
+  const availableTags = allTags.filter((t) => !attachedIds.has(t.id))
+  const relatedItems = related.data?.items ?? []
+  const reviewCount = review.data?.review ? 1 : 0
   const codec = [asset.videoCodec, asset.audioCodec].filter(Boolean).join(' · ')
   const container = asset.container?.toUpperCase() || extensionOf(asset.filename).toUpperCase()
 
@@ -139,6 +227,41 @@ export function WatchPage({
         <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-white">
           {asset.filename}
         </p>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onPrev}
+            aria-label="이전 동영상"
+            title={shuffle ? '랜덤 이전 (←)' : '이전 동영상 (←)'}
+            className="rounded-full p-1.5 text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={onToggleShuffle}
+            aria-pressed={shuffle}
+            title="Shuffle 모드 전환"
+            className={cn(
+              'inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium transition-colors',
+              shuffle
+                ? 'bg-accent text-white'
+                : 'bg-white/10 text-white/75 hover:bg-white/15 hover:text-white',
+            )}
+          >
+            <Shuffle size={13} />
+            <span>Shuffle {shuffle ? 'ON' : 'OFF'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onNext}
+            aria-label="다음 동영상"
+            title={shuffle ? '랜덤 다음 (→)' : '다음 동영상 (→)'}
+            className="rounded-full p-1.5 text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
       </header>
 
       <div className="mx-auto max-w-[1754px] px-6 py-4">
@@ -155,6 +278,7 @@ export function WatchPage({
                 onSelectLanguage={onSelectLanguage}
                 videoRef={videoRef}
                 startMs={startMs}
+                onPausedChange={setPaused}
               />
             </div>
 
@@ -163,26 +287,52 @@ export function WatchPage({
             </h1>
             <p className="mt-1 text-[13px] text-white/55">{meta.join(' · ')}</p>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-[13px]">
+              <span className="tabular-nums text-white/85">
+                조회수: <strong>{formatCount(asset.viewCount)}회</strong>
+              </span>
+              <span className="tabular-nums text-white/85">
+                누적 재생 시간: <strong>{formatWatchTime(asset.watchTimeMs)}</strong>
+              </span>
+              <span className="tabular-nums text-white/85">
+                Rate: <strong>{formatRate(asset.rate)}</strong>
+                {asset.rate === null ? (
+                  <span className="ml-1.5 text-[11.5px] text-white/45">(아직 데이터 없음)</span>
+                ) : null}
+              </span>
+              <span className="tabular-nums text-white/85">
+                Vote: <strong>{formatCount(asset.voteCount)}</strong>
+              </span>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                aria-pressed={asset.favorite}
-                onClick={() => favorite.mutate({ id: asset.id, favorite: !asset.favorite })}
-                className={cn(
-                  PILL,
-                  asset.favorite && 'bg-accent/15 text-accent hover:bg-accent/20',
-                )}
+                onClick={() => vote.mutate()}
+                disabled={vote.isPending}
+                className={cn(PILL, 'bg-accent/20 text-white hover:bg-accent/30')}
               >
-                <Heart
-                  size={17}
-                  fill={asset.favorite ? '#ff4e45' : 'none'}
-                  className={asset.favorite ? 'text-[#ff4e45]' : undefined}
-                />
-                좋아요
+                <ThumbsUp size={16} />
+                Vote {formatCount(asset.voteCount)}
+              </button>
+
+              <button
+                type="button"
+                disabled={!paused || capturePoster.isPending}
+                onClick={() => capturePoster.mutate()}
+                title={
+                  paused
+                    ? '일시정지된 현재 프레임을 썸네일로 저장합니다.'
+                    : '재생 중에는 사용할 수 없습니다. 먼저 일시정지하세요.'
+                }
+                className={PILL}
+              >
+                <Camera size={16} />
+                {capturePoster.isPending ? '저장 중...' : '이 부분을 썸네일로 쓰기'}
               </button>
 
               <button type="button" onClick={() => void share()} className={PILL}>
-                <Share2 size={17} />
+                <Share2 size={16} />
                 {copied ? '복사됨' : '공유'}
               </button>
 
@@ -191,7 +341,7 @@ export function WatchPage({
                 download={asset.filename}
                 className={PILL}
               >
-                <Download size={17} />
+                <Download size={16} />
                 원본 내려받기
               </a>
 
@@ -201,14 +351,100 @@ export function WatchPage({
                 onClick={onToggleTranscript}
                 className={cn(PILL, showTranscript && 'bg-white/20 hover:bg-white/20')}
               >
-                <Captions size={17} />
+                <Captions size={16} />
                 AI 자막
               </button>
 
-              <button type="button" onClick={scrollToDescription} className={PILL}>
-                <Info size={17} />
+              <button
+                type="button"
+                onClick={() => descriptionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className={PILL}
+              >
+                <Info size={16} />
                 정보
               </button>
+
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className={cn(PILL, 'bg-[#3c191d] text-[#ffc9c9] hover:bg-[#522127]')}
+              >
+                <Trash2 size={16} />
+                영구 삭제
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl bg-white/[0.04] p-3.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-white/75">
+                  <TagIcon size={13} />
+                  태그
+                </span>
+                {asset.tags.map((tag) => (
+                  <span
+                    key={tag.id}
+                    className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2.5 py-0.5 text-[12px] text-white"
+                  >
+                    {tag.name}
+                    <button
+                      type="button"
+                      onClick={() => detachTag.mutate(tag.id)}
+                      aria-label={`${tag.name} 태그 제거`}
+                      className="rounded-full p-0.5 text-white/60 hover:bg-white/15 hover:text-white"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+                {asset.tags.length === 0 ? (
+                  <span className="text-[12px] text-white/40">지정된 태그 없음</span>
+                ) : null}
+              </div>
+
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <form
+                  className="flex items-center gap-1.5"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    const trimmed = tagInput.trim()
+                    if (trimmed) attachTag.mutate({ name: trimmed })
+                  }}
+                >
+                  <Input
+                    value={tagInput}
+                    onChange={(event) => setTagInput(event.target.value)}
+                    placeholder="새 태그 또는 이름 입력"
+                    className="h-8 w-44 bg-black/40 text-[12px]"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={!tagInput.trim() || attachTag.isPending}
+                  >
+                    <Plus size={12} />
+                    추가
+                  </Button>
+                </form>
+
+                {availableTags.length > 0 ? (
+                  <select
+                    aria-label="기존 태그 추가"
+                    value=""
+                    onChange={(event) => {
+                      const val = event.target.value
+                      if (val) attachTag.mutate({ tagId: val })
+                    }}
+                    className="h-8 rounded-md border border-line bg-black/40 px-2.5 text-[12px] text-white focus:border-accent/50 focus:outline-none"
+                  >
+                    <option value="">기존 태그 선택...</option>
+                    {availableTags.map((tag) => (
+                      <option key={tag.id} value={tag.id}>
+                        {tag.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
             </div>
 
             <div ref={descriptionRef} className="mt-4 scroll-mt-16 rounded-xl bg-white/5 p-3">
@@ -249,6 +485,30 @@ export function WatchPage({
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="동영상을 영구 삭제할까요?"
+        description="이 작업은 되돌릴 수 없습니다. 원본 동영상 파일과 모든 관련 기록이 완전히 삭제됩니다."
+        footer={
+          <>
+            <Button onClick={() => setDeleteOpen(false)}>취소</Button>
+            <Button
+              variant="danger"
+              disabled={destroyAsset.isPending}
+              onClick={() => destroyAsset.mutate()}
+            >
+              {destroyAsset.isPending ? '삭제 중...' : '영구 삭제'}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13px] text-muted">
+          <span className="font-medium text-ink">{asset.filename}</span> 파일과 썸네일, 자막, 태그,
+          조회수, 누적 재생 시간, Vote 기록이 영구적으로 제거됩니다.
+        </p>
+      </Dialog>
     </div>
   )
 }

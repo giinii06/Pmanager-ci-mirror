@@ -1,4 +1,5 @@
 import type {
+  ArchiveJobDTO,
   AsrJobDTO,
   AssetDTO,
   EmbeddingJobDTO,
@@ -7,8 +8,9 @@ import type {
   LibraryDTO,
   PlaybackProgressDTO,
   ReviewDTO,
-  FaceJobDTO,
   SceneJobDTO,
+  TagDTO,
+  TagSummaryDTO,
   TranscriptDTO,
   TranscriptSummaryDTO,
   TranslationDTO,
@@ -20,6 +22,7 @@ import type {
 } from '@mediavault/shared'
 import { POSTER_SCHEME, playbackModeFor } from '@mediavault/shared'
 import type {
+  ArchiveJobRecord,
   AsrJobRecord,
   AssetRecord,
   EmbeddingJobRecord,
@@ -28,8 +31,9 @@ import type {
   LibraryRecord,
   PlaybackRecord,
   ReviewRecord,
-  FaceJobRecord,
   SceneJobRecord,
+  TagRecord,
+  TagSummaryRecord,
   TranscriptRecord,
   TranscriptWithSegments,
   TranslationJobRecord,
@@ -73,11 +77,15 @@ export function toFolderDTO(folder: FolderRecord): FolderDTO {
     assetCount: folder.assetCount,
     directImageCount: folder.directImageCount,
     coverAssetId: folder.coverAssetId,
+    viewCount: folder.viewCount,
+    voteCount: folder.voteCount,
+    createdAt: new Date(folder.createdAt).toISOString(),
   }
 }
 
 export function toAssetDTO(asset: AssetRecord): AssetDTO {
   const version = asset.fileVersion
+  const posterVersion = asset.posterVersion
   const posterQuery = asset.kind === 'video' ? `&p=${POSTER_SCHEME}` : ''
   return {
     id: asset.id,
@@ -95,7 +103,12 @@ export function toAssetDTO(asset: AssetRecord): AssetDTO {
     height: asset.height,
     durationMs: asset.durationMs,
     takenAt: new Date(asset.takenAt).toISOString(),
-    favorite: asset.favorite,
+    viewCount: asset.viewCount,
+    watchTimeMs: asset.watchTimeMs,
+    voteCount: asset.voteCount,
+    rate: asset.rate,
+    posterVersion,
+    tags: asset.tags,
     fileVersion: version,
     playback: playbackModeFor({
       kind: asset.kind,
@@ -104,12 +117,47 @@ export function toAssetDTO(asset: AssetRecord): AssetDTO {
       audioCodec: asset.audioCodec,
     }),
     thumbnails: {
-      small: `/api/assets/${asset.id}/thumbnail?size=320&v=${version}${posterQuery}`,
-      medium: `/api/assets/${asset.id}/thumbnail?size=640&v=${version}${posterQuery}`,
+      small: `/api/assets/${asset.id}/thumbnail?size=320&v=${version}&pv=${posterVersion}${posterQuery}`,
+      medium: `/api/assets/${asset.id}/thumbnail?size=640&v=${version}&pv=${posterVersion}${posterQuery}`,
     },
     previewUrl: `/api/assets/${asset.id}/preview?v=${version}`,
     streamUrl: `/api/assets/${asset.id}/stream?v=${version}`,
     hlsUrl: `/api/assets/${asset.id}/hls/master.m3u8`,
+  }
+}
+
+export function toTagDTO(tag: TagRecord): TagDTO {
+  return {
+    id: tag.id,
+    name: tag.name,
+    createdAt: new Date(tag.createdAt).toISOString(),
+  }
+}
+
+export function toTagSummaryDTO(tag: TagSummaryRecord): TagSummaryDTO {
+  return {
+    id: tag.id,
+    name: tag.name,
+    assetCount: tag.assetCount,
+    coverAssetId: tag.coverAssetId,
+    coverPosterVersion: tag.coverPosterVersion,
+    createdAt: new Date(tag.createdAt).toISOString(),
+  }
+}
+
+export function toArchiveJobDTO(job: ArchiveJobRecord): ArchiveJobDTO {
+  return {
+    id: job.id,
+    libraryId: job.libraryId,
+    archivePath: job.archivePath,
+    state: job.state,
+    passwordUsed: job.passwordUsed,
+    extractedFiles: job.extractedFiles,
+    convertedImages: job.convertedImages,
+    convertedVideos: job.convertedVideos,
+    errorMessage: job.errorMessage,
+    createdAt: new Date(job.createdAt).toISOString(),
+    updatedAt: new Date(job.updatedAt).toISOString(),
   }
 }
 
@@ -218,22 +266,6 @@ export function toTranslationJobDTO(job: TranslationJobRecord): TranslationJobDT
 }
 
 export function toEmbeddingJobDTO(job: EmbeddingJobRecord): EmbeddingJobDTO {
-  return {
-    id: job.id,
-    assetId: job.assetId,
-    fileVersion: job.fileVersion,
-    state: job.state,
-    stage: job.stage,
-    progress: job.progress,
-    attempts: job.attempts,
-    maxAttempts: job.maxAttempts,
-    errorMessage: job.errorMessage,
-    createdAt: new Date(job.createdAt).toISOString(),
-    updatedAt: new Date(job.updatedAt).toISOString(),
-  }
-}
-
-export function toFaceJobDTO(job: FaceJobRecord): FaceJobDTO {
   return {
     id: job.id,
     assetId: job.assetId,

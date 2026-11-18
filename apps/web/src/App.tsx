@@ -15,8 +15,7 @@ import { Spinner } from './components/ui/Spinner'
 import { Button } from './components/ui/Button'
 import { LoginPage, SetupPage } from './pages/AuthPages'
 import { FolderPage, FoldersPage } from './pages/FolderPages'
-import { FavoritesPage, VideosPage } from './pages/GalleryPages'
-import { PeoplePage } from './pages/PeoplePage'
+import { VideoTagsPage, VideosPage } from './pages/GalleryPages'
 import { SearchPage } from './pages/SearchPage'
 import { SettingsPage } from './pages/SettingsPage'
 
@@ -58,7 +57,7 @@ function NotFound() {
       <EmptyState
         title="페이지를 찾을 수 없습니다"
         body="주소가 바뀌었거나 삭제되었습니다."
-        action={<Button onClick={() => navigate('/')}>사진 모음</Button>}
+        action={<Button onClick={() => navigate('/')}>사진</Button>}
       />
     </div>
   )
@@ -78,8 +77,8 @@ export function App() {
         <Route element={<AppShell />}>
           <Route index element={<FoldersPage />} />
           <Route path="videos" element={<VideosPage />} />
-          <Route path="favorites" element={<FavoritesPage />} />
-          <Route path="people" element={<PeoplePage />} />
+          <Route path="videos/tags" element={<VideoTagsPage />} />
+          <Route path="videos/tags/:tagId" element={<VideoTagsPage />} />
           <Route path="folders" element={<Navigate to="/" replace />} />
           <Route path="folders/:folderId" element={<FolderPage />} />
           <Route path="search" element={<SearchRoute />} />

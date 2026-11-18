@@ -54,18 +54,17 @@ export function AssetGallery({
       for (const item of page.items) {
         if (seen.has(item.id)) continue
         seen.add(item.id)
-        if (filters.favorite && !item.favorite) continue
         flat.push(item)
       }
     }
     return flat
-  }, [query.data, filters.favorite])
+  }, [query.data])
 
   const total = query.data?.pages[0]?.total ?? 0
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 })
-  }, [filters.libraryId, filters.folderId, filters.kind, filters.favorite, filters.q])
+  }, [filters.libraryId, filters.folderId, filters.kind, filters.tagId, filters.sort, filters.q])
 
   const heading = (
     <>
@@ -99,7 +98,7 @@ export function AssetGallery({
           hasNextPage={query.hasNextPage}
           isFetchingNextPage={query.isFetchingNextPage}
           fetchNextPage={() => query.fetchNextPage()}
-          onOpen={(index) => useViewer.getState().open(items, index)}
+          onOpen={(index) => useViewer.getState().open(items, index, { filter: filters })}
           groupByMonth={groupByMonth}
           empty={
             hideEmpty ? null : (

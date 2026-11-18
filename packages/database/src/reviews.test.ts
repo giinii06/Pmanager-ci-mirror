@@ -152,19 +152,19 @@ describe('related assets', () => {
   test('same folder first, then the rest of the library, videos only', () => {
     const db = seed()
 
-    expect(relatedAssets(db, USER, 'v1', 10).map((asset) => asset.id)).toEqual(['v2', 'v3'])
+    expect(relatedAssets(db, 'v1', 10).map((asset) => asset.id)).toEqual(['v2', 'v3'])
     db.close()
   })
 
   test('another library never leaks into the list', () => {
     const db = seed()
-    expect(relatedAssets(db, USER, 'v1', 10).some((asset) => asset.id === 'v4')).toBe(false)
+    expect(relatedAssets(db, 'v1', 10).some((asset) => asset.id === 'v4')).toBe(false)
     db.close()
   })
 
   test('the limit is respected', () => {
     const db = seed()
-    expect(relatedAssets(db, USER, 'v1', 1).map((asset) => asset.id)).toEqual(['v2'])
+    expect(relatedAssets(db, 'v1', 1).map((asset) => asset.id)).toEqual(['v2'])
     db.close()
   })
 })

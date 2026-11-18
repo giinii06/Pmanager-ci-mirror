@@ -1,16 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  addFavorite,
   createLibrary,
   createUser,
   getStats,
   insertAsset,
   listAssets,
   openDatabase,
-  removeFavorite,
   softDeleteMissing,
   touchAssets,
   upsertFolder,
+  voteAsset,
 } from './index'
 import type { NewAsset } from './assets'
 
@@ -59,41 +58,38 @@ function seed() {
 describe('listAssets', () => {
   test('paginates by taken_at and id with a stable cursor', () => {
     const db = seed()
-    const first = listAssets(db, USER, {}, null, 2)
+    const first = listAssets(db, {}, null, 2)
     expect(first.records.map((asset) => asset.id)).toEqual(['asset0', 'asset1'])
     expect(first.total).toBe(5)
     expect(first.hasMore).toBe(true)
 
     const last = first.records[1]!
-    const second = listAssets(db, USER, {}, { takenAt: last.takenAt, id: last.id }, 2)
+    const second = listAssets(db, {}, { takenAt: last.takenAt, id: last.id }, 2)
     expect(second.records.map((asset) => asset.id)).toEqual(['asset2', 'asset3'])
     expect(second.hasMore).toBe(true)
 
     const end = second.records[1]!
-    const third = listAssets(db, USER, {}, { takenAt: end.takenAt, id: end.id }, 2)
+    const third = listAssets(db, {}, { takenAt: end.takenAt, id: end.id }, 2)
     expect(third.records.map((asset) => asset.id)).toEqual(['asset4'])
     expect(third.hasMore).toBe(false)
     db.close()
   })
 
-  test('filters favorites per user', () => {
+  test('accumulates repeated votes cleanly', () => {
     const db = seed()
-    addFavorite(db, USER, 'asset3', 30_000)
-    const favorites = listAssets(db, USER, { favoriteOnly: true }, null, 10)
-    expect(favorites.records.map((asset) => asset.id)).toEqual(['asset3'])
-    expect(favorites.records[0]?.favorite).toBe(true)
-    expect(favorites.total).toBe(1)
-
-    removeFavorite(db, USER, 'asset3')
-    expect(listAssets(db, USER, { favoriteOnly: true }, null, 10).total).toBe(0)
+    voteAsset(db, 'asset3')
+    voteAsset(db, 'asset3')
+    const sorted = listAssets(db, { sort: 'votes' }, null, 10)
+    expect(sorted.records[0]?.id).toBe('asset3')
+    expect(sorted.records[0]?.voteCount).toBe(2)
     db.close()
   })
 
   test('hides soft-deleted assets and reports stats', () => {
     const db = seed()
     expect(softDeleteMissing(db, LIBRARY, 'newer-scan', 40_000)).toBe(5)
-    expect(listAssets(db, USER, {}, null, 10).total).toBe(0)
-    expect(getStats(db, USER)).toMatchObject({ assets: 0, images: 0, videos: 0 })
+    expect(listAssets(db, {}, null, 10).total).toBe(0)
+    expect(getStats(db)).toMatchObject({ assets: 0, images: 0, videos: 0 })
     db.close()
   })
 

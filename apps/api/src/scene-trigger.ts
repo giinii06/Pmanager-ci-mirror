@@ -1,5 +1,5 @@
-import { createFaceJob, createSceneJob, getAssetFileInfo } from '@mediavault/database'
-import type { FaceJobRecord, SceneJobRecord } from '@mediavault/database'
+import { createSceneJob, getAssetFileInfo } from '@mediavault/database'
+import type { SceneJobRecord } from '@mediavault/database'
 import { newId } from '@mediavault/shared'
 import type { AppContext } from './context'
 
@@ -32,35 +32,6 @@ export function enqueueScenes(
       dimensions: ctx.config.scene.dimensions,
       windowMs: ctx.config.scene.windowMs,
       overlapMs: ctx.config.scene.overlapMs,
-    },
-    now,
-  )
-}
-
-export function enqueueFaces(
-  ctx: AppContext,
-  assetId: string,
-  fileVersion: number,
-  now: number,
-): FaceJobRecord | null {
-  if (!ctx.config.face.enabled) return null
-
-  const asset = getAssetFileInfo(ctx.db, assetId)
-  if (!asset || asset.deletedAt !== null) return null
-  if (asset.kind !== 'video') return null
-
-  return createFaceJob(
-    ctx.db,
-    {
-      id: newId(16),
-      assetId,
-      fileVersion,
-      modelId: ctx.config.face.modelId,
-      modelRevision: ctx.config.face.modelRevision,
-      modelSha256: ctx.config.face.modelSha256,
-      pipelineVersion: ctx.config.face.pipelineVersion,
-      dimensions: ctx.config.face.dimensions,
-      sampleMs: ctx.config.face.sampleMs,
     },
     now,
   )

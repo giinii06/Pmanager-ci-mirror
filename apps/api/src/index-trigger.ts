@@ -1,6 +1,5 @@
 import {
   activeAsrJob,
-  activeFaceJob,
   activeSceneJob,
   createAsrJob,
   enqueueJob,
@@ -15,7 +14,7 @@ import {
 import { PRIORITY, newId } from '@mediavault/shared'
 import type { AppContext } from './context'
 import { enqueueEmbedding } from './embedding-trigger'
-import { enqueueFaces, enqueueScenes } from './scene-trigger'
+import { enqueueScenes } from './scene-trigger'
 import { currentTranscriptRecord } from './subtitles'
 import { enqueueTranslation } from './translation-trigger'
 
@@ -31,7 +30,6 @@ export interface PipelinePass {
   translations: number
   embeddings: number
   scenes: number
-  faces: number
 }
 
 /**
@@ -50,7 +48,6 @@ export function ensurePipelineJobs(ctx: AppContext, now: number, limit = BATCH):
     translations: 0,
     embeddings: 0,
     scenes: 0,
-    faces: 0,
   }
 
   const batch = nextIndexBatch(ctx.db, limit)
@@ -90,10 +87,6 @@ export function ensurePipelineJobs(ctx: AppContext, now: number, limit = BATCH):
     if (ctx.config.scene.enabled && !activeSceneJob(ctx.db, video.id, video.fileVersion)) {
       const job = enqueueScenes(ctx, video.id, video.fileVersion, now)
       if (job?.state === 'queued') result.scenes += 1
-    }
-    if (ctx.config.face.enabled && !activeFaceJob(ctx.db, video.id, video.fileVersion)) {
-      const job = enqueueFaces(ctx, video.id, video.fileVersion, now)
-      if (job?.state === 'queued') result.faces += 1
     }
   }
 

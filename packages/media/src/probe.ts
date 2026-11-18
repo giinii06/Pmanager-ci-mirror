@@ -18,6 +18,8 @@ export interface VideoProbe {
   takenAt: number
   videoCodec: string | null
   audioCodec: string | null
+  pixFmt: string | null
+  fps: number | null
 }
 
 export async function probeImage(absPath: string, fallbackTakenAt: number): Promise<ImageProbe> {
@@ -46,6 +48,9 @@ export async function probeImage(absPath: string, fallbackTakenAt: number): Prom
 interface FfprobeStream {
   codec_type?: string
   codec_name?: string
+  pix_fmt?: string
+  avg_frame_rate?: string
+  r_frame_rate?: string
   width?: number
   height?: number
   duration?: string
@@ -58,6 +63,15 @@ interface FfprobeOutput {
     duration?: string
     tags?: Record<string, string>
   }
+}
+
+function parseFps(rate?: string): number | null {
+  if (!rate) return null
+  const [numStr, denStr] = rate.split('/')
+  const num = Number(numStr)
+  const den = denStr === undefined ? 1 : Number(denStr)
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den <= 0 || num <= 0) return null
+  return Math.round((num / den) * 100) / 100
 }
 
 export async function probeVideo(absPath: string, fallbackTakenAt: number): Promise<VideoProbe> {
@@ -88,5 +102,7 @@ export async function probeVideo(absPath: string, fallbackTakenAt: number): Prom
     takenAt: Number.isFinite(parsed) ? parsed : fallbackTakenAt,
     videoCodec: video?.codec_name ?? null,
     audioCodec: audio?.codec_name ?? null,
+    pixFmt: video?.pix_fmt ?? null,
+    fps: parseFps(video?.avg_frame_rate ?? video?.r_frame_rate),
   }
 }

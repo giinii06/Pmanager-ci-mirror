@@ -14,8 +14,9 @@ import {
   listFolders,
   listLibraries,
   setScanState,
+  voteFolder,
 } from '@mediavault/database'
-import { PRIORITY, newId } from '@mediavault/shared'
+import { FOLDER_SORTS, PRIORITY, newId } from '@mediavault/shared'
 import type { AppContext } from '../context'
 import { toFolderDTO, toLibraryDTO } from '../dto'
 import { parseInput } from '../validate'
@@ -27,7 +28,10 @@ const createBody = z.object({
   rootPath: z.string().trim().max(1024),
 })
 
-const folderQuery = z.object({ libraryId: z.string().max(64).optional() })
+const folderQuery = z.object({
+  libraryId: z.string().max(64).optional(),
+  sort: z.enum(FOLDER_SORTS).optional(),
+})
 
 function toPosix(value: string): string {
   return value.split(path.sep).join('/')
@@ -115,7 +119,9 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
   app.get('/api/folders', async (request, reply) => {
     const query = parseInput(folderQuery, request.query, reply)
     if (!query) return
-    const folders = query.libraryId ? listFolders(ctx.db, query.libraryId) : listAllFolders(ctx.db)
+    const folders = query.libraryId
+      ? listFolders(ctx.db, query.libraryId, query.sort)
+      : listAllFolders(ctx.db, query.sort)
     reply.send(folders.map(toFolderDTO))
   })
 
@@ -128,5 +134,16 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
       return
     }
     reply.send({ folder: toFolderDTO(folder), breadcrumb: breadcrumb(ctx.db, params.id).map(toFolderDTO) })
+  })
+
+  app.post('/api/folders/:id/vote', async (request, reply) => {
+    const params = parseInput(idParams, request.params, reply)
+    if (!params) return
+    const folder = voteFolder(ctx.db, params.id)
+    if (!folder) {
+      reply.code(404).send({ error: 'not_found', message: 'Folder not found.' })
+      return
+    }
+    reply.send(toFolderDTO(folder))
   })
 }

@@ -1,6 +1,8 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
-import type { AssetKind, StatsDTO } from '@mediavault/shared'
+import type { AssetKind, StatsDTO, VideoSort } from '@mediavault/shared'
 import type { Db } from './db'
+import { recomputeFolderCounts } from './folders'
+import { listTagsForAssets } from './tags'
 import type { AssetFileInfo, AssetRecord, AssetRow, ScanAssetRow } from './types'
 
 type Params = SQLQueryBindings[]
@@ -9,7 +11,9 @@ export interface AssetFilter {
   libraryId?: string
   folderId?: string
   kind?: AssetKind
-  favoriteOnly?: boolean
+  tagId?: string
+  sort?: VideoSort
+  seed?: number
   query?: string
 }
 
@@ -18,25 +22,91 @@ export interface TimelineCursor {
   id: string
 }
 
+export interface OffsetCursor {
+  offset: number
+}
+
+export type AssetCursor = TimelineCursor | OffsetCursor
+
 const COLUMNS = `
   a.id, a.library_id AS libraryId, a.folder_id AS folderId, a.relative_path AS relativePath,
   a.filename, a.kind, a.mime_type AS mimeType, a.size_bytes AS sizeBytes, a.mtime_ms AS mtimeMs,
   a.width, a.height, a.duration_ms AS durationMs, a.taken_at AS takenAt, a.file_version AS fileVersion,
-  a.video_codec AS videoCodec, a.audio_codec AS audioCodec, a.container
+  a.video_codec AS videoCodec, a.audio_codec AS audioCodec, a.container,
+  a.view_count AS viewCount, a.watch_time_ms AS watchTimeMs,
+  a.vote_count AS voteCount, a.poster_version AS posterVersion
 `
 
-function mapAsset(row: AssetRow): AssetRecord {
-  return { ...row, favorite: row.favorite === 1 }
-}
+const SEEDED_ORDER_SQL = `
+  (((((a.rowid + unicode(substr(a.id, 1, 1)) * 131)
+      * (1103515245 + (? % 65521) * 48271)
+      + (? % 2147483646)) % 2147483647)
+    * (16807 + (a.rowid % 97) * 131)) % 2147483647)
+`
 
 function likePattern(query: string): string {
   return `%${query.replace(/[\\%_]/g, (match) => `\\${match}`)}%`
 }
 
+function isTimelineCursor(cursor: AssetCursor | null): cursor is TimelineCursor {
+  return cursor !== null && 'takenAt' in cursor && 'id' in cursor
+}
+
+export function resolveAssetSort(filter: Pick<AssetFilter, 'sort' | 'kind'>): VideoSort {
+  if (filter.sort) return filter.sort
+  return filter.kind === 'video' ? 'rate' : 'latest'
+}
+
+/**
+ * Computes relative watch-time percentile scores (0..100) for rated videos.
+ * Videos with zero views or zero watch time are excluded and map to `null`.
+ */
+export function computeAssetRates(db: Db, assetIds: string[]): Map<string, number> {
+  const rates = new Map<string, number>()
+  if (assetIds.length === 0) return rates
+  const placeholders = assetIds.map(() => '?').join(', ')
+  const rows = db
+    .query<{ id: string; rate: number }, Params>(
+      `WITH rated AS (
+         SELECT id, CAST(watch_time_ms AS REAL) / view_count AS avg_watch
+         FROM assets
+         WHERE deleted_at IS NULL AND kind = 'video' AND view_count > 0 AND watch_time_ms > 0
+       ),
+       ranked AS (
+         SELECT id,
+                ROUND(
+                  ((RANK() OVER (ORDER BY avg_watch ASC) - 1
+                    + 0.5 * COUNT(*) OVER (PARTITION BY avg_watch)) * 100.0)
+                  / COUNT(*) OVER (),
+                  1
+                ) AS rate
+         FROM rated
+       )
+       SELECT id, rate FROM ranked WHERE id IN (${placeholders})`,
+    )
+    .all(...assetIds)
+  for (const row of rows) rates.set(row.id, row.rate)
+  return rates
+}
+
+function hydrateAssets(db: Db, rows: AssetRow[]): AssetRecord[] {
+  if (rows.length === 0) return []
+  const ids = rows.map((row) => row.id)
+  const tagsByAsset = listTagsForAssets(db, ids)
+  const ratedCandidateIds = rows
+    .filter((row) => row.kind === 'video' && row.viewCount > 0 && row.watchTimeMs > 0)
+    .map((row) => row.id)
+  const ratesByAsset = computeAssetRates(db, ratedCandidateIds)
+  return rows.map((row) => ({
+    ...row,
+    rate: ratesByAsset.get(row.id) ?? null,
+    tags: tagsByAsset.get(row.id) ?? [],
+  }))
+}
+
 function buildWhere(
   filter: AssetFilter,
   cursor: TimelineCursor | null,
-  userId: string,
 ): { sql: string; params: Params } {
   const clauses: string[] = ['a.deleted_at IS NULL']
   const params: Params = []
@@ -52,9 +122,9 @@ function buildWhere(
     clauses.push('a.kind = ?')
     params.push(filter.kind)
   }
-  if (filter.favoriteOnly) {
-    clauses.push('EXISTS (SELECT 1 FROM favorites f WHERE f.asset_id = a.id AND f.user_id = ?)')
-    params.push(userId)
+  if (filter.tagId) {
+    clauses.push('EXISTS (SELECT 1 FROM asset_tags at WHERE at.asset_id = a.id AND at.tag_id = ?)')
+    params.push(filter.tagId)
   }
   if (filter.query) {
     clauses.push("a.filename LIKE ? ESCAPE '\\'")
@@ -67,58 +137,112 @@ function buildWhere(
   return { sql: clauses.join(' AND '), params }
 }
 
+function buildOrder(sort: VideoSort, seed: number): { sql: string; params: Params } {
+  const safeSeed = Math.abs(Math.trunc(seed)) % 2147483647
+  switch (sort) {
+    case 'rate':
+      return {
+        sql: `ORDER BY
+          CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0 THEN 0 ELSE 1 END ASC,
+          CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0
+            THEN CAST(a.watch_time_ms AS REAL) / a.view_count
+            ELSE 0 END DESC,
+          CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0 THEN a.watch_time_ms ELSE 0 END DESC,
+          CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0 THEN a.view_count ELSE 0 END DESC,
+          CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0 THEN 0 ELSE ${SEEDED_ORDER_SQL} END ASC,
+          a.taken_at DESC,
+          a.id DESC`,
+        params: [safeSeed, safeSeed],
+      }
+    case 'views':
+      return {
+        sql: 'ORDER BY a.view_count DESC, a.watch_time_ms DESC, a.taken_at DESC, a.id DESC',
+        params: [],
+      }
+    case 'watch_time':
+      return {
+        sql: 'ORDER BY a.watch_time_ms DESC, a.view_count DESC, a.taken_at DESC, a.id DESC',
+        params: [],
+      }
+    case 'votes':
+      return {
+        sql: 'ORDER BY a.vote_count DESC, a.view_count DESC, a.taken_at DESC, a.id DESC',
+        params: [],
+      }
+    case 'name':
+      return {
+        sql: 'ORDER BY a.filename COLLATE NOCASE ASC, a.id ASC',
+        params: [],
+      }
+    case 'latest':
+      return {
+        sql: 'ORDER BY a.taken_at DESC, a.id DESC',
+        params: [],
+      }
+  }
+}
+
 export function listAssets(
   db: Db,
-  userId: string,
   filter: AssetFilter,
-  cursor: TimelineCursor | null,
+  cursor: AssetCursor | null,
   limit: number,
 ): { records: AssetRecord[]; total: number; hasMore: boolean } {
-  const where = buildWhere(filter, cursor, userId)
+  const sort = resolveAssetSort(filter)
+  const timelineCursor = sort === 'latest' && isTimelineCursor(cursor) ? cursor : null
+  const offset = cursor && 'offset' in cursor ? Math.max(0, cursor.offset) : 0
+  const where = buildWhere(filter, timelineCursor)
+  const order = buildOrder(sort, filter.seed ?? 1)
+
   const rows = db
     .query<AssetRow, Params>(
-      `SELECT ${COLUMNS},
-        EXISTS (SELECT 1 FROM favorites f WHERE f.asset_id = a.id AND f.user_id = ?) AS favorite
+      `SELECT ${COLUMNS}
        FROM assets a
        WHERE ${where.sql}
-       ORDER BY a.taken_at DESC, a.id DESC
-       LIMIT ?`,
+       ${order.sql}
+       LIMIT ? OFFSET ?`,
     )
-    .all(userId, ...where.params, limit + 1)
+    .all(...where.params, ...order.params, limit + 1, offset)
 
-  const countWhere = buildWhere(filter, null, userId)
+  const countWhere = buildWhere(filter, null)
   const total =
     db
       .query<{ n: number }, Params>(`SELECT COUNT(*) AS n FROM assets a WHERE ${countWhere.sql}`)
       .get(...countWhere.params)?.n ?? 0
 
   const hasMore = rows.length > limit
-  return { records: rows.slice(0, limit).map(mapAsset), total, hasMore }
+  return { records: hydrateAssets(db, rows.slice(0, limit)), total, hasMore }
 }
 
-export function getAsset(db: Db, userId: string, id: string): AssetRecord | null {
+export function listMatchingAssetIds(db: Db, filter: AssetFilter, limit = 10_000): string[] {
+  const sort = resolveAssetSort(filter)
+  const where = buildWhere(filter, null)
+  const order = buildOrder(sort, filter.seed ?? 1)
+  return db
+    .query<{ id: string }, Params>(
+      `SELECT a.id FROM assets a WHERE ${where.sql} ${order.sql} LIMIT ?`,
+    )
+    .all(...where.params, ...order.params, limit)
+    .map((row) => row.id)
+}
+
+export function getAsset(db: Db, id: string): AssetRecord | null {
   const row = db
     .query<AssetRow, Params>(
-      `SELECT ${COLUMNS},
-        EXISTS (SELECT 1 FROM favorites f WHERE f.asset_id = a.id AND f.user_id = ?) AS favorite
+      `SELECT ${COLUMNS}
        FROM assets a
        WHERE a.id = ? AND a.deleted_at IS NULL`,
     )
-    .get(userId, id)
-  return row ? mapAsset(row) : null
+    .get(id)
+  if (!row) return null
+  return hydrateAssets(db, [row])[0] ?? null
 }
 
 /** Same folder first, then the rest of the library. No similarity model. */
-export function relatedAssets(
-  db: Db,
-  userId: string,
-  assetId: string,
-  limit: number,
-): AssetRecord[] {
+export function relatedAssets(db: Db, assetId: string, limit: number): AssetRecord[] {
   const rows = db
     .query<AssetRow, Params>(
-      `SELECT ${COLUMNS},
-        EXISTS (SELECT 1 FROM favorites f WHERE f.asset_id = a.id AND f.user_id = ?) AS favorite
+      `SELECT ${COLUMNS}
        FROM assets a
        JOIN assets current ON current.id = ?
        WHERE a.id != current.id
@@ -129,26 +253,130 @@ export function relatedAssets(
                 a.taken_at DESC, a.id DESC
        LIMIT ?`,
     )
-    .all(userId, assetId, limit)
-  return rows.map(mapAsset)
+    .all(assetId, limit)
+  return hydrateAssets(db, rows)
 }
 
 /**
  * Hydrates the given ids. A caller that ranked them keeps its own order, so the
  * rows come back unordered and the caller re-sorts.
  */
-export function assetsByIds(db: Db, userId: string, ids: string[]): AssetRecord[] {
+export function assetsByIds(db: Db, ids: string[]): AssetRecord[] {
   if (ids.length === 0) return []
   const placeholders = ids.map(() => '?').join(', ')
   const rows = db
     .query<AssetRow, Params>(
-      `SELECT ${COLUMNS},
-        EXISTS (SELECT 1 FROM favorites f WHERE f.asset_id = a.id AND f.user_id = ?) AS favorite
+      `SELECT ${COLUMNS}
        FROM assets a
        WHERE a.id IN (${placeholders}) AND a.deleted_at IS NULL`,
     )
-    .all(userId, ...ids)
-  return rows.map(mapAsset)
+    .all(...ids)
+  return hydrateAssets(db, rows)
+}
+
+export function incrementAssetView(db: Db, id: string): AssetRecord | null {
+  const res = db
+    .query<null, Params>('UPDATE assets SET view_count = view_count + 1 WHERE id = ? AND deleted_at IS NULL')
+    .run(id)
+  if (res.changes === 0) return null
+  return getAsset(db, id)
+}
+
+export function addAssetWatchTime(db: Db, id: string, deltaMs: number): AssetRecord | null {
+  const clamped = Math.max(0, Math.min(Math.round(deltaMs), 600_000))
+  const res = db
+    .query<null, Params>(
+      'UPDATE assets SET watch_time_ms = watch_time_ms + ? WHERE id = ? AND deleted_at IS NULL',
+    )
+    .run(clamped, id)
+  if (res.changes === 0) return null
+  return getAsset(db, id)
+}
+
+export function voteAsset(db: Db, id: string): AssetRecord | null {
+  const res = db
+    .query<null, Params>('UPDATE assets SET vote_count = vote_count + 1 WHERE id = ? AND deleted_at IS NULL')
+    .run(id)
+  if (res.changes === 0) return null
+  return getAsset(db, id)
+}
+
+export function bumpPosterVersion(db: Db, id: string): AssetRecord | null {
+  const res = db
+    .query<null, Params>(
+      'UPDATE assets SET poster_version = poster_version + 1 WHERE id = ? AND deleted_at IS NULL',
+    )
+    .run(id)
+  if (res.changes === 0) return null
+  return getAsset(db, id)
+}
+
+export interface PermanentDeleteResult {
+  deleted: boolean
+  fileInfo: AssetFileInfo | null
+  libraryRoot: string | null
+  sceneThumbPaths: string[]
+  asrResultDirs: string[]
+  translationResultDirs: string[]
+}
+
+export function getAssetDeletePlan(db: Db, id: string): PermanentDeleteResult {
+  const fileInfo = getAssetFileInfo(db, id)
+  if (!fileInfo) {
+    return {
+      deleted: false,
+      fileInfo: null,
+      libraryRoot: null,
+      sceneThumbPaths: [],
+      asrResultDirs: [],
+      translationResultDirs: [],
+    }
+  }
+
+  const libraryRoot =
+    db.query<{ rootPath: string }, Params>('SELECT root_path AS rootPath FROM libraries WHERE id = ?').get(fileInfo.libraryId)
+      ?.rootPath ?? null
+
+  const sceneThumbPaths = db
+    .query<{ thumbnailPath: string }, Params>(
+      'SELECT DISTINCT thumbnail_path AS thumbnailPath FROM video_scenes WHERE asset_id = ? AND thumbnail_path IS NOT NULL',
+    )
+    .all(id)
+    .map((row) => row.thumbnailPath)
+
+  const asrResultDirs = db
+    .query<{ resultDir: string }, Params>('SELECT DISTINCT result_dir AS resultDir FROM transcripts WHERE asset_id = ?')
+    .all(id)
+    .map((row) => row.resultDir)
+
+  const translationResultDirs = db
+    .query<{ resultDir: string }, Params>('SELECT DISTINCT result_dir AS resultDir FROM translations WHERE asset_id = ?')
+    .all(id)
+    .map((row) => row.resultDir)
+
+  return {
+    deleted: true,
+    fileInfo,
+    libraryRoot,
+    sceneThumbPaths,
+    asrResultDirs,
+    translationResultDirs,
+  }
+}
+
+export function commitPermanentDelete(db: Db, id: string, libraryId: string): void {
+  db.transaction(() => {
+    db.query<null, Params>('DELETE FROM jobs WHERE asset_id = ?').run(id)
+    db.query<null, Params>('DELETE FROM assets WHERE id = ?').run(id)
+  })()
+  recomputeFolderCounts(db, libraryId)
+}
+
+export function deleteAssetPermanently(db: Db, id: string): PermanentDeleteResult {
+  const plan = getAssetDeletePlan(db, id)
+  if (!plan.deleted || !plan.fileInfo) return plan
+  commitPermanentDelete(db, id, plan.fileInfo.libraryId)
+  return plan
 }
 
 export function getAssetFileInfo(db: Db, id: string): AssetFileInfo | null {
@@ -371,43 +599,38 @@ export function setPipelineCursor(db: Db, name: string, lastId: string, now: num
   ).run(name, lastId, now)
 }
 
-export function getStats(db: Db, userId: string): StatsDTO {
+export function getStats(db: Db): StatsDTO {
   const counts =
     db
-      .query<{ assets: number; images: number; videos: number }, Params>(
+      .query<
+        {
+          assets: number
+          images: number
+          videos: number
+          totalViews: number
+          totalWatchTimeMs: number
+          totalVotes: number
+        },
+        []
+      >(
         `SELECT COUNT(*) AS assets,
                 COALESCE(SUM(kind = 'image'), 0) AS images,
-                COALESCE(SUM(kind = 'video'), 0) AS videos
+                COALESCE(SUM(kind = 'video'), 0) AS videos,
+                COALESCE(SUM(view_count), 0) AS totalViews,
+                COALESCE(SUM(watch_time_ms), 0) AS totalWatchTimeMs,
+                COALESCE(SUM(vote_count), 0) AS totalVotes
          FROM assets WHERE deleted_at IS NULL`,
       )
-      .get() ?? { assets: 0, images: 0, videos: 0 }
-  const favorites =
-    db
-      .query<{ n: number }, Params>(
-        'SELECT COUNT(*) AS n FROM favorites f JOIN assets a ON a.id = f.asset_id WHERE f.user_id = ? AND a.deleted_at IS NULL',
-      )
-      .get(userId)?.n ?? 0
+      .get() ?? {
+      assets: 0,
+      images: 0,
+      videos: 0,
+      totalViews: 0,
+      totalWatchTimeMs: 0,
+      totalVotes: 0,
+    }
   const libraries = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM libraries').get()?.n ?? 0
   const folders = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM folders').get()?.n ?? 0
-  const people =
-    db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM people WHERE state = 'approved'").get()
-      ?.n ?? 0
-  const peopleCandidates =
-    db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM people WHERE state = 'candidate'").get()
-      ?.n ?? 0
-  return { ...counts, favorites, libraries, folders, people, peopleCandidates }
-}
-
-export function addFavorite(db: Db, userId: string, assetId: string, now: number): void {
-  db.query<null, Params>(
-    `INSERT INTO favorites (user_id, asset_id, created_at) VALUES (?, ?, ?)
-     ON CONFLICT (user_id, asset_id) DO NOTHING`,
-  ).run(userId, assetId, now)
-}
-
-export function removeFavorite(db: Db, userId: string, assetId: string): void {
-  db.query<null, Params>('DELETE FROM favorites WHERE user_id = ? AND asset_id = ?').run(
-    userId,
-    assetId,
-  )
+  const tags = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM tags').get()?.n ?? 0
+  return { ...counts, libraries, folders, tags }
 }

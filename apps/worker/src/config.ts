@@ -15,6 +15,12 @@ export interface WorkerConfig {
   scanDeleteGuardRatio: number
   /** The operator's explicit override for a deletion the guard would refuse. */
   scanDeleteForce: boolean
+  /** How long archive files must stay unchanged before extraction starts. */
+  archiveStableMs?: number
+  /** Maximum wait for slow downloads to finish before failing archive stability. */
+  archiveTimeoutMs?: number
+  /** Enables polling for network/DrvFS mounts where inotify events do not cross from Windows. */
+  watchPolling?: boolean
 }
 
 export async function loadWorkerConfig(
@@ -37,7 +43,16 @@ export async function loadWorkerConfig(
     workerId: env.WORKER_ID?.trim() || `worker-${process.pid}`,
     scanDeleteGuardRatio: resolveGuardRatio(env.SCAN_DELETE_GUARD_RATIO),
     scanDeleteForce: env.SCAN_DELETE_FORCE === '1',
+    archiveStableMs: resolveNonNegativeInt(env.ARCHIVE_STABLE_MS, 1_500),
+    archiveTimeoutMs: resolveNonNegativeInt(env.ARCHIVE_TIMEOUT_MS, 15 * 60_000),
+    watchPolling: env.WATCH_POLLING === '1',
   }
+}
+
+function resolveNonNegativeInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === '') return fallback
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 ? Math.round(value) : fallback
 }
 
 function resolveGuardRatio(raw: string | undefined): number {

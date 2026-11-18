@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { AssetDTO } from '@mediavault/shared'
+import { api } from '../lib/api'
+import { patchAssetInCaches } from '../lib/cachePatch'
 import { buildGalleryEntries } from '../lib/justified'
 import { useElementWidth } from '../lib/hooks'
-import { useFavorite } from '../lib/useFavorite'
+import { useUi } from '../store/ui'
 import { AssetTile } from './AssetTile'
 import { LoadingBlock } from './ui/Spinner'
 
@@ -37,7 +40,16 @@ export function JustifiedGrid({
   const [widthRef, width] = useElementWidth<HTMLDivElement>()
   const headerRef = useRef<HTMLDivElement>(null)
   const [headerHeight, setHeaderHeight] = useState(0)
-  const favorite = useFavorite()
+  const queryClient = useQueryClient()
+  const toast = useUi((state) => state.toast)
+
+  const vote = useMutation({
+    mutationFn: (id: string) => api.voteAsset(id),
+    onSuccess: (updated) => {
+      patchAssetInCaches(queryClient, updated)
+    },
+    onError: () => toast('투표를 저장하지 못했습니다.', 'error'),
+  })
 
   useLayoutEffect(() => {
     const element = headerRef.current
@@ -75,7 +87,7 @@ export function JustifiedGrid({
     <div className="px-6 pb-24">
       <div ref={headerRef}>{header}</div>
 
-      {loading && items.length === 0 ? <LoadingBlock label="사진을 불러오는 중" /> : null}
+      {loading && items.length === 0 ? <LoadingBlock label="불러오는 중" /> : null}
 
       {!loading && items.length === 0 ? empty : null}
 
@@ -104,11 +116,10 @@ export function JustifiedGrid({
                         width={placed.width}
                         height={placed.height}
                         onOpen={() => onOpen(placed.index)}
-                        onToggleFavorite={() =>
-                          favorite.mutate({
-                            id: placed.item.id,
-                            favorite: !placed.item.favorite,
-                          })
+                        onVote={
+                          placed.item.kind === 'video'
+                            ? () => vote.mutate(placed.item.id)
+                            : undefined
                         }
                       />
                     ))}

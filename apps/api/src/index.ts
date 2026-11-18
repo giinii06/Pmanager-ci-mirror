@@ -35,8 +35,7 @@ function indexPass(): void {
       result.asr +
       result.translations +
       result.embeddings +
-      result.scenes +
-      result.faces
+      result.scenes
     if (queued > 0) app.log.info(result, 'queued pipeline jobs')
   } catch (error) {
     app.log.error({ err: error }, 'the pipeline pass failed')

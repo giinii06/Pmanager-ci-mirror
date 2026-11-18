@@ -44,6 +44,7 @@ export const kindLabel: Record<WorkKind, string> = {
   thumbnail: '썸네일',
   preview: '프리뷰',
   hls: 'HLS 변환',
+  process_archive: '압축 해제/변환',
   asr: '음성 인식',
   translation: '번역',
   embedding: '임베딩',

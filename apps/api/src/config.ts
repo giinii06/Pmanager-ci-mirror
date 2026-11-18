@@ -54,21 +54,6 @@ export interface SceneConfig {
   queryUrl: string
 }
 
-export interface FaceConfig {
-  enabled: boolean
-  workerToken: string
-  modelId: string
-  modelRevision: string
-  modelSha256: string
-  pipelineVersion: string
-  dimensions: number
-  sampleMs: number
-  /** Cosine at which a face joins an approved person. */
-  matchThreshold: number
-  /** Cosine at which two unassigned faces become the same candidate group. */
-  candidateThreshold: number
-}
-
 export interface ApiConfig {
   port: number
   host: string
@@ -86,7 +71,6 @@ export interface ApiConfig {
   translation: TranslationConfig
   embedding: EmbeddingConfig
   scene: SceneConfig
-  face: FaceConfig
 }
 
 async function resolveSecret(dataDir: string, fromEnv: string | undefined): Promise<string> {
@@ -203,31 +187,6 @@ function resolveScene(env: Record<string, string | undefined>): SceneConfig {
   }
 }
 
-function resolveFace(env: Record<string, string | undefined>): FaceConfig {
-  const token = env.FACE_WORKER_TOKEN?.trim() ?? ''
-  const enabled = env.FACE_ENABLED ? env.FACE_ENABLED === '1' : token.length > 0
-  if (enabled && token.length < 16) {
-    throw new Error('FACE_WORKER_TOKEN must be at least 16 characters when faces are enabled.')
-  }
-
-  const dimensions = Number(env.FACE_DIMENSIONS)
-  const sampleMs = Number(env.FACE_SAMPLE_MS)
-  const match = Number(env.FACE_MATCH_THRESHOLD)
-  const candidate = Number(env.FACE_CANDIDATE_THRESHOLD)
-  return {
-    enabled,
-    workerToken: token,
-    modelId: env.FACE_MODEL_ID?.trim() || 'antelopev2',
-    modelRevision: env.FACE_MODEL_REVISION?.trim() || 'v0.7',
-    modelSha256: env.FACE_MODEL_SHA256?.trim() || '',
-    pipelineVersion: env.FACE_PIPELINE_VERSION?.trim() || '1',
-    dimensions: Number.isInteger(dimensions) && dimensions > 0 ? dimensions : 512,
-    sampleMs: Number.isFinite(sampleMs) && sampleMs > 0 ? sampleMs : 2000,
-    matchThreshold: Number.isFinite(match) ? match : 0.45,
-    candidateThreshold: Number.isFinite(candidate) ? candidate : 0.5,
-  }
-}
-
 export async function loadConfig(
   env: Record<string, string | undefined> = process.env,
 ): Promise<ApiConfig> {
@@ -261,6 +220,5 @@ export async function loadConfig(
     translation,
     embedding,
     scene: resolveScene(env),
-    face: resolveFace(env),
   }
 }

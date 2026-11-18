@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
 import type { AssetDTO } from '@mediavault/shared'
 import {
   ChevronLeft,
   ChevronRight,
   Download,
-  Heart,
   Info,
   Maximize2,
   Minimize2,
@@ -13,17 +13,15 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
+import { api } from '../lib/api'
+import { patchAssetInCaches } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
-import { formatBytes, formatDate } from '../lib/format'
+import { formatBytes, formatCount, formatDate } from '../lib/format'
 import { useMeasuredElement } from '../lib/hooks'
 import { fitPage, groupViewerItems, pageAt, VIEWER_GAP } from '../lib/viewerPages'
 import { ImageSlot } from './ImageSlot'
 import { useImageFullscreen } from './useImageFullscreen'
 import { IconButton } from './ui/IconButton'
-
-interface FavoriteMutation {
-  mutate: (variables: { id: string; favorite: boolean }) => void
-}
 
 /** A keypress right after leaving fullscreen must not also close the viewer. */
 const FULLSCREEN_EXIT_GRACE_MS = 350
@@ -33,7 +31,6 @@ export function ImageViewer({
   items,
   index,
   libraryName,
-  favorite,
   closeRef,
   onClose,
   onSelect,
@@ -42,11 +39,11 @@ export function ImageViewer({
   items: AssetDTO[]
   index: number
   libraryName?: string
-  favorite: FavoriteMutation
   closeRef: RefObject<HTMLButtonElement | null>
   onClose: () => void
   onSelect: (asset: AssetDTO) => void
 }) {
+  const queryClient = useQueryClient()
   const [showInfo, setShowInfo] = useState(false)
   const [fullRes, setFullRes] = useState(false)
   const stage = useMeasuredElement<HTMLDivElement>()
@@ -54,6 +51,7 @@ export function ImageViewer({
     useImageFullscreen(stage.ref)
   const exitedAt = useRef(0)
   const wasFullscreen = useRef(false)
+  const viewedIds = useRef(new Set<string>())
 
   const room = useMemo(
     () => ({ width: stage.width, height: stage.height }),
@@ -69,6 +67,23 @@ export function ImageViewer({
     setShowInfo(false)
     setFullRes(false)
   }, [asset.id])
+
+  useEffect(() => {
+    const visibleIds = pageItems.length > 0 ? pageItems.map((item) => item.id) : [asset.id]
+    for (const id of visibleIds) {
+      if (viewedIds.current.has(id)) continue
+      viewedIds.current.add(id)
+      api
+        .incrementView(id)
+        .then((updated) => {
+          patchAssetInCaches(queryClient, updated)
+          queryClient.invalidateQueries({ queryKey: ['folders'] })
+        })
+        .catch(() => {
+          viewedIds.current.delete(id)
+        })
+    }
+  }, [asset.id, pageItems, queryClient])
 
   useEffect(() => {
     if (wasFullscreen.current && !fullscreenActive) exitedAt.current = Date.now()
@@ -94,8 +109,6 @@ export function ImageViewer({
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
 
       if (event.key === 'Escape') {
-        // The keypress that leaves fullscreen must not close the viewer, even
-        // when the browser reports the exit before delivering the key.
         if (fullscreenActive || Date.now() - exitedAt.current < FULLSCREEN_EXIT_GRACE_MS) {
           exitFullscreen()
           return
@@ -111,17 +124,12 @@ export function ImageViewer({
         goPrev()
         return
       }
-
-      const key = event.key.toLowerCase()
-      if (key === 'f') favorite.mutate({ id: asset.id, favorite: !asset.favorite })
-      else if (key === 'i') setShowInfo((value) => !value)
+      if (event.key.toLowerCase() === 'i') setShowInfo((value) => !value)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [asset, exitFullscreen, favorite, fullscreenActive, goNext, goPrev, onClose])
+  }, [exitFullscreen, fullscreenActive, goNext, goPrev, onClose])
 
-  // Prefetch whole neighbouring pages, previews only: the original file is
-  // large and only loaded when it is actually shown.
   useEffect(() => {
     for (const offset of [-1, 1]) {
       const range = pages[pageIndex + offset]
@@ -154,18 +162,13 @@ export function ImageViewer({
             </button>
             <div className="min-w-0">
               <p className="truncate text-[13px] font-medium text-white">{asset.filename}</p>
-              <p className="truncate text-[11.5px] text-white/45">{formatDate(asset.takenAt)}</p>
+              <p className="truncate text-[11.5px] text-white/45">
+                {formatDate(asset.takenAt)} · 조회수 {formatCount(asset.viewCount)}회
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-0.5">
-            <IconButton
-              label={asset.favorite ? '즐겨찾기 해제' : '즐겨찾기'}
-              active={asset.favorite}
-              onClick={() => favorite.mutate({ id: asset.id, favorite: !asset.favorite })}
-            >
-              <Heart size={17} fill={asset.favorite ? 'currentColor' : 'none'} />
-            </IconButton>
             <IconButton
               label={fullRes ? '미리보기 화질로 보기' : '원본 화질로 보기'}
               active={fullRes}
@@ -267,6 +270,10 @@ export function ImageViewer({
                 <div>
                   <dt className="text-faint">파일 이름</dt>
                   <dd className="mt-0.5 break-all text-ink">{asset.filename}</dd>
+                </div>
+                <div>
+                  <dt className="text-faint">조회수</dt>
+                  <dd className="mt-0.5 tabular-nums text-ink">{formatCount(asset.viewCount)}회</dd>
                 </div>
                 <div>
                   <dt className="text-faint">촬영일</dt>

@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { FolderPlus, Images } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Eye, FolderPlus, Images, ThumbsUp } from 'lucide-react'
+import type { FolderDTO, FolderSort } from '@mediavault/shared'
 import { api } from '../lib/api'
+import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
+import { useUi } from '../store/ui'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { EmptyState } from '../components/EmptyState'
 import { FolderCard } from '../components/FolderCard'
@@ -13,10 +17,34 @@ import { AssetGallery } from '../components/AssetGallery'
 
 const CARD_GRID = 'grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4'
 
+const FOLDER_SORTS: Array<{ value: FolderSort; label: string }> = [
+  { value: 'views', label: '조회수순' },
+  { value: 'votes', label: 'Vote순' },
+  { value: 'name', label: '이름순' },
+  { value: 'date', label: '날짜순' },
+]
+
 export function FoldersPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const toast = useUi((state) => state.toast)
+  const [sort, setSort] = useState<FolderSort>('views')
+
   const libraries = useQuery({ queryKey: ['libraries'], queryFn: api.libraries })
-  const folders = useQuery({ queryKey: ['folders'], queryFn: api.folders })
+  const folders = useQuery({
+    queryKey: ['folders', sort],
+    queryFn: () => api.folders({ sort }),
+  })
+
+  const vote = useMutation({
+    mutationFn: (folderId: string) => api.voteFolder(folderId),
+    onSuccess: (updated) => {
+      queryClient.setQueriesData<FolderDTO[]>({ queryKey: ['folders'] }, (list) =>
+        list?.map((f) => (f.id === updated.id ? updated : f)),
+      )
+    },
+    onError: () => toast('폴더 투표를 저장하지 못했습니다.', 'error'),
+  })
 
   if (libraries.isPending || folders.isPending) {
     return (
@@ -36,7 +64,30 @@ export function FoldersPage() {
 
   return (
     <div className="h-full overflow-y-auto px-6 pb-24">
-      <PageHeading title="사진 모음" meta={`${formatCount(collections.length)}개 폴더`} />
+      <PageHeading
+        title="사진"
+        meta={`${formatCount(collections.length)}개 폴더`}
+        actions={
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="폴더 정렬">
+            {FOLDER_SORTS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setSort(option.value)}
+                aria-pressed={sort === option.value}
+                className={cn(
+                  'h-8 rounded-lg border px-2.5 text-[12px] font-medium transition-colors',
+                  sort === option.value
+                    ? 'border-accent/50 bg-accent/15 text-accent'
+                    : 'border-line bg-panel text-muted hover:border-line-strong hover:text-ink',
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       {sections.length === 0 ? (
         <EmptyState
@@ -56,7 +107,12 @@ export function FoldersPage() {
             </div>
             <div className={CARD_GRID}>
               {section.folders.map((folder) => (
-                <FolderCard key={folder.id} folder={folder} count={folder.directImageCount} />
+                <FolderCard
+                  key={folder.id}
+                  folder={folder}
+                  count={folder.directImageCount}
+                  onVote={(id) => vote.mutate(id)}
+                />
               ))}
             </div>
           </section>
@@ -69,12 +125,32 @@ export function FoldersPage() {
 export function FolderPage() {
   const { folderId } = useParams()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const toast = useUi((state) => state.toast)
+
   const detail = useQuery({
     queryKey: ['folder', folderId],
     queryFn: () => api.folder(folderId ?? ''),
     enabled: Boolean(folderId),
   })
-  const folders = useQuery({ queryKey: ['folders'], queryFn: api.folders })
+  const folders = useQuery({ queryKey: ['folders'], queryFn: () => api.folders() })
+
+  const vote = useMutation({
+    mutationFn: (targetId: string) => api.voteFolder(targetId),
+    onSuccess: (updated) => {
+      if (updated.id === folderId) {
+        queryClient.setQueryData(
+          ['folder', folderId],
+          (prev: { folder: FolderDTO; breadcrumb: FolderDTO[] } | undefined) =>
+            prev ? { ...prev, folder: updated } : prev,
+        )
+      }
+      queryClient.setQueriesData<FolderDTO[]>({ queryKey: ['folders'] }, (list) =>
+        list?.map((f) => (f.id === updated.id ? updated : f)),
+      )
+    },
+    onError: () => toast('폴더 투표를 저장하지 못했습니다.', 'error'),
+  })
 
   if (!folderId) {
     return (
@@ -98,7 +174,7 @@ export function FolderPage() {
         <EmptyState
           title="폴더를 찾을 수 없습니다"
           body="스캔 후 삭제되었을 수 있습니다."
-          action={<Button onClick={() => navigate('/')}>사진 모음</Button>}
+          action={<Button onClick={() => navigate('/')}>사진 목록</Button>}
         />
       </div>
     )
@@ -111,13 +187,41 @@ export function FolderPage() {
     <AssetGallery
       title={folder.name}
       filters={{ folderId: folder.id }}
+      meta={
+        <span className="inline-flex flex-wrap items-center gap-3 tabular-nums">
+          <span>{formatCount(folder.directImageCount)}개 사진</span>
+          <span className="inline-flex items-center gap-1">
+            <Eye size={12} />
+            조회수 {formatCount(folder.viewCount)}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <ThumbsUp size={12} />
+            Vote {formatCount(folder.voteCount)}
+          </span>
+        </span>
+      }
+      actions={
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={() => vote.mutate(folder.id)}
+          disabled={vote.isPending}
+        >
+          <ThumbsUp size={13} />
+          Vote {formatCount(folder.voteCount)}
+        </Button>
+      }
       groupByMonth={false}
       breadcrumb={<Breadcrumbs trail={breadcrumb} />}
       subheader={
         children.length > 0 ? (
           <div className={`${CARD_GRID} pb-5`}>
             {children.map((child) => (
-              <FolderCard key={child.id} folder={child} />
+              <FolderCard
+                key={child.id}
+                folder={child}
+                onVote={(id) => vote.mutate(id)}
+              />
             ))}
           </div>
         ) : null

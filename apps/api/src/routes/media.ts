@@ -22,6 +22,7 @@ const idParams = z.object({ id: z.string().min(1).max(64) })
 const thumbnailQuery = z.object({
   size: z.enum(['320', '640']).optional(),
   v: z.string().optional(),
+  pv: z.string().optional(),
   p: z.string().optional(),
 })
 const hlsParams = z.object({ id: z.string().min(1).max(64), file: z.string().min(1).max(64) })

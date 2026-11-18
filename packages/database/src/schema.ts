@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 12
+export const SCHEMA_VERSION = 13
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -344,102 +344,97 @@ CREATE TABLE IF NOT EXISTS scene_embeddings (
 );
 `
 
-export const FACE_SQL = `
-CREATE TABLE IF NOT EXISTS face_jobs (
-  id TEXT PRIMARY KEY,
-  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-  file_version INTEGER NOT NULL,
-  state TEXT NOT NULL CHECK (state IN ('queued','detecting','writing','completed','failed','canceled')),
-  stage TEXT NOT NULL DEFAULT 'queued' CHECK (stage IN ('queued','sampling','detecting','writing','completed')),
-  progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
-  attempts INTEGER NOT NULL DEFAULT 0,
-  max_attempts INTEGER NOT NULL DEFAULT 3,
-  lease_owner TEXT,
-  lease_expires_at INTEGER,
-  run_after INTEGER NOT NULL DEFAULT 0,
-  model_id TEXT NOT NULL,
-  model_revision TEXT NOT NULL,
-  model_sha256 TEXT NOT NULL,
-  pipeline_version TEXT NOT NULL,
-  dimensions INTEGER NOT NULL,
-  sample_ms INTEGER NOT NULL,
-  error_message TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  started_at INTEGER
-);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_face_jobs_active
-  ON face_jobs(asset_id, file_version)
-  WHERE state IN ('queued','detecting','writing');
-CREATE INDEX IF NOT EXISTS idx_face_jobs_claim ON face_jobs(state, run_after, created_at);
-CREATE INDEX IF NOT EXISTS idx_face_jobs_lease ON face_jobs(state, lease_expires_at);
+export const OVERHAUL_V13_SQL = `
+DROP TABLE IF EXISTS person_review_actions;
+DROP TABLE IF EXISTS person_assets;
+DROP TABLE IF EXISTS person_faces;
+DROP TABLE IF EXISTS face_embeddings;
+DROP TABLE IF EXISTS face_detections;
+DROP TABLE IF EXISTS face_jobs;
+DROP TABLE IF EXISTS people;
 
-CREATE TABLE IF NOT EXISTS people (
+ALTER TABLE assets ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE assets ADD COLUMN watch_time_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE assets ADD COLUMN vote_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE assets ADD COLUMN poster_version INTEGER NOT NULL DEFAULT 1;
+
+UPDATE assets
+SET vote_count = vote_count + (
+  SELECT COUNT(*) FROM favorites f WHERE f.asset_id = assets.id
+)
+WHERE EXISTS (SELECT 1 FROM favorites f WHERE f.asset_id = assets.id);
+
+DROP TABLE IF EXISTS favorites;
+
+ALTER TABLE folders ADD COLUMN vote_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE folders ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;
+
+UPDATE folders
+SET created_at = COALESCE(
+  (SELECT MIN(a.indexed_at) FROM assets a WHERE a.folder_id = folders.id AND a.deleted_at IS NULL),
+  0
+)
+WHERE created_at = 0;
+
+CREATE INDEX IF NOT EXISTS idx_assets_kind_views
+  ON assets(kind, view_count DESC, id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_assets_kind_watch
+  ON assets(kind, watch_time_ms DESC, id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_assets_kind_votes
+  ON assets(kind, vote_count DESC, id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_assets_kind_name
+  ON assets(kind, filename COLLATE NOCASE ASC, id ASC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_assets_folder_kind
+  ON assets(folder_id, kind, view_count) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_assets_video_avg
+  ON assets(watch_time_ms, view_count)
+  WHERE deleted_at IS NULL AND kind = 'video' AND view_count > 0 AND watch_time_ms > 0;
+
+CREATE TABLE IF NOT EXISTS tags (
   id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  state TEXT NOT NULL CHECK (state IN ('candidate','approved','excluded')),
-  cover_detection_id TEXT,
-  face_count INTEGER NOT NULL DEFAULT 0,
-  centroid BLOB,
-  dimensions INTEGER,
-  model_sha256 TEXT,
+  name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS asset_tags (
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (asset_id, tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_tags_tag ON asset_tags(tag_id, asset_id);
+
+CREATE TABLE IF NOT EXISTS contribution_events (
+  id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('folder','video')),
+  entity_key TEXT NOT NULL,
+  asset_id TEXT REFERENCES assets(id) ON DELETE SET NULL,
+  folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  relative_path TEXT NOT NULL,
+  day_key TEXT NOT NULL,
+  occurred_at INTEGER NOT NULL,
+  UNIQUE(entity_type, entity_key)
+);
+CREATE INDEX IF NOT EXISTS idx_contributions_day ON contribution_events(day_key, occurred_at);
+
+CREATE TABLE IF NOT EXISTS archive_jobs (
+  id TEXT PRIMARY KEY,
+  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+  archive_path TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('queued','extracting','converting','completed','failed_password','failed')),
+  password_used TEXT,
+  extracted_files INTEGER NOT NULL DEFAULT 0,
+  converted_images INTEGER NOT NULL DEFAULT 0,
+  converted_videos INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT,
+  signature TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_people_state ON people(state, face_count DESC);
-
-CREATE TABLE IF NOT EXISTS face_detections (
-  id TEXT PRIMARY KEY,
-  job_id TEXT NOT NULL REFERENCES face_jobs(id) ON DELETE CASCADE,
-  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-  file_version INTEGER NOT NULL,
-  frame_ms INTEGER NOT NULL CHECK (frame_ms >= 0),
-  x REAL NOT NULL,
-  y REAL NOT NULL,
-  width REAL NOT NULL,
-  height REAL NOT NULL,
-  score REAL NOT NULL,
-  thumbnail_path TEXT,
-  model_sha256 TEXT NOT NULL,
-  pipeline_version TEXT NOT NULL,
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_face_detections_asset
-  ON face_detections(asset_id, file_version, frame_ms);
-
-CREATE TABLE IF NOT EXISTS face_embeddings (
-  detection_id TEXT PRIMARY KEY REFERENCES face_detections(id) ON DELETE CASCADE,
-  dimensions INTEGER NOT NULL,
-  vector BLOB NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS person_faces (
-  person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
-  detection_id TEXT NOT NULL REFERENCES face_detections(id) ON DELETE CASCADE,
-  similarity REAL,
-  source TEXT NOT NULL CHECK (source IN ('seed','assigned','manual')),
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (person_id, detection_id)
-);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_person_faces_detection ON person_faces(detection_id);
-
-CREATE TABLE IF NOT EXISTS person_assets (
-  person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
-  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-  face_count INTEGER NOT NULL,
-  best_detection_id TEXT,
-  PRIMARY KEY (person_id, asset_id)
-);
-CREATE INDEX IF NOT EXISTS idx_person_assets_asset ON person_assets(asset_id);
-
-CREATE TABLE IF NOT EXISTS person_review_actions (
-  id TEXT PRIMARY KEY,
-  person_id TEXT,
-  action TEXT NOT NULL CHECK (action IN ('approve','exclude','merge','split','rename','rescan')),
-  payload TEXT,
-  user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-  created_at INTEGER NOT NULL
-);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_archive_jobs_sig
+  ON archive_jobs(library_id, archive_path, signature);
+CREATE INDEX IF NOT EXISTS idx_archive_jobs_state ON archive_jobs(state, updated_at DESC);
 `
 
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
@@ -457,7 +452,8 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(REVIEW_SQL),
   (exec) => exec(EMBEDDING_SQL),
   (exec) => exec(SCENE_SQL),
-  (exec) => exec(FACE_SQL),
+  // Face recognition was removed; existing face tables are dropped in migration 13.
+  () => {},
   // A released lease keeps its row so the next acquire can see which kind just
   // let go of the card and step back for one turn.
   (exec) => exec('ALTER TABLE gpu_leases ADD COLUMN released_at INTEGER'),
@@ -472,4 +468,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
       last_id TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     )`),
+  (exec) => exec(OVERHAUL_V13_SQL),
 ]

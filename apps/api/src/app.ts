@@ -7,14 +7,13 @@ import { registerAuthRoutes } from './routes/auth'
 import { registerIndexRoutes } from './routes/index-run'
 import { registerLibraryRoutes } from './routes/libraries'
 import { registerMediaRoutes } from './routes/media'
-import { registerPeopleRoutes } from './routes/people'
 import { registerSceneRoutes } from './routes/scenes'
 import { registerSystemRoutes } from './routes/system'
+import { registerTagRoutes } from './routes/tags'
 import { registerTranscriptionRoutes } from './routes/transcriptions'
 import { registerTranslationRoutes } from './routes/translations'
 import { registerWorkerAsrRoutes } from './routes/worker-asr'
 import { registerWorkerEmbeddingRoutes } from './routes/worker-embedding'
-import { registerWorkerFaceRoutes } from './routes/worker-face'
 import { registerWorkerGpuRoutes } from './routes/worker-gpu'
 import { registerWorkerSceneRoutes } from './routes/worker-scene'
 import { registerWorkerTranslationRoutes } from './routes/worker-translation'
@@ -66,14 +65,13 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerIndexRoutes(app, ctx)
   registerLibraryRoutes(app, ctx)
   registerAssetRoutes(app, ctx)
+  registerTagRoutes(app, ctx)
   registerMediaRoutes(app, ctx)
   registerTranscriptionRoutes(app, ctx)
   registerTranslationRoutes(app, ctx)
-  registerPeopleRoutes(app, ctx)
   registerSceneRoutes(app, ctx)
   registerWorkerAsrRoutes(app, ctx)
   registerWorkerEmbeddingRoutes(app, ctx)
-  registerWorkerFaceRoutes(app, ctx)
   registerWorkerGpuRoutes(app, ctx)
   registerWorkerSceneRoutes(app, ctx)
   registerWorkerTranslationRoutes(app, ctx)

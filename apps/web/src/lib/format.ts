@@ -38,6 +38,24 @@ export function formatDuration(ms: number | null): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+export function formatWatchTime(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '0초'
+  const total = Math.floor(ms / 1000)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  const parts: string[] = []
+  if (hours > 0) parts.push(`${hours}시간`)
+  if (minutes > 0 || hours > 0) parts.push(`${minutes}분`)
+  parts.push(`${seconds}초`)
+  return parts.join(' ')
+}
+
+export function formatRate(rate: number | null | undefined): string {
+  if (rate === null || rate === undefined || !Number.isFinite(rate)) return '-'
+  return `${rate.toFixed(1)}%`
+}
+
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']

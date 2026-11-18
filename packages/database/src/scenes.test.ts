@@ -448,7 +448,7 @@ describe('scene search', () => {
 })
 
 describe('migration', () => {
-  test('a version 7 database gains the scene and face tables', () => {
+  test('a version 7 database upgrades cleanly to version 13 without face or favorites tables', () => {
     const dir = mkdtempSync(join(tmpdir(), 'mediavault-migrate-'))
     const path = join(dir, 'library.sqlite')
     try {
@@ -472,6 +472,15 @@ describe('migration', () => {
         'scene_jobs',
         'video_scenes',
         'scene_embeddings',
+        'tags',
+        'asset_tags',
+        'contribution_events',
+        'archive_jobs',
+      ]) {
+        expect(tables).toContain(name)
+      }
+      for (const removed of [
+        'favorites',
         'face_jobs',
         'face_detections',
         'face_embeddings',
@@ -480,7 +489,7 @@ describe('migration', () => {
         'person_assets',
         'person_review_actions',
       ]) {
-        expect(tables).toContain(name)
+        expect(tables).not.toContain(removed)
       }
       db.close()
     } finally {

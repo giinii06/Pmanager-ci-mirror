@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
 import { Maximize, Minimize } from 'lucide-react'
 import type { AssetDTO, SubtitleTrackDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
+import { patchAssetInCaches } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
 import {
   CAPTION_SCALE_KEY,
@@ -25,6 +27,7 @@ export function VideoPlayer({
   videoRef: externalRef,
   fill = false,
   startMs = null,
+  onPausedChange,
 }: {
   asset: AssetDTO
   subtitleUrl?: string | null
@@ -36,7 +39,9 @@ export function VideoPlayer({
   fill?: boolean
   /** A search hit's second, which wins over the saved resume position. */
   startMs?: number | null
+  onPausedChange?: (paused: boolean) => void
 }) {
+  const queryClient = useQueryClient()
   const localRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLTrackElement>(null)
@@ -188,6 +193,103 @@ export function VideoPlayer({
       save()
     }
   }, [asset.id, useHls])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    let viewSent = false
+    let activeSince: number | null = null
+    let pendingMs = 0
+
+    const commitElapsed = () => {
+      if (activeSince === null) return
+      const now = performance.now()
+      const delta = now - activeSince
+      activeSince = null
+      if (delta > 0 && Number.isFinite(delta)) pendingMs += delta
+    }
+
+    const flush = (keepalive: boolean) => {
+      commitElapsed()
+      const rawDelta = Math.round(pendingMs)
+      if (rawDelta < 250) {
+        if (!video.paused && !video.seeking && video.readyState >= 3) {
+          activeSince = performance.now()
+        }
+        return
+      }
+      const deltaMs = Math.min(rawDelta, 600_000)
+      pendingMs = Math.max(0, rawDelta - deltaMs)
+      api
+        .addWatchTime(asset.id, deltaMs, keepalive)
+        .then((updated) => patchAssetInCaches(queryClient, updated))
+        .catch(() => {
+          pendingMs = Math.min(pendingMs + deltaMs, 600_000)
+        })
+      if (!video.paused && !video.seeking && video.readyState >= 3) {
+        activeSince = performance.now()
+      }
+    }
+
+    const onPlaying = () => {
+      onPausedChange?.(false)
+      if (activeSince === null) activeSince = performance.now()
+      if (!viewSent) {
+        viewSent = true
+        api
+          .incrementView(asset.id)
+          .then((updated) => patchAssetInCaches(queryClient, updated))
+          .catch(() => {
+            viewSent = false
+          })
+      }
+    }
+
+    const onPauseOrEnd = () => {
+      onPausedChange?.(true)
+      flush(false)
+    }
+
+    const onStopTicking = () => {
+      commitElapsed()
+    }
+
+    const onPlay = () => {
+      onPausedChange?.(false)
+    }
+
+    const onPageHide = () => flush(true)
+
+    onPausedChange?.(video.paused)
+    const timer = window.setInterval(() => {
+      if (activeSince !== null && performance.now() - activeSince >= 4_000) {
+        flush(false)
+      }
+    }, 2_000)
+
+    video.addEventListener('playing', onPlaying)
+    video.addEventListener('play', onPlay)
+    video.addEventListener('pause', onPauseOrEnd)
+    video.addEventListener('ended', onPauseOrEnd)
+    video.addEventListener('waiting', onStopTicking)
+    video.addEventListener('seeking', onStopTicking)
+    video.addEventListener('stalled', onStopTicking)
+    window.addEventListener('pagehide', onPageHide)
+
+    return () => {
+      window.clearInterval(timer)
+      video.removeEventListener('playing', onPlaying)
+      video.removeEventListener('play', onPlay)
+      video.removeEventListener('pause', onPauseOrEnd)
+      video.removeEventListener('ended', onPauseOrEnd)
+      video.removeEventListener('waiting', onStopTicking)
+      video.removeEventListener('seeking', onStopTicking)
+      video.removeEventListener('stalled', onStopTicking)
+      window.removeEventListener('pagehide', onPageHide)
+      flush(true)
+    }
+  }, [asset.id, onPausedChange, queryClient, videoRef])
 
   useEffect(() => {
     const element = trackRef.current

@@ -1,4 +1,5 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
+import type { FolderSort } from '@mediavault/shared'
 import type { Db } from './db'
 import type { FolderRecord } from './types'
 
@@ -12,26 +13,48 @@ export interface UpsertFolderInput {
   name: string
   depth: number
   scanId: string
+  createdAt?: number
 }
 
 const FOLDER_SELECT = `
   f.id, f.library_id AS libraryId, f.parent_id AS parentId, f.name,
   f.relative_path AS relativePath, f.depth, f.asset_count AS assetCount,
   f.cover_asset_id AS coverAssetId,
+  f.vote_count AS voteCount,
+  f.created_at AS createdAt,
   (SELECT COUNT(*) FROM assets a
-   WHERE a.folder_id = f.id AND a.deleted_at IS NULL AND a.kind = 'image') AS directImageCount
+   WHERE a.folder_id = f.id AND a.deleted_at IS NULL AND a.kind = 'image') AS directImageCount,
+  (SELECT COALESCE(SUM(a.view_count), 0) FROM assets a
+   WHERE a.folder_id = f.id AND a.deleted_at IS NULL AND a.kind = 'image') AS viewCount
 `
 
+function folderOrderSql(sort?: FolderSort): string {
+  switch (sort) {
+    case 'views':
+      return 'viewCount DESC, f.name COLLATE NOCASE ASC, f.id ASC'
+    case 'votes':
+      return 'f.vote_count DESC, f.name COLLATE NOCASE ASC, f.id ASC'
+    case 'date':
+      return 'f.created_at DESC, f.name COLLATE NOCASE ASC, f.id DESC'
+    case 'name':
+      return 'f.name COLLATE NOCASE ASC, f.relative_path ASC'
+    default:
+      return 'f.library_id, f.relative_path'
+  }
+}
+
 export function upsertFolder(db: Db, input: UpsertFolderInput): string {
+  const createdAt = input.createdAt ?? Date.now()
   const row = db
     .query<{ id: string }, Params>(
-      `INSERT INTO folders (id, library_id, parent_id, relative_path, name, depth, last_seen_scan)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO folders (id, library_id, parent_id, relative_path, name, depth, last_seen_scan, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (library_id, relative_path) DO UPDATE SET
          parent_id = excluded.parent_id,
          name = excluded.name,
          depth = excluded.depth,
-         last_seen_scan = excluded.last_seen_scan
+         last_seen_scan = excluded.last_seen_scan,
+         created_at = CASE WHEN folders.created_at = 0 THEN excluded.created_at ELSE folders.created_at END
        RETURNING id`,
     )
     .get(
@@ -42,25 +65,34 @@ export function upsertFolder(db: Db, input: UpsertFolderInput): string {
       input.name,
       input.depth,
       input.scanId,
+      createdAt,
     )
   if (!row) throw new Error(`folder upsert returned no row for ${input.relativePath}`)
   return row.id
 }
 
-export function listFolders(db: Db, libraryId: string): FolderRecord[] {
+export function listFolders(db: Db, libraryId: string, sort?: FolderSort): FolderRecord[] {
   return db
     .query<FolderRecord, Params>(
-      `SELECT ${FOLDER_SELECT} FROM folders f WHERE f.library_id = ? ORDER BY f.relative_path`,
+      `SELECT ${FOLDER_SELECT} FROM folders f WHERE f.library_id = ? ORDER BY ${folderOrderSql(sort)}`,
     )
     .all(libraryId)
 }
 
-export function listAllFolders(db: Db): FolderRecord[] {
+export function listAllFolders(db: Db, sort?: FolderSort): FolderRecord[] {
   return db
     .query<FolderRecord, []>(
-      `SELECT ${FOLDER_SELECT} FROM folders f ORDER BY f.library_id, f.relative_path`,
+      `SELECT ${FOLDER_SELECT} FROM folders f ORDER BY ${folderOrderSql(sort)}`,
     )
     .all()
+}
+
+export function voteFolder(db: Db, folderId: string): FolderRecord | null {
+  const result = db
+    .query<null, Params>('UPDATE folders SET vote_count = vote_count + 1 WHERE id = ?')
+    .run(folderId)
+  if (result.changes === 0) return null
+  return getFolder(db, folderId)
 }
 
 export function getFolder(db: Db, id: string): FolderRecord | null {

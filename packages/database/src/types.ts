@@ -1,17 +1,16 @@
 import type {
+  ArchiveJobState,
   AsrJobState,
   AsrStage,
   AssetKind,
   EmbeddingJobState,
   EmbeddingStage,
-  FaceJobState,
-  FaceStage,
   JobKind,
   JobState,
-  PersonState,
   ScanState,
   SceneJobState,
   SceneStage,
+  TagDTO,
   TranslationJobState,
   TranslationStage,
 } from '@mediavault/shared'
@@ -39,6 +38,9 @@ export interface FolderRecord {
   assetCount: number
   directImageCount: number
   coverAssetId: string | null
+  viewCount: number
+  voteCount: number
+  createdAt: number
 }
 
 export interface AssetRow {
@@ -59,10 +61,16 @@ export interface AssetRow {
   videoCodec: string | null
   audioCodec: string | null
   container: string | null
-  favorite: number
+  viewCount: number
+  watchTimeMs: number
+  voteCount: number
+  posterVersion: number
 }
 
-export type AssetRecord = Omit<AssetRow, 'favorite'> & { favorite: boolean }
+export interface AssetRecord extends AssetRow {
+  rate: number | null
+  tags: TagDTO[]
+}
 
 export interface ScanAssetRow {
   id: string
@@ -351,76 +359,44 @@ export interface SceneSearchHit {
   modality: 'visual' | 'audio' | 'av'
 }
 
-export interface FaceJobRecord {
-  id: string
-  assetId: string
-  fileVersion: number
-  state: FaceJobState
-  stage: FaceStage
-  progress: number
-  attempts: number
-  maxAttempts: number
-  leaseOwner: string | null
-  leaseExpiresAt: number | null
-  runAfter: number
-  modelId: string
-  modelRevision: string
-  modelSha256: string
-  pipelineVersion: string
-  dimensions: number
-  sampleMs: number
-  errorMessage: string | null
-  startedAt: number | null
-  createdAt: number
-  updatedAt: number
-}
-
-export interface FaceDetectionRecord {
-  id: string
-  jobId: string
-  assetId: string
-  fileVersion: number
-  frameMs: number
-  x: number
-  y: number
-  width: number
-  height: number
-  score: number
-  thumbnailPath: string | null
-  modelSha256: string
-  pipelineVersion: string
-  createdAt: number
-}
-
-export interface FaceVectorInput {
-  frameMs: number
-  x: number
-  y: number
-  width: number
-  height: number
-  score: number
-  thumbnailPath: string | null
-  vector: Float32Array
-}
-
-export interface PersonRecord {
+export interface TagRecord {
   id: string
   name: string
-  state: PersonState
-  coverDetectionId: string | null
-  faceCount: number
-  centroid: Float32Array | null
-  dimensions: number | null
-  modelSha256: string | null
   createdAt: number
-  updatedAt: number
 }
 
-export interface PersonAssetRecord {
-  personId: string
-  assetId: string
-  faceCount: number
-  bestDetectionId: string | null
-  filename: string
-  durationMs: number | null
+export interface TagSummaryRecord {
+  id: string
+  name: string
+  assetCount: number
+  coverAssetId: string | null
+  coverPosterVersion: number | null
+  createdAt: number
+}
+
+export interface ContributionEventRecord {
+  id: string
+  entityType: 'folder' | 'video'
+  entityKey: string
+  assetId: string | null
+  folderId: string | null
+  title: string
+  relativePath: string
+  dayKey: string
+  occurredAt: number
+}
+
+export interface ArchiveJobRecord {
+  id: string
+  libraryId: string
+  archivePath: string
+  state: ArchiveJobState
+  passwordUsed: string | null
+  extractedFiles: number
+  convertedImages: number
+  convertedVideos: number
+  errorMessage: string | null
+  signature: string
+  createdAt: number
+  updatedAt: number
 }

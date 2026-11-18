@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Search, Settings2 } from 'lucide-react'
+import { Menu, PanelLeft, Search, Settings2 } from 'lucide-react'
 import { useDebounced } from '../lib/hooks'
 import { useUi } from '../store/ui'
 
@@ -8,6 +8,7 @@ export function Topbar() {
   const navigate = useNavigate()
   const location = useLocation()
   const setSidebarOpen = useUi((state) => state.setSidebarOpen)
+  const toggleSidebarCollapsed = useUi((state) => state.toggleSidebarCollapsed)
   const [value, setValue] = useState(() => {
     if (typeof window === 'undefined') return ''
     return new URLSearchParams(window.location.search).get('q') ?? ''
@@ -53,6 +54,15 @@ export function Topbar() {
         className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-ink md:hidden"
       >
         <Menu size={18} />
+      </button>
+      <button
+        type="button"
+        onClick={toggleSidebarCollapsed}
+        aria-label="사이드바 토글"
+        title="사이드바 접기/펼치기"
+        className="hidden rounded-md p-1.5 text-muted hover:bg-raised hover:text-ink md:inline-flex"
+      >
+        <PanelLeft size={16} />
       </button>
 
       <div className="relative w-full max-w-[380px]">

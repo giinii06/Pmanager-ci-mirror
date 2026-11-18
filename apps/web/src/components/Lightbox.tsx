@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import type { SubtitleTrackDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
-import { useFavorite } from '../lib/useFavorite'
 import { useViewer } from '../store/viewer'
 import { ImageViewer } from './ImageViewer'
 import { WatchPage } from './WatchPage'
@@ -15,11 +14,12 @@ export function Lightbox() {
   const items = useViewer((state) => state.items)
   const index = useViewer((state) => state.index)
   const startMs = useViewer((state) => state.startMs)
+  const shuffle = useViewer((state) => state.shuffle)
+  const toggleShuffle = useViewer((state) => state.toggleShuffle)
   const close = useViewer((state) => state.close)
   const next = useViewer((state) => state.next)
   const prev = useViewer((state) => state.prev)
   const select = useViewer((state) => state.select)
-  const favorite = useFavorite()
 
   const asset = items[index]
   const [showTranscript, setShowTranscript] = useState(false)
@@ -45,8 +45,6 @@ export function Lightbox() {
       ? (sourceTrack?.language ?? null)
       : (subtitleTracks.data?.defaultLanguage ?? null)
 
-  // A choice outlives refetches of the tracks, so a translation turning ready
-  // never pulls the viewer off the language they picked for this asset.
   const [subtitleChoice, setSubtitleChoice] = useState<{
     assetId: string
     language: string | null
@@ -58,8 +56,6 @@ export function Lightbox() {
   const subtitleUrl =
     asset?.kind === 'video' && language ? api.vttUrl(asset.id, asset.fileVersion, language) : null
 
-  // The transcript panel follows the viewer across related videos, but an
-  // image has no transcript to keep open.
   useEffect(() => {
     if (!asset || asset.kind !== 'video') setShowTranscript(false)
   }, [asset?.id, asset?.kind])
@@ -75,20 +71,17 @@ export function Lightbox() {
       const target = event.target as HTMLElement | null
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
       if (event.key === 'Escape') {
-        // The same keypress that leaves fullscreen must not also close the viewer.
         if (document.fullscreenElement) return
         close()
       }
       else if (event.key === 'ArrowRight') next()
       else if (event.key === 'ArrowLeft') prev()
-      else if (event.key.toLowerCase() === 'f')
-        favorite.mutate({ id: asset.id, favorite: !asset.favorite })
       else if (event.key.toLowerCase() === 'i') setInfoPulse((value) => value + 1)
       else if (event.key.toLowerCase() === 'c') setShowTranscript((value) => !value)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [asset, close, favorite, next, prev])
+  }, [asset, close, next, prev])
 
   useEffect(() => {
     if (!open) return
@@ -116,14 +109,17 @@ export function Lightbox() {
             <WatchPage
               asset={asset}
               libraryName={libraryName}
-              favorite={favorite}
+              shuffle={shuffle}
+              onToggleShuffle={toggleShuffle}
+              onPrev={prev}
+              onNext={next}
               onClose={close}
               onSelectAsset={select}
               subtitleUrl={subtitleUrl}
               tracks={tracks}
               language={language}
-              onSelectLanguage={(next) =>
-                setSubtitleChoice({ assetId: asset.id, language: next })
+              onSelectLanguage={(nextLang) =>
+                setSubtitleChoice({ assetId: asset.id, language: nextLang })
               }
               videoRef={videoRef}
               showTranscript={showTranscript}
@@ -151,7 +147,6 @@ export function Lightbox() {
               items={items}
               index={index}
               libraryName={libraryName}
-              favorite={favorite}
               closeRef={closeRef}
               onClose={close}
               onSelect={select}

@@ -176,3 +176,53 @@ export async function generateVideoThumbnails(
   }
   return targets
 }
+
+/**
+ * Extracts a frame at `positionMs` from a paused video and overwrites every
+ * poster size for the current file version while leaving the source video untouched.
+ */
+export async function extractCustomVideoPoster(
+  src: string,
+  cacheDir: string,
+  assetId: string,
+  version: number,
+  positionMs: number,
+): Promise<string[]> {
+  const seconds = Math.max(0, positionMs / 1000)
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'mediavault-custom-poster-'))
+  const frame = path.join(dir, 'frame.jpg')
+  const targets = THUMBNAIL_SIZES.map((size) => posterPath(cacheDir, assetId, version, size))
+
+  try {
+    await run('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-ss',
+      seconds.toFixed(3),
+      '-i',
+      src,
+      '-frames:v',
+      '1',
+      '-q:v',
+      '2',
+      frame,
+    ]).catch(() => undefined)
+
+    if (!(await fileExists(frame))) {
+      await run('ffmpeg', ['-v', 'error', '-y', '-i', src, '-frames:v', '1', '-q:v', '2', frame])
+    }
+
+    for (let index = 0; index < THUMBNAIL_SIZES.length; index += 1) {
+      const size = THUMBNAIL_SIZES[index]
+      const target = targets[index]
+      if (size === undefined || !target) continue
+      await writeAtomic(target, async (tmp) => {
+        await imagePipeline(frame, size).toFile(tmp)
+      })
+    }
+    return targets
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}

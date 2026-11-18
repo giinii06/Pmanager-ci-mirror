@@ -1,10 +1,18 @@
 import { Link } from 'react-router-dom'
-import { ChevronRight, Folder as FolderIcon } from 'lucide-react'
+import { ChevronRight, Eye, Folder as FolderIcon, ThumbsUp } from 'lucide-react'
 import { POSTER_SCHEME, type FolderDTO } from '@mediavault/shared'
 import { formatCount } from '../lib/format'
 import { Thumb } from './Thumb'
 
-export function FolderCard({ folder, count }: { folder: FolderDTO; count?: number }) {
+export function FolderCard({
+  folder,
+  count,
+  onVote,
+}: {
+  folder: FolderDTO
+  count?: number
+  onVote?: (folderId: string) => void
+}) {
   return (
     <Link
       to={`/folders/${folder.id}`}
@@ -23,12 +31,37 @@ export function FolderCard({ folder, count }: { folder: FolderDTO; count?: numbe
             <FolderIcon size={26} strokeWidth={1.4} />
           </div>
         )}
-        <span className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent opacity-70" />
+        <span className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-80" />
+        {onVote ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onVote(folder.id)
+            }}
+            aria-label={`${folder.name} 폴더 Vote`}
+            className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[11px] font-medium tabular-nums text-white backdrop-blur-sm transition-colors hover:bg-accent"
+          >
+            <ThumbsUp size={11} />
+            <span>{formatCount(folder.voteCount)}</span>
+          </button>
+        ) : null}
       </div>
       <div className="flex items-center gap-2 px-3.5 py-2.5">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium text-ink">{folder.name}</p>
-          <p className="text-[11.5px] text-muted">{formatCount(count ?? folder.assetCount)}개</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] tabular-nums text-muted">
+            <span>{formatCount(count ?? folder.assetCount)}개</span>
+            <span className="inline-flex items-center gap-1">
+              <Eye size={11} className="text-faint" />
+              {formatCount(folder.viewCount)}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <ThumbsUp size={11} className="text-faint" />
+              {formatCount(folder.voteCount)}
+            </span>
+          </p>
         </div>
         <ChevronRight
           size={14}

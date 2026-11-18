@@ -10,6 +10,7 @@ import {
   getLibrary,
   insertAsset,
   recomputeFolderCounts,
+  reconcileContributions,
   softDeleteMissing,
   touchAssets,
   updateAssetFile,
@@ -19,6 +20,7 @@ import {
 } from '@mediavault/database'
 import { PRIORITY, classifyFile, extensionOf, newId } from '@mediavault/shared'
 import { probeImage, probeVideo, resolveInside } from '@mediavault/media'
+import { enqueueArchivesInDir } from './archives'
 import type { WorkerConfig } from './config'
 
 const TOUCH_BATCH = 500
@@ -221,6 +223,8 @@ export async function scanLibrary(
         updateScanProgress(db, libraryId, summary.files)
       }
     }
+
+    await enqueueArchivesInDir(db, libraryId, root, absolute, PRIORITY.backlog)
   }
 
   await walk(root, '', null, 0)
@@ -247,6 +251,7 @@ export async function scanLibrary(
   summary.removed = softDeleteMissing(db, libraryId, scanId, Date.now())
   deleteStaleFolders(db, libraryId, scanId)
   recomputeFolderCounts(db, libraryId)
+  reconcileContributions(db)
   finishScan(db, libraryId, Date.now(), summary.files)
   console.info(
     JSON.stringify({

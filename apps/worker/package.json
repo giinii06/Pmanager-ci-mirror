@@ -11,6 +11,7 @@
   "dependencies": {
     "@mediavault/database": "workspace:*",
     "@mediavault/media": "workspace:*",
-    "@mediavault/shared": "workspace:*"
+    "@mediavault/shared": "workspace:*",
+    "chokidar": "^6.0.0"
   }
 }

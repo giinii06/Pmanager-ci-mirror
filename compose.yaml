@@ -7,6 +7,7 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     environment:
+      TZ: ${TZ:-Asia/Seoul}
       MEDIA_ACCEL: nginx
       AUTH_SECRET: ${AUTH_SECRET:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
@@ -15,8 +16,8 @@ services:
       # Test seam for a full cursor walk. Leave unset in normal operation.
       PIPELINE_BATCH: ${PIPELINE_BATCH:-500}
     volumes:
-      - ${MEDIA_ROOT:-./sample-media}:/media:ro
-      - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra:ro
+      - ${MEDIA_ROOT:-./sample-media}:/media
+      - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra
       - mediavault-data:/data
       - mediavault-cache:/cache
     healthcheck:
@@ -36,13 +37,15 @@ services:
       dockerfile: apps/worker/Dockerfile
     restart: unless-stopped
     environment:
+      TZ: ${TZ:-Asia/Seoul}
       HWACCEL: ${HWACCEL:-}
       GPU_RESOURCE: ${GPU_RESOURCE:-gpu:0}
       SCAN_DELETE_GUARD_RATIO: ${SCAN_DELETE_GUARD_RATIO:-0.2}
       SCAN_DELETE_FORCE: ${SCAN_DELETE_FORCE:-0}
+      WATCH_POLLING: ${WATCH_POLLING:-1}
     volumes:
-      - ${MEDIA_ROOT:-./sample-media}:/media:ro
-      - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra:ro
+      - ${MEDIA_ROOT:-./sample-media}:/media
+      - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra
       - mediavault-data:/data
       - mediavault-cache:/cache
 
