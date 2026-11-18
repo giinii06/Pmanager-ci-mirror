@@ -1,4 +1,4 @@
-import { readdir, realpath, stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import {
@@ -17,6 +17,7 @@ import type { AppContext } from '../context'
 import { toArchiveJobDTO, toJobDTO, toWorkQueueDTO } from '../dto'
 
 const STORAGE_CACHE_TTL_MS = 30_000
+const WALK_CONCURRENCY = 24
 
 function isTempPathName(name: string): boolean {
   return (
@@ -28,98 +29,119 @@ function isTempPathName(name: string): boolean {
 
 interface WalkTally {
   totalBytes: number
-  videoBytes: number
-  imageBytes: number
+  otherBytes: number
   tempBytes: number
+}
+
+async function runBounded<T>(items: T[], worker: (item: T) => Promise<void>): Promise<void> {
+  if (items.length === 0) return
+  let next = 0
+  const workers = Array.from({ length: Math.min(WALK_CONCURRENCY, items.length) }, async () => {
+    while (next < items.length) {
+      const idx = next
+      next += 1
+      await worker(items[idx]!)
+    }
+  })
+  await Promise.all(workers)
 }
 
 async function walkTreeSizes(
   root: string,
   seenDirs: Set<string>,
-  classifyMedia: boolean,
+  skipIndexedMediaStat: boolean,
   tally: WalkTally,
 ): Promise<void> {
-  let canonical: string
-  try {
-    canonical = await realpath(root)
-  } catch {
-    return
-  }
-  if (seenDirs.has(canonical)) return
-  seenDirs.add(canonical)
+  const queue: Array<{ dir: string; forceTemp: boolean }> = [
+    { dir: path.resolve(root), forceTemp: false },
+  ]
 
-  let entries
-  try {
-    entries = await readdir(canonical, { withFileTypes: true })
-  } catch {
-    return
-  }
+  while (queue.length > 0) {
+    const batch = queue.splice(0, WALK_CONCURRENCY)
+    await Promise.all(
+      batch.map(async ({ dir, forceTemp }) => {
+        if (seenDirs.has(dir)) return
+        seenDirs.add(dir)
 
-  for (const entry of entries) {
-    if (entry.isSymbolicLink()) continue
-    const abs = path.join(canonical, entry.name)
-    if (entry.isDirectory()) {
-      if (isTempPathName(entry.name)) {
-        const sub: WalkTally = { totalBytes: 0, videoBytes: 0, imageBytes: 0, tempBytes: 0 }
-        await walkTreeSizes(abs, seenDirs, false, sub)
-        tally.tempBytes += sub.totalBytes
-        tally.totalBytes += sub.totalBytes
-      } else {
-        await walkTreeSizes(abs, seenDirs, classifyMedia, tally)
-      }
-      continue
-    }
-    if (!entry.isFile()) continue
-    let size = 0
-    try {
-      size = (await stat(abs)).size
-    } catch {
-      continue
-    }
-    tally.totalBytes += size
-    if (isTempPathName(entry.name)) {
-      tally.tempBytes += size
-      continue
-    }
-    if (classifyMedia) {
-      const kind = classifyFile(entry.name)?.kind
-      if (kind === 'video') tally.videoBytes += size
-      else if (kind === 'image') tally.imageBytes += size
-    }
+        let entries
+        try {
+          entries = await readdir(dir, { withFileTypes: true })
+        } catch {
+          return
+        }
+
+        const filesToStat: Array<{ abs: string; temp: boolean }> = []
+        for (const entry of entries) {
+          if (entry.isSymbolicLink()) continue
+          const abs = path.join(dir, entry.name)
+          if (entry.isDirectory()) {
+            queue.push({ dir: abs, forceTemp: forceTemp || isTempPathName(entry.name) })
+            continue
+          }
+          if (!entry.isFile()) continue
+          const temp = forceTemp || isTempPathName(entry.name)
+          if (!temp && skipIndexedMediaStat && classifyFile(entry.name)) continue
+          filesToStat.push({ abs, temp })
+        }
+
+        await runBounded(filesToStat, async ({ abs, temp }) => {
+          try {
+            const size = (await stat(abs)).size
+            tally.totalBytes += size
+            if (temp) tally.tempBytes += size
+            else tally.otherBytes += size
+          } catch {
+            // File disappeared mid-walk.
+          }
+        })
+      }),
+    )
   }
 }
 
 async function computeStorageStats(ctx: AppContext): Promise<StorageStatsDTO> {
   const stats = getStats(ctx.db)
+  const mediaRow = ctx.db
+    .query<{ videoBytes: number; imageBytes: number }, []>(
+      `SELECT COALESCE(SUM(CASE WHEN kind = 'video' THEN size_bytes ELSE 0 END), 0) AS videoBytes,
+              COALESCE(SUM(CASE WHEN kind = 'image' THEN size_bytes ELSE 0 END), 0) AS imageBytes
+       FROM assets
+       WHERE deleted_at IS NULL`,
+    )
+    .get()
+  const videoBytes = mediaRow?.videoBytes ?? 0
+  const imageBytes = mediaRow?.imageBytes ?? 0
+
   const seenMediaDirs = new Set<string>()
-  const libTally: WalkTally = { totalBytes: 0, videoBytes: 0, imageBytes: 0, tempBytes: 0 }
+  const libTally: WalkTally = { totalBytes: 0, otherBytes: 0, tempBytes: 0 }
 
   for (const lib of listLibraries(ctx.db)) {
     const abs = resolveInside(ctx.config.mediaRoot, lib.rootPath)
     if (abs) await walkTreeSizes(abs, seenMediaDirs, true, libTally)
   }
 
-  const thumbTally: WalkTally = { totalBytes: 0, videoBytes: 0, imageBytes: 0, tempBytes: 0 }
+  const thumbTally: WalkTally = { totalBytes: 0, otherBytes: 0, tempBytes: 0 }
   const seenThumbDirs = new Set<string>()
   for (const sub of ['thumbs', 'previews']) {
     await walkTreeSizes(path.join(ctx.config.cacheDir, sub), seenThumbDirs, false, thumbTally)
   }
 
-  const cacheTally: WalkTally = { totalBytes: 0, videoBytes: 0, imageBytes: 0, tempBytes: 0 }
-  const seenCacheDirs = new Set<string>([...seenThumbDirs])
+  const cacheTally: WalkTally = { totalBytes: 0, otherBytes: 0, tempBytes: 0 }
+  const seenCacheDirs = new Set<string>(seenThumbDirs)
   await walkTreeSizes(ctx.config.cacheDir, seenCacheDirs, false, cacheTally)
   await walkTreeSizes(ctx.config.asr.resultDir, seenCacheDirs, false, cacheTally)
   await walkTreeSizes(ctx.config.translation.resultDir, seenCacheDirs, false, cacheTally)
 
   const tempBytes = libTally.tempBytes + thumbTally.tempBytes + cacheTally.tempBytes
-  const thumbnailBytes = Math.max(0, thumbTally.totalBytes - thumbTally.tempBytes)
-  const cacheBytes = Math.max(0, cacheTally.totalBytes - cacheTally.tempBytes)
+  const thumbnailBytes = thumbTally.otherBytes
+  const cacheBytes = cacheTally.otherBytes
+  const totalLibraryBytes = videoBytes + imageBytes + libTally.otherBytes + libTally.tempBytes
 
   return {
     computedAt: new Date().toISOString(),
-    totalLibraryBytes: libTally.totalBytes,
-    videoBytes: libTally.videoBytes,
-    imageBytes: libTally.imageBytes,
+    totalLibraryBytes,
+    videoBytes,
+    imageBytes,
     thumbnailBytes,
     cacheBytes,
     tempBytes,

@@ -14,16 +14,18 @@ export function openDatabase(filename: string): Db {
 }
 
 function migrate(db: Db): void {
-  const row = db.query<{ user_version: number }, []>('PRAGMA user_version').get()
-  const version = row?.user_version ?? 0
-  if (version >= SCHEMA_VERSION) return
+  const readVersion = () =>
+    db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version ?? 0
+  if (readVersion() >= SCHEMA_VERSION) return
 
   db.transaction(() => {
+    const version = readVersion()
+    if (version >= SCHEMA_VERSION) return
     for (let index = version; index < SCHEMA_VERSION; index += 1) {
       const migration = MIGRATIONS[index]
       if (!migration) throw new Error(`missing migration ${index + 1}`)
       migration((sql) => db.exec(sql))
     }
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
-  })()
+  }).immediate()
 }
