@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, readdir, rename, rm, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
@@ -65,9 +66,13 @@ async function computeSignature(volumes: string[]): Promise<string | null> {
   return parts.join('|')
 }
 
-export async function discoverArchiveSetsInDir(dir: string): Promise<DiscoveredArchiveSet[]> {
-  const entries = await readdir(dir, { withFileTypes: true })
+export async function discoverArchiveSetsFromEntries(
+  dir: string,
+  entries: Dirent[],
+): Promise<DiscoveredArchiveSet[]> {
   const filenames = entries.filter((e) => e.isFile() && !e.name.startsWith('.')).map((e) => e.name)
+  const hasCandidate = filenames.some((name) => /\.(rar|r\d{2,})$/i.test(name))
+  if (!hasCandidate) return []
 
   const partGroups = new Map<string, Array<{ part: number; abs: string }>>()
   const legacySides = new Map<string, Array<{ index: number; abs: string }>>()
@@ -124,6 +129,11 @@ export async function discoverArchiveSetsInDir(dir: string): Promise<DiscoveredA
   }
 
   return sets.sort((a, b) => a.primaryPath.localeCompare(b.primaryPath))
+}
+
+export async function discoverArchiveSetsInDir(dir: string): Promise<DiscoveredArchiveSet[]> {
+  const entries = await readdir(dir, { withFileTypes: true })
+  return discoverArchiveSetsFromEntries(dir, entries)
 }
 
 export async function waitForArchiveStability(

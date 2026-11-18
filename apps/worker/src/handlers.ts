@@ -1,6 +1,7 @@
 import path from 'node:path'
 import {
   getAssetFileInfo,
+  getJob,
   getLibrary,
   setScanState,
   updateArchiveJob,
@@ -18,7 +19,7 @@ import {
 } from '@mediavault/media'
 import type { WorkerConfig } from './config'
 import { withGpuLease } from './gpu'
-import { scanLibrary } from './scan'
+import { scanLibrary, type ScanFenceContext } from './scan'
 
 const HLS_LEASE_WAIT_MS = 5_000
 const HLS_LEASE_MS = 120_000
@@ -136,12 +137,25 @@ async function runArchiveJob(db: Db, config: WorkerConfig, job: JobRecord): Prom
   }
 }
 
-export async function executeJob(db: Db, config: WorkerConfig, job: JobRecord): Promise<void> {
+export interface ExecuteJobContext {
+  signal?: AbortSignal
+  fence?: ScanFenceContext
+}
+
+export async function executeJob(
+  db: Db,
+  config: WorkerConfig,
+  job: JobRecord,
+  execCtx: ExecuteJobContext = {},
+): Promise<void> {
   if (job.kind === 'scan_library') {
     if (!job.libraryId) throw new Error('scan job without a library id')
     setScanState(db, job.libraryId, 'scanning')
     try {
-      const summary = await scanLibrary(db, config, job.libraryId)
+      const summary = await scanLibrary(db, config, job.libraryId, {
+        fence: execCtx.fence,
+        signal: execCtx.signal,
+      })
       console.log(
         `[scan] ${job.libraryId} files=${summary.files} added=${summary.added} updated=${summary.updated} removed=${summary.removed} skipped=${summary.skipped}`,
       )
@@ -165,8 +179,30 @@ export async function executeJob(db: Db, config: WorkerConfig, job: JobRecord): 
   if (!source) throw new Error(`cannot resolve a media path for asset ${info.id}`)
 
   if (job.kind === 'thumbnail') {
+    const canPublish = () => {
+      if (execCtx.signal?.aborted) return false
+      const freshAsset = getAssetFileInfo(db, info.id)
+      if (!freshAsset || freshAsset.deletedAt !== null || freshAsset.fileVersion !== info.fileVersion) {
+        return false
+      }
+      if (execCtx.fence) {
+        const liveJob = getJob(db, job.id)
+        if (
+          !liveJob ||
+          liveJob.state !== 'running' ||
+          liveJob.workerId !== execCtx.fence.workerId ||
+          liveJob.leaseEpoch !== execCtx.fence.leaseEpoch
+        ) {
+          return false
+        }
+      }
+      return true
+    }
+
     if (info.kind === 'image') {
-      await generateImageThumbnails(source, config.cacheDir, info.id, info.fileVersion)
+      await generateImageThumbnails(source, config.cacheDir, info.id, info.fileVersion, {
+        canPublish,
+      })
     } else {
       await generateVideoThumbnails(
         source,
@@ -174,6 +210,7 @@ export async function executeJob(db: Db, config: WorkerConfig, job: JobRecord): 
         info.id,
         info.fileVersion,
         info.durationMs,
+        { canPublish },
       )
     }
     return

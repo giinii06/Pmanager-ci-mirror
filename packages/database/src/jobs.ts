@@ -325,6 +325,24 @@ export function pauseRunningJobWithFence(db: Db, id: number, fence: LeaseFence):
   )
 }
 
+export function requeueInterruptedJobWithFence(db: Db, id: number, fence: LeaseFence): boolean {
+  const guard = assertFencedRunning(fence)
+  return (
+    db
+      .query<null, Params>(
+        `UPDATE jobs SET
+           state = 'queued',
+           worker_id = NULL,
+           lease_expires_at = NULL,
+           attempts = MAX(0, attempts - 1),
+           run_after = ?,
+           updated_at = ?
+         ${guard.clause}`,
+      )
+      .run(fence.now, fence.now, id, ...guard.params).changes === 1
+  )
+}
+
 export function cancelRunningJobWithFence(db: Db, id: number, fence: LeaseFence): boolean {
   const guard = assertFencedRunning(fence)
   return (

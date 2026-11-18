@@ -21,6 +21,8 @@ export interface WorkerConfig {
   archiveTimeoutMs?: number
   /** Enables polling for network/DrvFS mounts where inotify events do not cross from Windows. */
   watchPolling?: boolean
+  /** Override minimum age for stale temp cleanup on recovery (ms). */
+  staleTempAgeMs?: number
 }
 
 export async function loadWorkerConfig(

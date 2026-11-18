@@ -1,29 +1,44 @@
-import { readdir, stat } from 'node:fs/promises'
+import type { Dirent, Stats } from 'node:fs'
+import { lstat, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  clearScanCheckpoint,
   countAssets,
   countMissingAssets,
+  createScanRun,
   deleteStaleFolders,
   enqueueJob,
-  findAssetForScan,
   finishScan,
   getLibrary,
-  insertAsset,
+  getScanCheckpoint,
+  preloadLibraryScanIndex,
   recomputeFolderCounts,
   reconcileContributions,
+  reconcileVoteEvents,
+  saveJobCheckpoint,
+  setScanState,
   softDeleteMissing,
   touchAssets,
   updateAssetFile,
   updateScanProgress,
+  updateScanRun,
   upsertFolder,
+  upsertScanCheckpoint,
+  insertAsset,
+  type AssetFileUpdate,
   type Db,
+  type NewAsset,
+  type ScanAssetRow,
 } from '@mediavault/database'
-import { PRIORITY, classifyFile, extensionOf, newId } from '@mediavault/shared'
 import { probeImage, probeVideo, resolveInside } from '@mediavault/media'
+import { PRIORITY, classifyFile, extensionOf, newId } from '@mediavault/shared'
 import { enqueueArchivesInDir } from './archives'
 import type { WorkerConfig } from './config'
 
-const TOUCH_BATCH = 500
+const BATCH_SIZE = 250
+const STAT_CONCURRENCY = 16
+const IMAGE_PROBE_CONCURRENCY = 16
+const VIDEO_PROBE_CONCURRENCY = 4
 
 const SKIP_DIRECTORIES = new Set([
   '@eaDir',
@@ -41,226 +56,715 @@ export interface ScanSummary {
   skipped: number
 }
 
+export interface ScanFenceContext {
+  workerId: string
+  leaseEpoch: number
+  jobId: number
+  leaseMs: number
+}
+
+export interface ScanOptions {
+  fence?: ScanFenceContext
+  signal?: AbortSignal
+  /** Progress hook called whenever a batch transaction commits cleanly. */
+  onBatchCommitted?: (processedFiles: number) => void
+}
+
+export class ScanInterruptedError extends Error {
+  constructor(
+    public readonly reason: 'paused' | 'cancelled' | 'shutdown',
+    message = `scan interrupted (${reason})`,
+  ) {
+    super(message)
+    this.name = 'ScanInterruptedError'
+  }
+}
+
+async function mapPool<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return []
+  const results = new Array<R>(items.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const idx = next
+      next += 1
+      results[idx] = await fn(items[idx]!)
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
+function isMountBoundaryRoot(rootPath: string): boolean {
+  const clean = rootPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  return clean === '' || clean === 'extra' || clean === 'drives' || /^drives\/[a-z]$/i.test(clean)
+}
+
+function compareNames(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+interface PendingMutation {
+  kind: 'insert' | 'update'
+  relativePath: string
+  asset?: NewAsset
+  assetId?: string
+  update?: AssetFileUpdate
+  version: number
+}
+
+interface ProbeOutcome {
+  relativePath: string
+  filename: string
+  folderId: string
+  kind: 'image' | 'video'
+  mimeType: string
+  info: Stats
+  existing: ScanAssetRow | undefined
+  width: number | null
+  height: number | null
+  durationMs: number | null
+  takenAt: number
+  videoCodec: string | null
+  audioCodec: string | null
+  skipped: boolean
+}
+
+async function probeMediaWithRecheck(
+  absPath: string,
+  initialInfo: Stats,
+  mediaKind: 'image' | 'video',
+): Promise<{
+  info: Stats
+  width: number | null
+  height: number | null
+  durationMs: number | null
+  takenAt: number
+  videoCodec: string | null
+  audioCodec: string | null
+}> {
+  let activeInfo = initialInfo
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const fallbackMs = activeInfo.mtimeMs
+    const imageProbe = mediaKind === 'image' ? await probeImage(absPath, fallbackMs) : null
+    const videoProbe = mediaKind === 'video' ? await probeVideo(absPath, fallbackMs) : null
+    const after = await stat(absPath)
+    const changedMidProbe =
+      after.size !== activeInfo.size || Math.round(after.mtimeMs) !== Math.round(activeInfo.mtimeMs)
+    if (!changedMidProbe || attempt === 1) {
+      if (videoProbe) {
+        return {
+          info: after,
+          width: videoProbe.width,
+          height: videoProbe.height,
+          durationMs: videoProbe.durationMs,
+          takenAt: videoProbe.takenAt,
+          videoCodec: videoProbe.videoCodec,
+          audioCodec: videoProbe.audioCodec,
+        }
+      }
+      return {
+        info: after,
+        width: imageProbe!.width,
+        height: imageProbe!.height,
+        durationMs: null,
+        takenAt: imageProbe!.takenAt,
+        videoCodec: null,
+        audioCodec: null,
+      }
+    }
+    activeInfo = after
+  }
+  throw new Error(`unreachable probe loop for ${absPath}`)
+}
+
 export async function scanLibrary(
   db: Db,
   config: WorkerConfig,
   libraryId: string,
+  options: ScanOptions = {},
 ): Promise<ScanSummary> {
   const library = getLibrary(db, libraryId)
   if (!library) throw new Error(`library ${libraryId} no longer exists`)
   const root = resolveInside(config.mediaRoot, library.rootPath)
   if (!root) throw new Error(`library root escapes MEDIA_ROOT: ${library.rootPath}`)
 
-  const scanId = `scan-${Date.now()}-${newId(6)}`
-  const summary: ScanSummary = { files: 0, added: 0, updated: 0, removed: 0, skipped: 0 }
-  const startedAt = performance.now()
-  let unchanged = 0
-  const pending: string[] = []
-  const flush = (): void => {
-    if (pending.length === 0) return
-    touchAssets(db, pending, scanId)
-    pending.length = 0
+  const preTotal = countAssets(db, libraryId)
+  const runRecordId = newId()
+  const now = Date.now()
+  const existingCheckpoint = getScanCheckpoint(db, libraryId)
+  const resumedFromCheckpoint = Boolean(existingCheckpoint)
+  const runScanId = existingCheckpoint?.scanId ?? `scan-${now}-${newId(6)}`
+  const runStartedAt = existingCheckpoint?.startedAt ?? now
+
+  createScanRun(db, {
+    id: runRecordId,
+    libraryId,
+    rootPath: library.rootPath,
+    phase: 'discover',
+    status: 'running',
+    resumedFromRunId: existingCheckpoint?.scanId ?? null,
+    startedAt: now,
+  })
+
+  const blockScan = (reason: string): never => {
+    const t = Date.now()
+    updateScanRun(db, runRecordId, {
+      phase: 'blocked',
+      status: 'blocked',
+      errorMessage: reason.slice(0, 500),
+      completedAt: t,
+      updatedAt: t,
+    })
+    setScanState(db, libraryId, 'idle', reason.slice(0, 500))
+    throw new Error(reason)
   }
 
-  const indexFile = async (absolute: string, relative: string, folderId: string): Promise<void> => {
-    const filename = path.basename(absolute)
-    const type = classifyFile(filename)
-    if (!type) return
-
-    let fileInfo
-    try {
-      fileInfo = await stat(absolute)
-    } catch {
-      return
+  let rootEntries: Dirent[]
+  try {
+    const rootLink = await lstat(root)
+    if (!rootLink.isDirectory() && !rootLink.isSymbolicLink()) {
+      return blockScan(`drive_unavailable: ${library.rootPath} is not a directory`)
     }
-    if (!fileInfo.isFile()) return
-
-    const mtimeMs = Math.round(fileInfo.mtimeMs)
-    const existing = findAssetForScan(db, libraryId, relative)
-
-    if (
-      existing &&
-      existing.deletedAt === null &&
-      existing.sizeBytes === fileInfo.size &&
-      existing.mtimeMs === mtimeMs
-    ) {
-      pending.push(existing.id)
-      if (pending.length >= TOUCH_BATCH) flush()
-      unchanged += 1
-      summary.files += 1
-      return
+    const rootStat = await stat(root)
+    if (!rootStat.isDirectory()) {
+      return blockScan(`drive_unavailable: ${library.rootPath} is not accessible`)
     }
-
-    let width: number | null = null
-    let height: number | null = null
-    let durationMs: number | null = null
-    let takenAt = fileInfo.mtimeMs
-    let videoCodec: string | null = null
-    let audioCodec: string | null = null
-
-    try {
-      if (type.kind === 'image') {
-        const probe = await probeImage(absolute, fileInfo.mtimeMs)
-        width = probe.width
-        height = probe.height
-        takenAt = probe.takenAt
-      } else {
-        const probe = await probeVideo(absolute, fileInfo.mtimeMs)
-        width = probe.width
-        height = probe.height
-        durationMs = probe.durationMs
-        takenAt = probe.takenAt
-        videoCodec = probe.videoCodec
-        audioCodec = probe.audioCodec
-      }
-    } catch (error) {
-      console.warn(`[scan] skipped ${relative}: ${(error as Error).message}`)
-      if (existing) {
-        pending.push(existing.id)
-        if (pending.length >= TOUCH_BATCH) flush()
-      }
-      summary.skipped += 1
-      return
-    }
-
-    const container = extensionOf(filename)
-    const indexedAt = Date.now()
-    let assetId: string
-    let version: number
-
-    if (existing) {
-      updateAssetFile(db, existing.id, {
-        folderId,
-        filename,
-        mimeType: type.mimeType,
-        sizeBytes: fileInfo.size,
-        mtimeMs,
-        width,
-        height,
-        durationMs,
-        takenAt,
-        videoCodec,
-        audioCodec,
-        container,
-        indexedAt,
-        scanId,
-      })
-      assetId = existing.id
-      version = existing.fileVersion + 1
-      summary.updated += 1
-    } else {
-      assetId = newId()
-      insertAsset(db, {
-        id: assetId,
-        libraryId,
-        folderId,
-        relativePath: relative,
-        filename,
-        kind: type.kind,
-        mimeType: type.mimeType,
-        sizeBytes: fileInfo.size,
-        mtimeMs,
-        width,
-        height,
-        durationMs,
-        takenAt,
-        videoCodec,
-        audioCodec,
-        container,
-        indexedAt,
-        scanId,
-      })
-      version = 1
-      summary.added += 1
-    }
-
-    enqueueJob(
-      db,
-      {
-        dedupeKey: `thumbnail:${assetId}:${version}`,
-        kind: 'thumbnail',
-        priority: PRIORITY.backlog,
-        assetId,
-      },
-      indexedAt,
+    rootEntries = await readdir(root, { withFileTypes: true })
+  } catch (error) {
+    return blockScan(
+      `drive_unavailable: cannot access ${library.rootPath} (${(error as Error).message})`,
     )
-    summary.files += 1
   }
 
-  const walk = async (
-    absolute: string,
-    relative: string,
+  if (isMountBoundaryRoot(library.rootPath) && rootEntries.length === 0 && preTotal > 0) {
+    return blockScan(
+      `drive_unavailable: mountpoint ${library.rootPath || '/media'} is empty while ${preTotal} assets exist`,
+    )
+  }
+
+  const existingMap = preloadLibraryScanIndex(db, libraryId)
+  const summary: ScanSummary = { files: 0, added: 0, updated: 0, removed: 0, skipped: 0 }
+  const startedAtPerf = performance.now()
+  let unchanged = 0
+  let readErrors = 0
+  let lastCommittedDirRel = existingCheckpoint?.lastDirRel ?? ''
+  let lastCommittedRelPath = existingCheckpoint?.lastRelPath ?? ''
+
+  let lastSeenDirRel = lastCommittedDirRel
+  let lastSeenRelPath = lastCommittedRelPath
+  let currentStage: 'index' | 'verify' = 'index'
+
+  const touchBuffer: Array<{ id: string; rel: string }> = []
+  const mutationBuffer: PendingMutation[] = []
+
+  const flushBatch = (dirRel: string, relPath: string, activeScanId: string, saveCp: boolean): void => {
+    if (touchBuffer.length === 0 && mutationBuffer.length === 0 && !saveCp) return
+    const flushNow = Date.now()
+    db.transaction(() => {
+      if (touchBuffer.length > 0) {
+        touchAssets(
+          db,
+          touchBuffer.map((t) => t.id),
+          activeScanId,
+        )
+        for (const item of touchBuffer) {
+          const entry = existingMap.get(item.rel)
+          if (entry) {
+            entry.deletedAt = null
+            entry.lastSeenScan = activeScanId
+          }
+        }
+      }
+
+      for (const m of mutationBuffer) {
+        if (m.kind === 'insert' && m.asset) {
+          insertAsset(db, m.asset)
+          enqueueJob(
+            db,
+            {
+              dedupeKey: `thumbnail:${m.asset.id}:${m.version}`,
+              kind: 'thumbnail',
+              priority: PRIORITY.backlog,
+              assetId: m.asset.id,
+            },
+            m.asset.indexedAt,
+          )
+          existingMap.set(m.relativePath, {
+            id: m.asset.id,
+            sizeBytes: m.asset.sizeBytes,
+            mtimeMs: m.asset.mtimeMs,
+            fileVersion: m.version,
+            deletedAt: null,
+            lastSeenScan: activeScanId,
+          })
+        } else if (m.kind === 'update' && m.assetId && m.update) {
+          updateAssetFile(db, m.assetId, m.update)
+          enqueueJob(
+            db,
+            {
+              dedupeKey: `thumbnail:${m.assetId}:${m.version}`,
+              kind: 'thumbnail',
+              priority: PRIORITY.backlog,
+              assetId: m.assetId,
+            },
+            m.update.indexedAt,
+          )
+          existingMap.set(m.relativePath, {
+            id: m.assetId,
+            sizeBytes: m.update.sizeBytes,
+            mtimeMs: m.update.mtimeMs,
+            fileVersion: m.version,
+            deletedAt: null,
+            lastSeenScan: activeScanId,
+          })
+        }
+      }
+
+      if (saveCp) {
+        lastCommittedDirRel = dirRel
+        lastCommittedRelPath = relPath
+        upsertScanCheckpoint(db, {
+          libraryId,
+          scanId: runScanId,
+          startedAt: runStartedAt,
+          lastDirRel: dirRel,
+          lastRelPath: relPath,
+          processedFiles: summary.files,
+          totalEstimate: null,
+          updatedAt: flushNow,
+        })
+        updateScanProgress(db, libraryId, summary.files)
+        if (options.fence) {
+          saveJobCheckpoint(
+            db,
+            options.fence.jobId,
+            {
+              workerId: options.fence.workerId,
+              leaseEpoch: options.fence.leaseEpoch,
+              now: flushNow,
+            },
+            {
+              checkpoint: JSON.stringify({
+                scanId: runScanId,
+                lastDirRel: dirRel,
+                processedFiles: summary.files,
+              }),
+              progressCurrent: summary.files,
+              phase: activeScanId === runScanId ? 'index' : 'verify',
+            },
+          )
+        }
+      }
+    }).immediate()
+
+    touchBuffer.length = 0
+    mutationBuffer.length = 0
+    if (saveCp) options.onBatchCommitted?.(summary.files)
+  }
+
+  const checkInterrupted = (): void => {
+    if (!options.signal?.aborted) return
+    const reason =
+      options.signal.reason === 'paused' || options.signal.reason === 'cancelled'
+        ? options.signal.reason
+        : 'shutdown'
+    throw new ScanInterruptedError(reason)
+  }
+
+  const shouldSkipCrossMountChild = (relative: string, childName: string): boolean => {
+    if (library.rootPath !== '' || relative !== '') return false
+    return childName === 'extra' || childName === 'drives'
+  }
+
+  const processDirectoryFiles = async (
+    dirAbs: string,
+    dirRel: string,
+    folderId: string,
+    entries: Dirent[],
+    activeScanId: string,
+    allowFastSkip: boolean,
+  ): Promise<void> => {
+    if (allowFastSkip) return
+
+    const fileCandidates: Array<{
+      name: string
+      abs: string
+      rel: string
+      type: NonNullable<ReturnType<typeof classifyFile>>
+    }> = []
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || entry.isSymbolicLink() || !entry.isFile()) continue
+      const type = classifyFile(entry.name)
+      if (!type) continue
+      const rel = dirRel === '' ? entry.name : `${dirRel}/${entry.name}`
+      fileCandidates.push({
+        name: entry.name,
+        abs: path.join(dirAbs, entry.name),
+        rel,
+        type,
+      })
+    }
+
+    const statResults = await mapPool(fileCandidates, STAT_CONCURRENCY, async (candidate) => {
+      try {
+        const info = await stat(candidate.abs)
+        if (!info.isFile()) return { candidate, info: null, failed: false }
+        return { candidate, info, failed: false }
+      } catch {
+        return { candidate, info: null, failed: true }
+      }
+    })
+
+    const imageJobs: typeof statResults = []
+    const videoJobs: typeof statResults = []
+
+    for (const res of statResults) {
+      if (res.failed) {
+        readErrors += 1
+        continue
+      }
+      if (!res.info) continue
+      const mtimeMs = Math.round(res.info.mtimeMs)
+      const existing = existingMap.get(res.candidate.rel)
+
+      if (
+        existing &&
+        existing.deletedAt === null &&
+        existing.sizeBytes === res.info.size &&
+        existing.mtimeMs === mtimeMs
+      ) {
+        touchBuffer.push({ id: existing.id, rel: res.candidate.rel })
+        lastSeenDirRel = dirRel
+        lastSeenRelPath = res.candidate.rel
+        unchanged += 1
+        summary.files += 1
+        if (touchBuffer.length + mutationBuffer.length >= BATCH_SIZE) {
+          flushBatch(dirRel, res.candidate.rel, activeScanId, currentStage === 'index')
+        }
+        continue
+      }
+
+      if (res.candidate.type.kind === 'image') imageJobs.push(res)
+      else videoJobs.push(res)
+    }
+
+    const probeOne = async (
+      item: (typeof statResults)[number],
+      mediaKind: 'image' | 'video',
+    ): Promise<ProbeOutcome> => {
+      const existing = existingMap.get(item.candidate.rel)
+      try {
+        const probed = await probeMediaWithRecheck(item.candidate.abs, item.info!, mediaKind)
+        return {
+          relativePath: item.candidate.rel,
+          filename: item.candidate.name,
+          folderId,
+          kind: mediaKind,
+          mimeType: item.candidate.type.mimeType,
+          info: probed.info,
+          existing,
+          width: probed.width,
+          height: probed.height,
+          durationMs: probed.durationMs,
+          takenAt: probed.takenAt,
+          videoCodec: probed.videoCodec,
+          audioCodec: probed.audioCodec,
+          skipped: false,
+        }
+      } catch (error) {
+        console.warn(`[scan] skipped ${item.candidate.rel}: ${(error as Error).message}`)
+        return {
+          relativePath: item.candidate.rel,
+          filename: item.candidate.name,
+          folderId,
+          kind: mediaKind,
+          mimeType: item.candidate.type.mimeType,
+          info: item.info!,
+          existing,
+          width: null,
+          height: null,
+          durationMs: null,
+          takenAt: item.info!.mtimeMs,
+          videoCodec: null,
+          audioCodec: null,
+          skipped: true,
+        }
+      }
+    }
+
+    const [imageOutcomes, videoOutcomes] = await Promise.all([
+      mapPool(imageJobs, IMAGE_PROBE_CONCURRENCY, (item) => probeOne(item, 'image')),
+      mapPool(videoJobs, VIDEO_PROBE_CONCURRENCY, (item) => probeOne(item, 'video')),
+    ])
+
+    const outcomes = [...imageOutcomes, ...videoOutcomes].sort((a, b) =>
+      compareNames(a.relativePath, b.relativePath),
+    )
+
+    for (const outcome of outcomes) {
+      if (outcome.skipped) {
+        if (outcome.existing) {
+          touchBuffer.push({ id: outcome.existing.id, rel: outcome.relativePath })
+          lastSeenDirRel = dirRel
+          lastSeenRelPath = outcome.relativePath
+        }
+        summary.skipped += 1
+        if (touchBuffer.length + mutationBuffer.length >= BATCH_SIZE) {
+          flushBatch(dirRel, outcome.relativePath, activeScanId, currentStage === 'index')
+        }
+        continue
+      }
+
+      const indexedAt = Date.now()
+      const mtimeMs = Math.round(outcome.info.mtimeMs)
+      const container = extensionOf(outcome.filename)
+
+      if (outcome.existing) {
+        mutationBuffer.push({
+          kind: 'update',
+          relativePath: outcome.relativePath,
+          assetId: outcome.existing.id,
+          version: outcome.existing.fileVersion + 1,
+          update: {
+            folderId: outcome.folderId,
+            filename: outcome.filename,
+            mimeType: outcome.mimeType,
+            sizeBytes: outcome.info.size,
+            mtimeMs,
+            width: outcome.width,
+            height: outcome.height,
+            durationMs: outcome.durationMs,
+            takenAt: outcome.takenAt,
+            videoCodec: outcome.videoCodec,
+            audioCodec: outcome.audioCodec,
+            container,
+            indexedAt,
+            scanId: activeScanId,
+          },
+        })
+        summary.updated += 1
+      } else {
+        const assetId = newId()
+        mutationBuffer.push({
+          kind: 'insert',
+          relativePath: outcome.relativePath,
+          version: 1,
+          asset: {
+            id: assetId,
+            libraryId,
+            folderId: outcome.folderId,
+            relativePath: outcome.relativePath,
+            filename: outcome.filename,
+            kind: outcome.kind,
+            mimeType: outcome.mimeType,
+            sizeBytes: outcome.info.size,
+            mtimeMs,
+            width: outcome.width,
+            height: outcome.height,
+            durationMs: outcome.durationMs,
+            takenAt: outcome.takenAt,
+            videoCodec: outcome.videoCodec,
+            audioCodec: outcome.audioCodec,
+            container,
+            indexedAt,
+            scanId: activeScanId,
+          },
+        })
+        summary.added += 1
+      }
+      lastSeenDirRel = dirRel
+      lastSeenRelPath = outcome.relativePath
+      summary.files += 1
+
+      if (touchBuffer.length + mutationBuffer.length >= BATCH_SIZE) {
+        flushBatch(dirRel, outcome.relativePath, activeScanId, currentStage === 'index')
+      }
+    }
+  }
+
+  const walkTree = async (
+    abs: string,
+    rel: string,
     parentId: string | null,
     depth: number,
+    activeScanId: string,
+    checkpointCursorDir: string | null,
+    prefetchedEntries?: Dirent[],
   ): Promise<void> => {
+    checkInterrupted()
+
+    const entries = prefetchedEntries ?? (await readdir(abs, { withFileTypes: true }))
+    entries.sort((a, b) => compareNames(a.name, b.name))
+
     const folderId = upsertFolder(db, {
       id: newId(),
       libraryId,
       parentId,
-      relativePath: relative,
-      name: relative === '' ? library.name : path.basename(absolute),
+      relativePath: rel,
+      name: rel === '' ? library.name : path.basename(abs),
       depth,
-      scanId,
+      scanId: activeScanId,
     })
 
-    const entries = await readdir(absolute, { withFileTypes: true })
-    entries.sort((a, b) => a.name.localeCompare(b.name))
-
-    for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue
-      const childRelative = relative === '' ? entry.name : `${relative}/${entry.name}`
-      const childAbsolute = path.join(absolute, entry.name)
-
-      if (entry.isDirectory()) {
-        if (SKIP_DIRECTORIES.has(entry.name)) continue
-        await walk(childAbsolute, childRelative, folderId, depth + 1)
-        continue
-      }
-      if (!entry.isFile()) continue
-
-      await indexFile(childAbsolute, childRelative, folderId)
-      if (summary.files > 0 && summary.files % 50 === 0) {
-        updateScanProgress(db, libraryId, summary.files)
+    let dirMtimeMs = Number.POSITIVE_INFINITY
+    if (checkpointCursorDir !== null && rel < checkpointCursorDir) {
+      try {
+        dirMtimeMs = Math.round((await stat(abs)).mtimeMs)
+      } catch {
+        readErrors += 1
       }
     }
 
-    await enqueueArchivesInDir(db, libraryId, root, absolute, PRIORITY.backlog)
+    const canFastSkipDir =
+      checkpointCursorDir !== null &&
+      rel !== '' &&
+      rel < checkpointCursorDir &&
+      dirMtimeMs <= runStartedAt
+
+    await processDirectoryFiles(abs, rel, folderId, entries, activeScanId, canFastSkipDir)
+    await enqueueArchivesInDir(db, libraryId, root, abs, PRIORITY.backlog, Date.now(), entries)
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || entry.isSymbolicLink() || !entry.isDirectory()) continue
+      if (SKIP_DIRECTORIES.has(entry.name)) continue
+      if (shouldSkipCrossMountChild(rel, entry.name)) continue
+      const childRel = rel === '' ? entry.name : `${rel}/${entry.name}`
+      const childAbs = path.join(abs, entry.name)
+      await walkTree(childAbs, childRel, folderId, depth + 1, activeScanId, checkpointCursorDir)
+    }
   }
 
-  await walk(root, '', null, 0)
-  flush()
+  try {
+    currentStage = 'index'
+    updateScanRun(db, runRecordId, { phase: 'index', status: 'running', updatedAt: Date.now() })
+    await walkTree(
+      root,
+      '',
+      null,
+      0,
+      runScanId,
+      resumedFromCheckpoint ? lastCommittedDirRel : null,
+      rootEntries,
+    )
+    flushBatch(lastSeenDirRel, lastSeenRelPath, runScanId, true)
 
-  const total = countAssets(db, libraryId)
-  const missing = countMissingAssets(db, libraryId, scanId)
-  const threshold = Math.max(50, Math.floor(total * config.scanDeleteGuardRatio))
-  if (!config.scanDeleteForce && missing > threshold) {
-    console.warn(
+    let authoritativeScanId = runScanId
+    if (resumedFromCheckpoint) {
+      // Complete verification pass catches files added, renamed, or removed behind the checkpoint cursor.
+      authoritativeScanId = `verify-${Date.now()}-${newId(6)}`
+      currentStage = 'verify'
+      summary.files = 0
+      unchanged = 0
+      updateScanRun(db, runRecordId, {
+        phase: 'verify',
+        status: 'running',
+        updatedAt: Date.now(),
+      })
+      await walkTree(root, '', null, 0, authoritativeScanId, null)
+      flushBatch(lastSeenDirRel, lastSeenRelPath, authoritativeScanId, false)
+    }
+
+    checkInterrupted()
+    if (readErrors > 0) {
+      throw new Error(`refusing deletion reconciliation after ${readErrors} filesystem read errors`)
+    }
+
+    updateScanRun(db, runRecordId, { phase: 'reconcile', status: 'running', updatedAt: Date.now() })
+
+    const total = countAssets(db, libraryId)
+    const missing = countMissingAssets(db, libraryId, authoritativeScanId)
+    const threshold = Math.max(50, Math.floor(total * config.scanDeleteGuardRatio))
+    if (!config.scanDeleteForce && missing > threshold) {
+      console.warn(
+        JSON.stringify({
+          event: 'scan.delete_guard',
+          libraryId,
+          total,
+          missing,
+          threshold,
+        }),
+      )
+      throw new Error(
+        `refusing to soft-delete ${missing} of ${total} assets; set SCAN_DELETE_FORCE=1 to allow it`,
+      )
+    }
+
+    updateScanRun(db, runRecordId, { phase: 'finalize', status: 'running', updatedAt: Date.now() })
+    summary.removed = softDeleteMissing(db, libraryId, authoritativeScanId, Date.now())
+    deleteStaleFolders(db, libraryId, authoritativeScanId)
+    recomputeFolderCounts(db, libraryId)
+    reconcileContributions(db)
+    reconcileVoteEvents(db)
+    clearScanCheckpoint(db, libraryId)
+
+    const completedAt = Date.now()
+    finishScan(db, libraryId, completedAt, summary.files)
+    updateScanRun(db, runRecordId, {
+      phase: 'completed',
+      status: 'completed',
+      filesSeen: summary.files,
+      filesAdded: summary.added,
+      filesUpdated: summary.updated,
+      filesSkipped: summary.skipped,
+      filesRemoved: summary.removed,
+      readErrors,
+      completedAt,
+      updatedAt: completedAt,
+    })
+
+    console.info(
       JSON.stringify({
-        event: 'scan.delete_guard',
-        libraryId,
-        total,
-        missing,
-        threshold,
+        event: 'scan.summary',
+        files: summary.files,
+        unchanged,
+        durationMs: Math.round(performance.now() - startedAtPerf),
+        removed: summary.removed,
+        resumedFromCheckpoint,
       }),
     )
-    throw new Error(
-      `refusing to soft-delete ${missing} of ${total} assets; set SCAN_DELETE_FORCE=1 to allow it`,
-    )
+    return summary
+  } catch (error) {
+    const t = Date.now()
+    if (error instanceof ScanInterruptedError) {
+      if (
+        error.reason !== 'cancelled' &&
+        currentStage === 'index' &&
+        (touchBuffer.length > 0 || mutationBuffer.length > 0)
+      ) {
+        flushBatch(lastSeenDirRel, lastSeenRelPath, runScanId, true)
+      }
+      const status = error.reason === 'cancelled' ? 'cancelled' : 'paused'
+      updateScanRun(db, runRecordId, {
+        phase: status,
+        status,
+        filesSeen: summary.files,
+        filesAdded: summary.added,
+        filesUpdated: summary.updated,
+        filesSkipped: summary.skipped,
+        readErrors,
+        errorMessage: error.message,
+        updatedAt: t,
+      })
+    } else {
+      updateScanRun(db, runRecordId, {
+        phase: 'failed',
+        status: 'failed',
+        filesSeen: summary.files,
+        filesAdded: summary.added,
+        filesUpdated: summary.updated,
+        filesSkipped: summary.skipped,
+        readErrors,
+        errorMessage: (error as Error).message.slice(0, 500),
+        completedAt: t,
+        updatedAt: t,
+      })
+    }
+    throw error
   }
-
-  summary.removed = softDeleteMissing(db, libraryId, scanId, Date.now())
-  deleteStaleFolders(db, libraryId, scanId)
-  recomputeFolderCounts(db, libraryId)
-  reconcileContributions(db)
-  finishScan(db, libraryId, Date.now(), summary.files)
-  console.info(
-    JSON.stringify({
-      event: 'scan.summary',
-      files: summary.files,
-      unchanged,
-      durationMs: Math.round(performance.now() - startedAt),
-      removed: summary.removed,
-    }),
-  )
-  return summary
 }

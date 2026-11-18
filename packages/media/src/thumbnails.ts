@@ -23,12 +23,28 @@ export async function fileExists(target: string): Promise<boolean> {
   }
 }
 
-async function writeAtomic(target: string, produce: (tmp: string) => Promise<void>): Promise<void> {
+export interface WriteAtomicOptions {
+  /** Guard evaluated right before `rename(tmp, target)` so an expired lease cannot publish stale output. */
+  canPublish?: () => boolean
+}
+
+async function writeAtomic(
+  target: string,
+  produce: (tmp: string) => Promise<void>,
+  options: WriteAtomicOptions = {},
+): Promise<boolean> {
   await ensureDir(path.dirname(target))
   const tmp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
   try {
     await produce(tmp)
+    const written = await fileExists(tmp)
+    if (!written) throw new Error(`thumbnail write produced empty file: ${tmp}`)
+    if (options.canPublish && !options.canPublish()) {
+      await unlink(tmp).catch(() => undefined)
+      return false
+    }
     await rename(tmp, target)
+    return true
   } catch (error) {
     await unlink(tmp).catch(() => undefined)
     throw error
@@ -48,12 +64,17 @@ export async function ensureImageThumbnail(
   assetId: string,
   version: number,
   size: number,
+  options?: WriteAtomicOptions,
 ): Promise<string> {
   const target = thumbnailPath(cacheDir, assetId, version, size)
   if (await fileExists(target)) return target
-  await writeAtomic(target, async (tmp) => {
-    await imagePipeline(src, size).toFile(tmp)
-  })
+  await writeAtomic(
+    target,
+    async (tmp) => {
+      await imagePipeline(src, size).toFile(tmp)
+    },
+    options,
+  )
   return target
 }
 
@@ -62,10 +83,11 @@ export async function generateImageThumbnails(
   cacheDir: string,
   assetId: string,
   version: number,
+  options?: WriteAtomicOptions,
 ): Promise<string[]> {
   const written: string[] = []
   for (const size of THUMBNAIL_SIZES) {
-    written.push(await ensureImageThumbnail(src, cacheDir, assetId, version, size))
+    written.push(await ensureImageThumbnail(src, cacheDir, assetId, version, size, options))
   }
   return written
 }
@@ -151,6 +173,7 @@ export async function generateVideoThumbnails(
   assetId: string,
   version: number,
   durationMs: number | null,
+  options?: WriteAtomicOptions,
 ): Promise<string[]> {
   const targets = THUMBNAIL_SIZES.map((size) => posterPath(cacheDir, assetId, version, size))
   const missing = [] as number[]
@@ -167,9 +190,13 @@ export async function generateVideoThumbnails(
       if (size === undefined) continue
       const target = targets[index]
       if (!target) continue
-      await writeAtomic(target, async (tmp) => {
-        await imagePipeline(frame, size).toFile(tmp)
-      })
+      await writeAtomic(
+        target,
+        async (tmp) => {
+          await imagePipeline(frame, size).toFile(tmp)
+        },
+        options,
+      )
     }
   } finally {
     await rm(frameDir, { recursive: true, force: true })

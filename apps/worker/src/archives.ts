@@ -1,10 +1,11 @@
+import type { Dirent } from 'node:fs'
 import path from 'node:path'
 import {
   enqueueArchiveJobIfNeeded,
   enqueueJob,
   type Db,
 } from '@mediavault/database'
-import { discoverArchiveSetsInDir } from '@mediavault/media'
+import { discoverArchiveSetsFromEntries, discoverArchiveSetsInDir } from '@mediavault/media'
 import { newId, type Priority } from '@mediavault/shared'
 
 /**
@@ -18,8 +19,11 @@ export async function enqueueArchivesInDir(
   dir: string,
   priority: Priority,
   now = Date.now(),
+  entries?: Dirent[],
 ): Promise<number> {
-  const sets = await discoverArchiveSetsInDir(dir)
+  const sets = entries
+    ? await discoverArchiveSetsFromEntries(dir, entries)
+    : await discoverArchiveSetsInDir(dir)
   let queued = 0
   for (const set of sets) {
     const relPath = path.relative(libRoot, set.primaryPath).replace(/\\/g, '/')

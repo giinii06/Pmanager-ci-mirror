@@ -18,6 +18,9 @@ services:
     volumes:
       - ${MEDIA_ROOT:-./sample-media}:/media
       - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra
+      - ${DRIVE_C_ROOT:-./sample-media}:/media/drives/c
+      - ${DRIVE_D_ROOT:-./sample-media}:/media/drives/d
+      - ${DRIVE_E_ROOT:-./sample-media}:/media/drives/e
       - mediavault-data:/data
       - mediavault-cache:/cache
     healthcheck:
@@ -25,7 +28,7 @@ services:
         - CMD
         - bun
         - -e
-        - fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+        - fetch('http://127.0.0.1:8787/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
       interval: 10s
       timeout: 3s
       retries: 6
@@ -46,6 +49,9 @@ services:
     volumes:
       - ${MEDIA_ROOT:-./sample-media}:/media
       - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra
+      - ${DRIVE_C_ROOT:-./sample-media}:/media/drives/c
+      - ${DRIVE_D_ROOT:-./sample-media}:/media/drives/d
+      - ${DRIVE_E_ROOT:-./sample-media}:/media/drives/e
       - mediavault-data:/data
       - mediavault-cache:/cache
 
@@ -64,6 +70,9 @@ services:
       - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ${MEDIA_ROOT:-./sample-media}:/media:ro
       - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra:ro
+      - ${DRIVE_C_ROOT:-./sample-media}:/media/drives/c:ro
+      - ${DRIVE_D_ROOT:-./sample-media}:/media/drives/d:ro
+      - ${DRIVE_E_ROOT:-./sample-media}:/media/drives/e:ro
       - mediavault-cache:/cache:ro
     depends_on:
       api:

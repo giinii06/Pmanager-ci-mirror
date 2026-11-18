@@ -4,6 +4,7 @@ import { SESSION_COOKIE, parseCookies, verifySessionToken } from './auth'
 import type { AppContext } from './context'
 import { registerAssetRoutes } from './routes/assets'
 import { registerAuthRoutes } from './routes/auth'
+import { registerFsRoutes } from './routes/fs'
 import { registerIndexRoutes } from './routes/index-run'
 import { registerLibraryRoutes } from './routes/libraries'
 import { registerMediaRoutes } from './routes/media'
@@ -20,6 +21,10 @@ import { registerWorkerTranslationRoutes } from './routes/worker-translation'
 
 const PUBLIC_ROUTES = new Set([
   '/api/health',
+  '/api/health/live',
+  '/api/health/ready',
+  '/health/live',
+  '/health/ready',
   '/api/auth/status',
   '/api/auth/setup',
   '/api/auth/login',
@@ -62,6 +67,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   })
 
   registerAuthRoutes(app, ctx)
+  registerFsRoutes(app, ctx)
   registerIndexRoutes(app, ctx)
   registerLibraryRoutes(app, ctx)
   registerAssetRoutes(app, ctx)

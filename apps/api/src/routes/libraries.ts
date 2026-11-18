@@ -7,7 +7,6 @@ import {
   createLibrary,
   deleteLibrary,
   enqueueJob,
-  findLibraryByRoot,
   getFolder,
   getLibrary,
   listAllFolders,
@@ -16,10 +15,12 @@ import {
   setScanState,
   voteFolder,
 } from '@mediavault/database'
+import { resolveInside } from '@mediavault/media'
 import { FOLDER_SORTS, PRIORITY, newId } from '@mediavault/shared'
 import type { AppContext } from '../context'
 import { toFolderDTO, toLibraryDTO } from '../dto'
 import { parseInput } from '../validate'
+import { resolveSafeDirectory } from './fs'
 
 const idParams = z.object({ id: z.string().min(1).max(64) })
 
@@ -47,6 +48,10 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
     if (!body) return
 
     const mediaRoot = ctx.config.mediaRoot
+    if (body.rootPath.includes('\0')) {
+      reply.code(400).send({ error: 'invalid_path', message: 'Invalid directory path.' })
+      return
+    }
     const requested =
       body.rootPath === ''
         ? mediaRoot
@@ -62,20 +67,49 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
       return
     }
 
-    const info = await stat(requested).catch(() => null)
-    if (!info?.isDirectory()) {
-      reply.code(400).send({ error: 'not_a_directory', message: 'That folder does not exist.' })
+    const rootPath = relative === '' ? '' : toPosix(relative)
+    const resolved = await resolveSafeDirectory(mediaRoot, rootPath)
+    if ('error' in resolved) {
+      reply.code(resolved.code).send({ error: resolved.error, message: resolved.message })
       return
     }
 
-    const rootPath = relative === '' ? '' : toPosix(relative)
-    if (findLibraryByRoot(ctx.db, rootPath)) {
-      reply.code(409).send({ error: 'already_registered', message: 'That folder is already a library.' })
-      return
+    for (const existing of listLibraries(ctx.db)) {
+      if (existing.rootPath === rootPath) {
+        reply.code(409).send({ error: 'already_registered', message: 'That folder is already a library.' })
+        return
+      }
+      const existingAbs = resolveInside(mediaRoot, existing.rootPath)
+      if (!existingAbs) continue
+      const existingStat = await stat(existingAbs).catch(() => null)
+      if (
+        existingStat &&
+        Number(existingStat.ino) > 0 &&
+        Number(existingStat.dev) === Number(resolved.stats.dev) &&
+        Number(existingStat.ino) === Number(resolved.stats.ino)
+      ) {
+        reply.code(409).send({
+          error: 'already_registered',
+          message: `That folder is already registered under "${existing.name}".`,
+        })
+        return
+      }
     }
 
     const id = newId()
-    createLibrary(ctx.db, { id, name: body.name, rootPath, createdAt: Date.now() })
+    const now = Date.now()
+    createLibrary(ctx.db, { id, name: body.name, rootPath, createdAt: now })
+    setScanState(ctx.db, id, 'queued')
+    enqueueJob(
+      ctx.db,
+      {
+        dedupeKey: `scan:${id}`,
+        kind: 'scan_library',
+        priority: PRIORITY.next,
+        libraryId: id,
+      },
+      now,
+    )
     const created = getLibrary(ctx.db, id)
     if (!created) {
       reply.code(500).send({ error: 'internal', message: 'Could not create the library.' })
