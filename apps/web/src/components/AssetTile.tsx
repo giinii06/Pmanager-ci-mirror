@@ -9,11 +9,12 @@ interface AssetTileProps {
   asset: AssetDTO
   width: number
   height: number
+  priority?: boolean
   onOpen: () => void
   onVote?: () => void
 }
 
-export function AssetTile({ asset, width, height, onOpen, onVote }: AssetTileProps) {
+export function AssetTile({ asset, width, height, priority = false, onOpen, onVote }: AssetTileProps) {
   const duration = asset.kind === 'video' ? formatDuration(asset.durationMs) : ''
   const previewHost = useRef<HTMLDivElement>(null)
   const previewToken = useRef<symbol | null>(null)
@@ -58,6 +59,8 @@ export function AssetTile({ asset, width, height, onOpen, onVote }: AssetTilePro
           srcSet={`${asset.thumbnails.small} 320w, ${asset.thumbnails.medium} 640w`}
           sizes={`${Math.round(width)}px`}
           alt={asset.filename}
+          priority={priority}
+          fit="contain"
           className="h-full w-full"
           imageClassName="transition-[transform,opacity] duration-500 ease-out group-hover:scale-[1.025]"
         />

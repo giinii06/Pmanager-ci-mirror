@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { extensionOf, type AssetDTO, type SubtitleTrackDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
-import { patchAssetInCaches, removeAssetFromCaches } from '../lib/cachePatch'
+import { invalidateVoteCaches, patchAssetInCaches, removeAssetFromCaches } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
 import {
   formatBytes,
@@ -106,6 +106,7 @@ export function WatchPage({
     mutationFn: () => api.voteAsset(asset.id),
     onSuccess: (updated) => {
       patchAssetInCaches(queryClient, updated)
+      invalidateVoteCaches(queryClient)
       queryClient.invalidateQueries({ queryKey: ['stats'] })
     },
     onError: () => toast('투표하지 못했습니다.', 'error'),
@@ -239,21 +240,6 @@ export function WatchPage({
           </button>
           <button
             type="button"
-            onClick={onToggleShuffle}
-            aria-pressed={shuffle}
-            title="Shuffle 모드 전환"
-            className={cn(
-              'inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium transition-colors',
-              shuffle
-                ? 'bg-accent text-white'
-                : 'bg-white/10 text-white/75 hover:bg-white/15 hover:text-white',
-            )}
-          >
-            <Shuffle size={13} />
-            <span>Shuffle {shuffle ? 'ON' : 'OFF'}</span>
-          </button>
-          <button
-            type="button"
             onClick={onNext}
             aria-label="다음 동영상"
             title={shuffle ? '랜덤 다음 (→)' : '다음 동영상 (→)'}
@@ -362,6 +348,17 @@ export function WatchPage({
               >
                 <Info size={16} />
                 정보
+              </button>
+
+              <button
+                type="button"
+                onClick={onToggleShuffle}
+                aria-pressed={shuffle}
+                title="Shuffle 모드 전환"
+                className={cn(PILL, shuffle && 'bg-accent text-white hover:bg-accent/90')}
+              >
+                <Shuffle size={16} />
+                Shuffle {shuffle ? 'ON' : 'OFF'}
               </button>
 
               <button

@@ -22,3 +22,8 @@
 - **50,000 synthetic JPEG files (`scripts/bench-scan.ts --count=50000`):** `enumMs: 30`, `statMatrix {1:590, 4:189, 8:117, 16:93, 32:67}`, `dbBatched250Ms: 424`, `initialScanMs: 10912` (`0.22 ms/file`), `incrementalScanMs: 2990` (`0.06 ms/file`), `rssMb: 285.1`.
 - `bun run typecheck`: exit 0 across all 6 TS packages (`shared`, `database`, `media`, `api`, `worker`, `web`).
 - `bun test`: **`279 pass, 0 fail`** (`1039 expect() calls`, 34 files, `9.45s`), including 5 new tests in `apps/worker/src/crash-recovery.test.ts` (1,000-file interrupted scan across add/move/delete vs fresh baseline, stale `.tmp` cleanup & `lease_epoch` thumbnail fencing, `paused` preservation, empty mountpoint guard ignoring `SCAN_DELETE_FORCE=true`, `VACUUM INTO` backup/restore) and 4 new test groups in `apps/api/src/fs-and-ops.test.ts`.
+
+## Wave 4 Checkpoint (`apps/web` UI/UX Overhaul)
+- `bun run typecheck`: exit 0 across all 6 TS packages.
+- `bun test apps/web`: **`21 pass, 0 fail`** (`57 expect() calls`, `justified.test.ts` + `viewerPages.test.ts`).
+- `bun run --cwd apps/web build`: `vite build` exit 0 (`2949` modules transformed in `244ms`).

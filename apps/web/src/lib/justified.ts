@@ -71,6 +71,8 @@ export function buildGalleryEntries<T extends GalleryItem>(
     }
 
     let height = (width - gaps) / sum
+    const clampedDown = height > target * 1.6
+    const clampedUp = height < 80
     height = Math.min(height, target * 1.6)
     if (!full) height = Math.min(height, target)
     height = Math.max(80, height)
@@ -82,10 +84,13 @@ export function buildGalleryEntries<T extends GalleryItem>(
       const ratio = ratios[index]
       if (!item || ratio === undefined) continue
       const isLast = index === row.length - 1
+      const canSnapFullWidth = full && isLast && !clampedDown && !clampedUp
+      const naturalWidth = Math.round(ratio * height * 100) / 100
+      const remainderWidth = Math.max(1, width - used - gap * (row.length - 1 - index))
       const itemWidth =
-        full && isLast
-          ? Math.max(1, width - used - gap * (row.length - 1 - index))
-          : Math.round(ratio * height * 100) / 100
+        canSnapFullWidth && Math.abs(remainderWidth - naturalWidth) <= 3
+          ? remainderWidth
+          : naturalWidth
       placed.push({ item, index: rowStart + index, width: itemWidth, height })
       used += itemWidth + gap
     }
@@ -103,7 +108,7 @@ export function buildGalleryEntries<T extends GalleryItem>(
   for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
     const item = items[itemIndex]
     if (!item) continue
-    if (options.groupByMonth !== false) {
+    if (options.groupByMonth === true) {
       const key = monthKey(item.takenAt)
       if (key !== month) {
         flush(false)

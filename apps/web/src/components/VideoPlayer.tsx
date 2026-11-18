@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
-import { Maximize, Minimize } from 'lucide-react'
+import { Maximize, Minimize, Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import type { AssetDTO, SubtitleTrackDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { patchAssetInCaches } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
+import { formatDuration } from '../lib/format'
 import {
   CAPTION_SCALE_KEY,
   CAPTION_SCALE_MAX,
@@ -54,6 +55,12 @@ export function VideoPlayer({
   const [containerFullscreen, setContainerFullscreen] = useState(false)
   const [pseudoFullscreen, setPseudoFullscreen] = useState(false)
   const [nativeFullscreen, setNativeFullscreen] = useState(false)
+  const [playbackPaused, setPlaybackPaused] = useState(true)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [bufferedEnd, setBufferedEnd] = useState(0)
+  const [muted, setMuted] = useState(false)
+  const [volume, setVolume] = useState(1)
   const [captionFontSize, setCaptionFontSize] = useState(16)
   const [captionScale, setCaptionScale] = useState(storedCaptionScale)
   const startAt = useRef(startMs && startMs > 0 ? startMs / 1000 : 0)
@@ -147,6 +154,9 @@ export function VideoPlayer({
 
     return () => {
       hls?.destroy()
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
     }
   }, [asset.hlsUrl, asset.streamUrl, hlsState, useHls])
 
@@ -336,8 +346,20 @@ export function VideoPlayer({
 
   useEffect(() => {
     const video = videoRef.current
+    const container = containerRef.current
     if (!video) return
     let timer: number | null = null
+
+    const syncTimeline = () => {
+      setPlaybackPaused(video.paused)
+      setCurrentTime(Number.isFinite(video.currentTime) ? video.currentTime : 0)
+      setDuration(Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0)
+      setMuted(video.muted)
+      setVolume(video.volume)
+      if (video.buffered.length > 0) {
+        setBufferedEnd(video.buffered.end(video.buffered.length - 1))
+      }
+    }
 
     const arm = () => {
       if (timer !== null) window.clearTimeout(timer)
@@ -348,11 +370,13 @@ export function VideoPlayer({
     }
 
     const show = () => {
+      syncTimeline()
       setControlsVisible(true)
       arm()
     }
 
     const hold = () => {
+      syncTimeline()
       setControlsVisible(true)
       if (timer !== null) window.clearTimeout(timer)
       timer = null
@@ -365,21 +389,34 @@ export function VideoPlayer({
       timer = null
     }
 
+    syncTimeline()
     window.addEventListener('keydown', show)
-    video.addEventListener('pointermove', show)
-    video.addEventListener('pointerdown', show)
-    video.addEventListener('pointerleave', hideNow)
+    container?.addEventListener('pointermove', show)
+    container?.addEventListener('pointerdown', show)
+    container?.addEventListener('pointerleave', hideNow)
+    video.addEventListener('loadedmetadata', syncTimeline)
+    video.addEventListener('durationchange', syncTimeline)
+    video.addEventListener('timeupdate', syncTimeline)
+    video.addEventListener('progress', syncTimeline)
+    video.addEventListener('volumechange', syncTimeline)
     video.addEventListener('play', show)
     video.addEventListener('seeking', show)
     video.addEventListener('pause', hold)
+    video.addEventListener('ended', hold)
     return () => {
       window.removeEventListener('keydown', show)
-      video.removeEventListener('pointermove', show)
-      video.removeEventListener('pointerdown', show)
-      video.removeEventListener('pointerleave', hideNow)
+      container?.removeEventListener('pointermove', show)
+      container?.removeEventListener('pointerdown', show)
+      container?.removeEventListener('pointerleave', hideNow)
+      video.removeEventListener('loadedmetadata', syncTimeline)
+      video.removeEventListener('durationchange', syncTimeline)
+      video.removeEventListener('timeupdate', syncTimeline)
+      video.removeEventListener('progress', syncTimeline)
+      video.removeEventListener('volumechange', syncTimeline)
       video.removeEventListener('play', show)
       video.removeEventListener('seeking', show)
       video.removeEventListener('pause', hold)
+      video.removeEventListener('ended', hold)
       if (timer !== null) window.clearTimeout(timer)
     }
   }, [videoRef])
@@ -477,12 +514,42 @@ export function VideoPlayer({
   // A translation track is served with the spoken line above it.
   const dual = activeTrack?.source === 'translation'
   const preparing = useHls && hlsState !== 'ready'
+  const showBar = !preparing && (controlsVisible || playbackPaused)
+  const playedPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0
+  const bufferedPct = duration > 0 ? Math.min(100, (bufferedEnd / duration) * 100) : 0
+
+  const togglePlay = () => {
+    const video = videoRef.current
+    if (!video) return
+    if (video.paused) void video.play().catch(() => undefined)
+    else video.pause()
+  }
+
+  const toggleMute = () => {
+    const video = videoRef.current
+    if (!video) return
+    video.muted = !video.muted
+  }
+
+  const handleSeek = (nextSec: number) => {
+    const video = videoRef.current
+    if (!video || !Number.isFinite(nextSec)) return
+    video.currentTime = nextSec
+    setCurrentTime(nextSec)
+  }
+
+  const handleVolume = (nextVol: number) => {
+    const video = videoRef.current
+    if (!video) return
+    video.volume = nextVol
+    video.muted = nextVol === 0
+  }
 
   return (
     <div
       ref={containerRef}
       className={cn(
-        'relative flex items-center justify-center',
+        'relative flex items-center justify-center select-none',
         fill ? 'h-full w-full' : 'max-h-full max-w-full',
         appFullscreen &&
           (pseudoFullscreen
@@ -492,12 +559,12 @@ export function VideoPlayer({
     >
       <video
         ref={videoRef}
-        controls
-        controlsList="nofullscreen"
         playsInline
         poster={asset.thumbnails.medium}
+        onClick={togglePlay}
+        onDoubleClick={toggleFullscreen}
         className={cn(
-          'bg-black',
+          'cursor-pointer bg-black',
           appFullscreen || fill
             ? 'h-full w-full object-contain'
             : 'max-h-[calc(100vh-170px)] max-w-[calc(100vw-140px)] rounded-lg shadow-2xl',
@@ -514,20 +581,100 @@ export function VideoPlayer({
           />
         ) : null}
       </video>
+
       {!preparing ? (
-        <div className="absolute right-2 top-2 z-20 flex items-center gap-1.5">
-          <button
-            type="button"
-            aria-label={appFullscreen ? '전체 화면 종료' : '전체 화면'}
-            onClick={toggleFullscreen}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white/85 backdrop-blur-sm transition-colors hover:bg-black/75 hover:text-white"
-          >
-            {appFullscreen ? <Minimize size={13} /> : <Maximize size={13} />}
-          </button>
+        <div
+          className={cn(
+            'absolute right-3 top-3 z-20 flex items-center gap-1.5 transition-opacity duration-200',
+            showBar ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+        >
           <SubtitleMenu tracks={tracks} language={language} onSelect={onSelectLanguage} />
           {language ? (
             <CaptionSizeMenu scale={captionScale} onChange={changeCaptionScale} />
           ) : null}
+        </div>
+      ) : null}
+
+      {!preparing ? (
+        <div
+          onClick={(event) => event.stopPropagation()}
+          className={cn(
+            'absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1.5 bg-gradient-to-t from-black/88 via-black/55 to-transparent px-3 pb-2.5 pt-8 transition-opacity duration-200',
+            showBar ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+        >
+          <div className="relative flex h-4 items-center">
+            <div className="relative h-1 w-full overflow-hidden rounded-full bg-white/20">
+              <div
+                className="absolute inset-y-0 left-0 bg-white/35"
+                style={{ width: `${bufferedPct}%` }}
+              />
+              <div
+                className="absolute inset-y-0 left-0 bg-accent"
+                style={{ width: `${playedPct}%` }}
+              />
+            </div>
+            <input
+              type="range"
+              aria-label="재생 위치"
+              min={0}
+              max={duration > 0 ? duration : 100}
+              step={0.1}
+              value={duration > 0 ? currentTime : 0}
+              onChange={(event) => handleSeek(Number(event.target.value))}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-2 text-white">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label={playbackPaused ? '재생' : '일시정지'}
+                onClick={togglePlay}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-white transition-colors hover:bg-white/15"
+              >
+                {playbackPaused ? <Play size={16} fill="currentColor" /> : <Pause size={16} />}
+              </button>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-label={muted || volume === 0 ? '음소거 해제' : '음소거'}
+                  onClick={toggleMute}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/15 hover:text-white"
+                >
+                  {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                </button>
+                <input
+                  type="range"
+                  aria-label="음량"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={muted ? 0 : volume}
+                  onChange={(event) => handleVolume(Number(event.target.value))}
+                  className="hidden h-1 w-16 cursor-pointer accent-accent sm:block"
+                />
+              </div>
+
+              <span className="ml-1 text-[12px] font-medium tabular-nums text-white/85">
+                {formatDuration(currentTime * 1000) || '0:00'}
+                <span className="mx-1 text-white/45">/</span>
+                {formatDuration(duration * 1000) || '0:00'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              aria-label={appFullscreen ? '전체 화면 종료' : '전체 화면'}
+              onClick={toggleFullscreen}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/15 hover:text-white"
+            >
+              {appFullscreen ? <Minimize size={15} /> : <Maximize size={15} />}
+            </button>
+          </div>
         </div>
       ) : null}
       {/*
@@ -538,7 +685,7 @@ export function VideoPlayer({
       {!nativeFullscreen && captionLines ? (
         <div
           className="pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3"
-          style={{ bottom: controlsVisible ? (appFullscreen ? 96 : 64) : appFullscreen ? 32 : 24 }}
+          style={{ bottom: showBar ? (appFullscreen ? 104 : 74) : appFullscreen ? 32 : 24 }}
         >
           <span
             className="max-w-[86%] rounded-md bg-black/75 px-3 py-1.5 text-center font-medium leading-[1.4] whitespace-pre-line text-white [overflow-wrap:anywhere] [word-break:keep-all]"

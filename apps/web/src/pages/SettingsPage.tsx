@@ -3,44 +3,59 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ActivityCalendar } from 'react-activity-calendar'
 import 'react-activity-calendar/tooltips.css'
 import {
+  Activity,
   Archive,
   CalendarDays,
+  DatabaseBackup,
   Film,
+  Flame,
   FolderTree,
   HardDrive,
   Images,
   Loader2,
   LogOut,
+  Monitor,
+  Moon,
   Plus,
   RefreshCw,
+  ShieldCheck,
+  Sun,
   Tag,
   Trash2,
 } from 'lucide-react'
 import type { ArchiveJobState, LibraryDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
-import { formatBytes, formatCount, formatDate } from '../lib/format'
-import { useUi } from '../store/ui'
+import { cn } from '../lib/cn'
+import { formatAgo, formatBytes, formatCount, formatDate } from '../lib/format'
+import { useUi, type ThemeMode } from '../store/ui'
 import { Dialog } from '../components/ui/Dialog'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { HostFolderPicker } from '../components/HostFolderPicker'
 import { PageHeading } from '../components/PageHeading'
 import { Spinner } from '../components/ui/Spinner'
 import { ProcessingPanel } from '../components/ProcessingPanel'
 
 const CALENDAR_THEME = {
+  light: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
   dark: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
+}
+
+const ORANGE_CALENDAR_THEME = {
+  light: ['#f1ece6', '#fed7aa', '#fb923c', '#f97316', '#c2410c'],
+  dark: ['#1c1917', '#5c280e', '#9a3412', '#ea580c', '#fb923c'],
 }
 
 const ARCHIVE_STATE_LABEL: Record<ArchiveJobState, { text: string; tone: string }> = {
   queued: { text: '대기 중', tone: 'text-muted bg-panel-2 border-line' },
   extracting: { text: '압축 해제 중', tone: 'text-accent bg-accent/10 border-accent/30' },
   converting: { text: '변환 중', tone: 'text-accent bg-accent/10 border-accent/30' },
-  completed: { text: '완료', tone: 'text-[#6ee7b7] bg-[#0f2e22] border-[#1f5c43]' },
+  completed: { text: '완료', tone: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' },
   failed_password: {
     text: '비밀번호 불일치 (원본 보존)',
-    tone: 'text-[#ffd494] bg-[#2d2112] border-[#5b4120]',
+    tone: 'text-amber-500 bg-amber-500/10 border-amber-500/30',
   },
-  failed: { text: '실패', tone: 'text-[#ffc9c9] bg-[#2d1619] border-[#5c282e]' },
+  failed: { text: '실패', tone: 'text-danger bg-danger/10 border-danger/35' },
 }
 
 function Section({
@@ -94,6 +109,9 @@ function MetricPill({ label, value }: { label: string; value: string }) {
 export function SettingsPage() {
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
+  const themeMode = useUi((state) => state.themeMode)
+  const resolvedTheme = useUi((state) => state.resolvedTheme)
+  const setThemeMode = useUi((state) => state.setThemeMode)
 
   const auth = useQuery({ queryKey: ['auth'], queryFn: api.status })
   const libraries = useQuery({
@@ -104,6 +122,10 @@ export function SettingsPage() {
   })
   const stats = useQuery({ queryKey: ['stats'], queryFn: api.stats })
   const activity = useQuery({ queryKey: ['stats', 'activity'], queryFn: api.activityStats })
+  const votesActivity = useQuery({
+    queryKey: ['stats', 'votes-activity'],
+    queryFn: api.votesActivityStats,
+  })
   const storage = useQuery({
     queryKey: ['stats', 'storage'],
     queryFn: () => api.storageStats(false),
@@ -113,13 +135,24 @@ export function SettingsPage() {
     queryFn: api.archives,
     refetchInterval: 6000,
   })
+  const systemStatus = useQuery({
+    queryKey: ['system', 'status'],
+    queryFn: api.systemStatus,
+    refetchInterval: 10_000,
+  })
+  const backups = useQuery({
+    queryKey: ['backups'],
+    queryFn: api.backups,
+  })
 
   const [addOpen, setAddOpen] = useState(false)
+  const [manualPathOpen, setManualPathOpen] = useState(false)
   const [name, setName] = useState('')
   const [rootPath, setRootPath] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<LibraryDTO | null>(null)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [selectedVoteDay, setSelectedVoteDay] = useState<string | null>(null)
 
   const invalidateLibraryData = () => {
     queryClient.invalidateQueries({ queryKey: ['libraries'] })
@@ -128,6 +161,7 @@ export function SettingsPage() {
     queryClient.invalidateQueries({ queryKey: ['jobs'] })
     queryClient.invalidateQueries({ queryKey: ['assets'] })
     queryClient.invalidateQueries({ queryKey: ['archives'] })
+    queryClient.invalidateQueries({ queryKey: ['system', 'status'] })
   }
 
   const refreshStorage = useMutation({
@@ -150,13 +184,9 @@ export function SettingsPage() {
   })
 
   const create = useMutation({
-    mutationFn: async () => {
-      const library = await api.createLibrary(name.trim(), rootPath.trim())
-      api.scanLibrary(library.id).catch(() => undefined)
-      return library
-    },
+    mutationFn: () => api.createLibrary(name.trim(), rootPath.trim()),
     onSuccess: (library) => {
-      toast(`${library.name} 라이브러리를 추가했습니다.`, 'success')
+      toast(`${library.name} 라이브러리를 추가하고 스캔을 시작했습니다.`, 'success')
       setAddOpen(false)
       setName('')
       setRootPath('')
@@ -165,6 +195,17 @@ export function SettingsPage() {
     },
     onError: (error) =>
       setFormError(error instanceof Error ? error.message : '라이브러리를 추가하지 못했습니다.'),
+  })
+
+  const backupNow = useMutation({
+    mutationFn: () => api.createBackup(),
+    onSuccess: (res) => {
+      toast(`백업을 생성했습니다 (${res.backup.filename}).`, 'success')
+      queryClient.invalidateQueries({ queryKey: ['backups'] })
+      queryClient.invalidateQueries({ queryKey: ['system', 'status'] })
+    },
+    onError: (error) =>
+      toast(error instanceof Error ? error.message : '백업을 생성하지 못했습니다.', 'error'),
   })
 
   const remove = useMutation({
@@ -196,6 +237,28 @@ export function SettingsPage() {
     [activity.data],
   )
   const inspectedDay = selectedDay ? dayMap.get(selectedDay) ?? null : null
+  const voteDayMap = useMemo(
+    () => new Map((votesActivity.data?.days ?? []).map((day) => [day.date, day])),
+    [votesActivity.data],
+  )
+  const inspectedVoteDay = selectedVoteDay ? voteDayMap.get(selectedVoteDay) ?? null : null
+  const voteMetrics = useMemo(() => {
+    const days = votesActivity.data?.days ?? []
+    const todayVotes = days[days.length - 1]?.count ?? 0
+    const last7Votes = days.slice(-7).reduce((sum, d) => sum + d.count, 0)
+    const last30Votes = days.slice(-30).reduce((sum, d) => sum + d.count, 0)
+    let longestStreak = 0
+    let current = 0
+    for (const d of days) {
+      if (d.count > 0) {
+        current += 1
+        if (current > longestStreak) longestStreak = current
+      } else {
+        current = 0
+      }
+    }
+    return { todayVotes, last7Votes, last30Votes, longestStreak }
+  }, [votesActivity.data])
   const otherLibraryBytes = storage.data
     ? Math.max(0, storage.data.totalLibraryBytes - storage.data.videoBytes - storage.data.imageBytes)
     : 0
@@ -207,10 +270,10 @@ export function SettingsPage() {
     : 0
 
   return (
-    <div className="h-full overflow-y-auto px-6 pb-24">
+    <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
       <PageHeading
         title="설정"
-        meta="라이브러리 관리, 기여 활동 통계 및 저장 공간 분석"
+        meta="테마, 라이브러리, 기여·Vote 통계, 서버 복구 및 백업 관리"
         actions={
           <Button variant="primary" onClick={() => setAddOpen(true)}>
             <Plus size={14} />
@@ -218,6 +281,37 @@ export function SettingsPage() {
           </Button>
         }
       />
+
+      <Section title="화면 테마 (Appearance)" description="다크, 라이트 또는 시스템 OS 설정을 따릅니다.">
+        <div className="flex flex-wrap items-center gap-2 p-4">
+          {(
+            [
+              { id: 'dark', label: 'Dark', Icon: Moon },
+              { id: 'light', label: 'Light', Icon: Sun },
+              { id: 'system', label: 'System (OS 자동)', Icon: Monitor },
+            ] as Array<{ id: ThemeMode; label: string; Icon: typeof Moon }>
+          ).map(({ id, label, Icon }) => {
+            const active = themeMode === id
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setThemeMode(id)}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-[12.5px] font-medium transition-colors',
+                  active
+                    ? 'border-accent/60 bg-accent/15 text-accent'
+                    : 'border-line bg-panel-2 text-muted hover:border-line-strong hover:text-ink',
+                )}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      </Section>
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard icon={<Images size={13} />} label="사진" value={stats.data?.images ?? 0} />
@@ -257,7 +351,7 @@ export function SettingsPage() {
                   count: d.count,
                   level: d.level,
                 }))}
-                colorScheme="dark"
+                colorScheme={resolvedTheme}
                 theme={CALENDAR_THEME}
                 blockSize={12}
                 blockMargin={3}
@@ -323,6 +417,127 @@ export function SettingsPage() {
                         <span className="truncate text-ink">{item.name}</span>
                         <span className="ml-auto truncate text-[11px] text-faint">
                           {item.relativePath}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Section>
+
+      <Section
+        title="Vote 활동 (주황색 잡초)"
+        description="사진 폴더 및 동영상에 Vote한 일별 활동을 주황색 잔디로 추적합니다."
+      >
+        {votesActivity.isPending ? (
+          <div className="flex justify-center py-8">
+            <Spinner />
+          </div>
+        ) : votesActivity.data ? (
+          <div className="space-y-4 p-4">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-6">
+              <MetricPill
+                label="오늘 Vote"
+                value={`${formatCount(voteMetrics.todayVotes)}개`}
+              />
+              <MetricPill
+                label="최근 7일"
+                value={`${formatCount(voteMetrics.last7Votes)}개`}
+              />
+              <MetricPill
+                label="최근 30일"
+                value={`${formatCount(voteMetrics.last30Votes)}개`}
+              />
+              <MetricPill
+                label="최장 연속 스트릭"
+                value={`${formatCount(voteMetrics.longestStreak)}일`}
+              />
+              <MetricPill
+                label="활동 일수"
+                value={`${formatCount(votesActivity.data.activeDays)}일`}
+              />
+              <MetricPill
+                label="누적 총 Vote"
+                value={`${formatCount(votesActivity.data.totalVotes)}개`}
+              />
+            </div>
+
+            <div className="overflow-x-auto pb-1">
+              <ActivityCalendar
+                data={votesActivity.data.days.map((d) => ({
+                  date: d.date,
+                  count: d.count,
+                  level: d.level,
+                }))}
+                colorScheme={resolvedTheme}
+                theme={ORANGE_CALENDAR_THEME}
+                blockSize={12}
+                blockMargin={3}
+                blockRadius={2}
+                fontSize={12}
+                labels={{
+                  months: [
+                    '1월',
+                    '2월',
+                    '3월',
+                    '4월',
+                    '5월',
+                    '6월',
+                    '7월',
+                    '8월',
+                    '9월',
+                    '10월',
+                    '11월',
+                    '12월',
+                  ],
+                  weekdays: ['일', '월', '화', '수', '목', '금', '토'],
+                  totalCount: '최근 1년 총 {{count}}건의 Vote',
+                  legend: { less: '적음', more: '많음' },
+                }}
+                tooltips={{
+                  activity: {
+                    text: (act) => `${act.date} · ${act.count}건 Vote`,
+                  },
+                }}
+                renderBlock={(block, act) =>
+                  cloneElement(block, {
+                    onClick: () => setSelectedVoteDay(act.date),
+                    style: { cursor: 'pointer' },
+                  })
+                }
+              />
+            </div>
+
+            {inspectedVoteDay ? (
+              <div className="rounded-lg border border-line bg-panel-2 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
+                    <Flame size={13} className="text-[#f97316]" />
+                    {inspectedVoteDay.date} · {formatCount(inspectedVoteDay.count)}건 Vote
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVoteDay(null)}
+                    className="text-[11.5px] text-muted hover:text-ink"
+                  >
+                    닫기
+                  </button>
+                </div>
+                {inspectedVoteDay.items.length === 0 ? (
+                  <p className="mt-1.5 text-[12px] text-muted">이 날짜에 기록된 Vote가 없습니다.</p>
+                ) : (
+                  <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-[12px]">
+                    {inspectedVoteDay.items.map((item) => (
+                      <li key={item.id} className="flex items-center gap-2 text-muted">
+                        <span className="rounded border border-[#f97316]/35 bg-[#f97316]/10 px-1.5 py-0.5 text-[10px] text-[#f97316]">
+                          {item.targetType === 'folder' ? '폴더' : '영상'}
+                        </span>
+                        <span className="truncate text-ink">{item.title}</span>
+                        <span className="ml-auto shrink-0 text-[11px] text-faint">
+                          {formatDate(item.createdAt)}
                         </span>
                       </li>
                     ))}
@@ -532,6 +747,115 @@ export function SettingsPage() {
 
       <ProcessingPanel />
 
+      <Section
+        title="서버 상태 · 복구 · 데이터베이스 백업"
+        description="SQLite WAL+FULL 무결성, 드라이브 마운트 상태, 크래시 복구 기록 및 검증된 DB 백업을 관리합니다."
+        actions={
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={backupNow.isPending}
+            onClick={() => backupNow.mutate()}
+          >
+            <DatabaseBackup size={12} />
+            {backupNow.isPending ? '백업 생성 중' : '지금 DB 백업'}
+          </Button>
+        }
+      >
+        {systemStatus.isPending ? (
+          <div className="flex justify-center py-6">
+            <Spinner />
+          </div>
+        ) : systemStatus.data ? (
+          <div className="space-y-4 p-4">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              <MetricPill label="SQLite 버전" value={systemStatus.data.sqliteVersion} />
+              <MetricPill
+                label="내구성 / 무결성"
+                value={`${systemStatus.data.synchronousMode} · ${systemStatus.data.dbIntegrity}`}
+              />
+              <MetricPill
+                label="실행 중인 워커"
+                value={`${formatCount(systemStatus.data.activeWorkers.length)}개`}
+              />
+              <MetricPill
+                label="최근 백업"
+                value={
+                  systemStatus.data.lastBackup
+                    ? formatAgo(systemStatus.data.lastBackup.createdAt)
+                    : '없음'
+                }
+              />
+            </div>
+
+            {systemStatus.data.lastRecovery ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-panel-2 px-3 py-2 text-[12px]">
+                <ShieldCheck size={14} className="shrink-0 text-emerald-500" />
+                <span className="font-medium text-ink">최근 자동 복구:</span>
+                <span className="text-muted">
+                  워커 {systemStatus.data.lastRecovery.workerId} · 복구 작업{' '}
+                  {formatCount(systemStatus.data.lastRecovery.recoveredJobs)}건 · 임시 파일 정리{' '}
+                  {formatCount(systemStatus.data.lastRecovery.cleanedTempFiles)}개 · 무결성{' '}
+                  {systemStatus.data.lastRecovery.dbIntegrity}
+                </span>
+                <span className="ml-auto text-[11px] text-faint">
+                  {formatDate(systemStatus.data.lastRecovery.createdAt)}
+                </span>
+              </div>
+            ) : null}
+
+            {systemStatus.data.libraries.length > 0 ? (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-medium text-muted">라이브러리 마운트 상태</p>
+                <div className="divide-y divide-line/60 rounded-lg border border-line bg-panel-2/60">
+                  {systemStatus.data.libraries.map((lib) => (
+                    <div key={lib.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-[12px]">
+                      <Activity
+                        size={12}
+                        className={
+                          lib.status === 'available' || lib.status === 'scanning'
+                            ? 'text-emerald-500'
+                            : 'text-danger'
+                        }
+                      />
+                      <span className="font-medium text-ink">{lib.name}</span>
+                      <span className="truncate font-mono text-[11px] text-faint">
+                        {lib.rootPath || '/media'}
+                      </span>
+                      <span className="ml-auto text-[11px] text-muted">
+                        {lib.status === 'available'
+                          ? '정상'
+                          : lib.status === 'scanning'
+                            ? '스캔 중'
+                            : lib.status === 'blocked'
+                              ? '차단됨'
+                              : '마운트 끊김'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {backups.data?.backups.length ? (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-medium text-muted">검증된 데이터베이스 백업</p>
+                <div className="divide-y divide-line/60 rounded-lg border border-line bg-panel-2/60">
+                  {backups.data.backups.slice(0, 5).map((b) => (
+                    <div key={b.id} className="flex flex-wrap items-center gap-2 px-3 py-1.5 text-[11.5px]">
+                      <span className="font-mono text-ink">{b.filename}</span>
+                      <span className="text-muted">{formatBytes(b.sizeBytes)}</span>
+                      <span className="text-emerald-500">{b.integrity}</span>
+                      <span className="ml-auto text-faint">{formatDate(b.createdAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Section>
+
       <Section title="계정" description="개인 서버이므로 계정은 하나만 사용합니다.">
         <div className="flex flex-wrap items-center gap-3 px-4 py-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/15 text-[12px] font-semibold text-accent">
@@ -556,8 +880,9 @@ export function SettingsPage() {
           setAddOpen(false)
           setFormError(null)
         }}
+        className="w-[min(620px,94vw)]"
         title="라이브러리 추가"
-        description="서버의 MEDIA_ROOT 아래에 있는 폴더만 등록할 수 있습니다."
+        description="Windows 드라이브(C:\\, D:\\, E:\\) 또는 MEDIA_ROOT 폴더를 탐색해 선택하세요."
         footer={
           <>
             <Button onClick={() => setAddOpen(false)}>취소</Button>
@@ -571,30 +896,50 @@ export function SettingsPage() {
           </>
         }
       >
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           <label className="block">
-            <span className="mb-1.5 block text-[12px] text-muted">이름</span>
+            <span className="mb-1.5 block text-[12px] text-muted">라이브러리 이름</span>
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="예: 가족 사진"
+              placeholder="예: 여행 사진 또는 D 드라이브"
               autoFocus
             />
           </label>
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] text-muted">경로</span>
-            <Input
-              value={rootPath}
-              onChange={(event) => setRootPath(event.target.value)}
-              placeholder="예: Photos 또는 /mnt/d/Media/Photos"
+
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[12px] text-muted">서버 폴더 탐색기</span>
+              <button
+                type="button"
+                onClick={() => setManualPathOpen((v) => !v)}
+                className="text-[11px] text-accent hover:underline"
+              >
+                {manualPathOpen ? '직접 입력 숨기기' : '직접 경로 입력'}
+              </button>
+            </div>
+            <HostFolderPicker
+              selectedPath={rootPath}
+              onSelect={(picked, suggestedName) => {
+                setRootPath(picked)
+                if (!name.trim() && suggestedName) setName(suggestedName)
+              }}
             />
-            <span className="mt-1.5 block text-[11.5px] leading-relaxed text-faint">
-              MEDIA_ROOT 기준 상대 경로를 권장합니다. 절대 경로도 MEDIA_ROOT 안이면 사용할 수
-              있습니다.
-            </span>
-          </label>
+          </div>
+
+          {manualPathOpen || rootPath ? (
+            <label className="block">
+              <span className="mb-1 block text-[11.5px] text-muted">선택된 경로</span>
+              <Input
+                value={rootPath}
+                onChange={(event) => setRootPath(event.target.value)}
+                placeholder="예: drives/d/Photos 또는 Photos"
+              />
+            </label>
+          ) : null}
+
           {formError ? (
-            <p className="rounded-lg border border-[#4a2a2e] bg-[#241518] px-3 py-2 text-[12px] text-[#ffc9c9]">
+            <p className="rounded-lg border border-danger/35 bg-danger/10 px-3 py-2 text-[12px] text-danger">
               {formError}
             </p>
           ) : null}

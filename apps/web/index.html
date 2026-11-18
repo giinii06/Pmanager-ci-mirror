@@ -4,8 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0B0C0F" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
     <title>MediaVault</title>
+    <script>
+      ;(() => {
+        try {
+          var saved = localStorage.getItem('mediavault.themeMode') || 'system'
+          var prefersDark =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+          var resolved = saved === 'light' || saved === 'dark' ? saved : prefersDark ? 'dark' : 'light'
+          var root = document.documentElement
+          root.dataset.theme = resolved
+          root.dataset.themeMode = saved
+          root.style.colorScheme = resolved
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0B0C0F' : '#F6F7F4')
+        } catch {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

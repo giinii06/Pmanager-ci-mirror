@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { AssetDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
-import { patchAssetInCaches } from '../lib/cachePatch'
+import { invalidateVoteCaches, patchAssetInCaches } from '../lib/cachePatch'
 import { buildGalleryEntries } from '../lib/justified'
 import { useElementWidth } from '../lib/hooks'
 import { useUi } from '../store/ui'
@@ -23,7 +23,7 @@ interface JustifiedGridProps {
   groupByMonth?: boolean
 }
 
-const GAP = 4
+const GAP = 3
 
 export function JustifiedGrid({
   items,
@@ -47,6 +47,7 @@ export function JustifiedGrid({
     mutationFn: (id: string) => api.voteAsset(id),
     onSuccess: (updated) => {
       patchAssetInCaches(queryClient, updated)
+      invalidateVoteCaches(queryClient)
     },
     onError: () => toast('투표를 저장하지 못했습니다.', 'error'),
   })
@@ -115,6 +116,7 @@ export function JustifiedGrid({
                         asset={placed.item}
                         width={placed.width}
                         height={placed.height}
+                        priority={placed.index < 16}
                         onOpen={() => onOpen(placed.index)}
                         onVote={
                           placed.item.kind === 'video'

@@ -19,6 +19,11 @@ export function patchAssetInCaches(queryClient: QueryClient, updated: AssetDTO):
   )
 }
 
+export function invalidateVoteCaches(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ['stats', 'votes-activity'] })
+  queryClient.invalidateQueries({ queryKey: ['folders'] })
+}
+
 export function removeAssetFromCaches(queryClient: QueryClient, id: string): void {
   useViewer.getState().removeAsset(id)
   queryClient.setQueriesData<InfiniteData<Page<AssetDTO>>>(

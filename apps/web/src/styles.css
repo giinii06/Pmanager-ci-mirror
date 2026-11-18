@@ -26,6 +26,21 @@
   --animate-fade: fade 180ms ease-out;
 }
 
+:root[data-theme='light'] {
+  --color-canvas: #f6f7f4;
+  --color-panel: #ffffff;
+  --color-panel-2: #eff1ed;
+  --color-raised: #e6e8e2;
+  --color-line: #e1e4dd;
+  --color-line-strong: #c8cdc4;
+  --color-ink: #14161a;
+  --color-muted: #505763;
+  --color-faint: #78808e;
+  --color-accent: #4c62e6;
+  --color-accent-strong: #394fd4;
+  --color-danger: #dc2626;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -74,7 +89,7 @@
   }
 
   ::selection {
-    background: rgb(139 158 255 / 0.28);
+    background: color-mix(in srgb, var(--color-accent) 26%, transparent);
   }
 
   * {
@@ -99,7 +114,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid rgb(139 158 255 / 0.55);
+    outline: 2px solid color-mix(in srgb, var(--color-accent) 60%, transparent);
     outline-offset: 2px;
   }
 

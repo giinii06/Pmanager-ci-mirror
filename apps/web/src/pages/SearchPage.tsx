@@ -76,8 +76,10 @@ export function SearchPage({ query }: { query: string }) {
   }
 
   return (
-    <div className="px-6 pb-24">
-      <PageHeading title={`검색: ${query}`} />
+    <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
+      <div className="sticky top-0 z-10 -mx-6 mb-2 border-b border-line/60 bg-canvas/90 px-6 py-2 backdrop-blur-md">
+        <PageHeading title={`검색: ${query}`} />
+      </div>
       {results.isPending ? (
         <div className="flex justify-center py-16">
           <Spinner />
@@ -110,12 +112,13 @@ export function SearchPage({ query }: { query: string }) {
                   onClick={() => open(hit)}
                   className="group flex w-full items-center gap-3 rounded-xl border border-line/70 bg-panel/60 p-2 text-left transition-colors hover:border-line hover:bg-raised/70"
                 >
-                  <span className="relative h-[54px] w-[96px] shrink-0 overflow-hidden rounded-lg bg-raised">
+                  <span className="relative h-[54px] w-[96px] shrink-0 overflow-hidden rounded-lg bg-panel-2">
                     <img
                       src={thumbnailFor(hit)}
                       alt=""
                       loading="lazy"
-                      className="h-full w-full object-cover"
+                      decoding="async"
+                      className="h-full w-full object-contain"
                     />
                     <span className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
                       <Play size={16} fill="white" className="text-white" />

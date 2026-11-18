@@ -4,8 +4,12 @@ import type {
   AssetDTO,
   AssetQuery,
   AuthStatusDTO,
+  BackupRecordDTO,
   FolderDTO,
   FolderSort,
+  HostBrowseResponseDTO,
+  HostDriveDTO,
+  JobDTO,
   JobSummaryDTO,
   LibraryDTO,
   Page,
@@ -15,6 +19,7 @@ import type {
   StatsDTO,
   StorageStatsDTO,
   SubtitleTracksDTO,
+  SystemStatusDTO,
   TagDTO,
   TagSummaryDTO,
   TranscriptDTO,
@@ -25,6 +30,7 @@ import type {
   TranslationStatusDTO,
   TranslationSummaryDTO,
   UserDTO,
+  VoteActivityStatsDTO,
   WorkQueueDTO,
 } from '@mediavault/shared'
 
@@ -183,11 +189,26 @@ export const api = {
 
   stats: () => request<StatsDTO>('/api/stats'),
   activityStats: () => request<ActivityStatsDTO>('/api/stats/activity'),
+  votesActivityStats: () => request<VoteActivityStatsDTO>('/api/stats/votes-activity'),
   storageStats: (refresh = false) =>
     request<StorageStatsDTO>(`/api/stats/storage${refresh ? '?refresh=1' : ''}`),
   archives: () => request<{ archives: ArchiveJobDTO[] }>('/api/archives'),
   jobs: () => request<JobSummaryDTO>('/api/jobs'),
+  pauseJob: (id: number) => request<{ job: JobDTO }>(`/api/jobs/${id}/pause`, { method: 'POST' }),
+  resumeJob: (id: number) => request<{ job: JobDTO }>(`/api/jobs/${id}/resume`, { method: 'POST' }),
+  cancelJob: (id: number) => request<{ job: JobDTO }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
   workQueue: () => request<WorkQueueDTO>('/api/queue'),
+  systemStatus: () => request<SystemStatusDTO>('/api/system/status'),
+  backups: () => request<{ backups: BackupRecordDTO[] }>('/api/backups'),
+  createBackup: () => request<{ backup: BackupRecordDTO }>('/api/backups', { method: 'POST' }),
+  fsDrives: () => request<{ drives: HostDriveDTO[] }>('/api/fs/drives'),
+  fsBrowse: (targetPath = '', q = '') => {
+    const params = new URLSearchParams()
+    if (targetPath) params.set('path', targetPath)
+    if (q) params.set('q', q)
+    const qs = params.toString()
+    return request<HostBrowseResponseDTO>(`/api/fs/browse${qs ? `?${qs}` : ''}`)
+  },
 
   semanticSearch: (q: string, limit = 30) =>
     request<SemanticSearchDTO>(

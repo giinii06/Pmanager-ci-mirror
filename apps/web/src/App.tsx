@@ -53,7 +53,7 @@ function SearchRoute() {
 function NotFound() {
   const navigate = useNavigate()
   return (
-    <div className="px-6 pt-6">
+    <div className="h-full overflow-y-auto overscroll-contain px-6 pt-6">
       <EmptyState
         title="페이지를 찾을 수 없습니다"
         body="주소가 바뀌었거나 삭제되었습니다."

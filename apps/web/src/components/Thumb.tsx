@@ -9,6 +9,8 @@ interface ThumbProps {
   alt: string
   className?: string
   imageClassName?: string
+  priority?: boolean
+  fit?: 'contain' | 'cover'
   onLoaded?: () => void
 }
 
@@ -17,7 +19,17 @@ function retryUrl(url: string, attempt: number): string {
   return `${url}${url.includes('?') ? '&' : '?'}r=${attempt}`
 }
 
-export function Thumb({ src, srcSet, sizes, alt, className, imageClassName, onLoaded }: ThumbProps) {
+export function Thumb({
+  src,
+  srcSet,
+  sizes,
+  alt,
+  className,
+  imageClassName,
+  priority = false,
+  fit = 'contain',
+  onLoaded,
+}: ThumbProps) {
   const [attempt, setAttempt] = useState(0)
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
   const timer = useRef<number | null>(null)
@@ -55,8 +67,8 @@ export function Thumb({ src, srcSet, sizes, alt, className, imageClassName, onLo
       .join(', ')
 
   return (
-    <div className={cn('relative overflow-hidden bg-raised', className)}>
-      {!loaded ? <div className="absolute inset-0 animate-pulse bg-raised" /> : null}
+    <div className={cn('relative overflow-hidden bg-panel-2', className)}>
+      {!loaded ? <div className="absolute inset-0 animate-pulse bg-raised/70" /> : null}
       <img
         ref={imageRef}
         src={current}
@@ -64,10 +76,12 @@ export function Thumb({ src, srcSet, sizes, alt, className, imageClassName, onLo
         sizes={sizes}
         alt={alt}
         draggable={false}
-        loading="lazy"
+        loading={priority ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : 'auto'}
         decoding="async"
         className={cn(
-          'h-full w-full object-cover transition-opacity duration-300',
+          'h-full w-full transition-opacity duration-300',
+          fit === 'cover' ? 'object-cover' : 'object-contain',
           loaded ? 'opacity-100' : 'opacity-0',
           imageClassName,
         )}

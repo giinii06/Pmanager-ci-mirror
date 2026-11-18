@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Eye, FolderPlus, Images, ThumbsUp } from 'lucide-react'
 import type { FolderDTO, FolderSort } from '@mediavault/shared'
 import { api } from '../lib/api'
+import { invalidateVoteCaches } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
 import { useUi } from '../store/ui'
@@ -15,7 +16,7 @@ import { PageHeading } from '../components/PageHeading'
 import { Button } from '../components/ui/Button'
 import { AssetGallery } from '../components/AssetGallery'
 
-const CARD_GRID = 'grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4'
+const CARD_GRID = 'columns-2 gap-3 sm:columns-3 lg:columns-4'
 
 const FOLDER_SORTS: Array<{ value: FolderSort; label: string }> = [
   { value: 'views', label: '조회수순' },
@@ -42,6 +43,7 @@ export function FoldersPage() {
       queryClient.setQueriesData<FolderDTO[]>({ queryKey: ['folders'] }, (list) =>
         list?.map((f) => (f.id === updated.id ? updated : f)),
       )
+      invalidateVoteCaches(queryClient)
     },
     onError: () => toast('폴더 투표를 저장하지 못했습니다.', 'error'),
   })
@@ -148,13 +150,14 @@ export function FolderPage() {
       queryClient.setQueriesData<FolderDTO[]>({ queryKey: ['folders'] }, (list) =>
         list?.map((f) => (f.id === updated.id ? updated : f)),
       )
+      invalidateVoteCaches(queryClient)
     },
     onError: () => toast('폴더 투표를 저장하지 못했습니다.', 'error'),
   })
 
   if (!folderId) {
     return (
-      <div className="px-6 pb-24">
+      <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
         <EmptyState title="폴더를 찾을 수 없습니다" body="폴더 목록에서 다시 선택해 주세요." />
       </div>
     )
@@ -162,7 +165,7 @@ export function FolderPage() {
 
   if (detail.isPending) {
     return (
-      <div className="h-full overflow-y-auto px-6">
+      <div className="h-full overflow-y-auto overscroll-contain px-6">
         <LoadingBlock />
       </div>
     )
@@ -170,7 +173,7 @@ export function FolderPage() {
 
   if (detail.isError || !detail.data) {
     return (
-      <div className="px-6 pb-24 pt-6">
+      <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24 pt-6">
         <EmptyState
           title="폴더를 찾을 수 없습니다"
           body="스캔 후 삭제되었을 수 있습니다."

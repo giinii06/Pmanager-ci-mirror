@@ -14,17 +14,42 @@ function rowWidth(entry: GalleryEntry<GalleryItem>): number {
 }
 
 describe('buildGalleryEntries', () => {
-  test('emits a month header before each group', () => {
-    const entries = buildGalleryEntries(
+  test('omits month headers by default and emits them only when groupByMonth is true', () => {
+    const defaultEntries = buildGalleryEntries(
       [item('a', '2026-10-02T00:00:00Z'), item('b', '2026-09-02T00:00:00Z')],
       1_000,
       { gap: GAP, targetHeight: TARGET },
+    )
+    expect(defaultEntries.some((entry) => entry.kind === 'header')).toBe(false)
+
+    const entries = buildGalleryEntries(
+      [item('a', '2026-10-02T00:00:00Z'), item('b', '2026-09-02T00:00:00Z')],
+      1_000,
+      { gap: GAP, targetHeight: TARGET, groupByMonth: true },
     )
     expect(entries[0]?.kind).toBe('header')
     expect(entries[1]?.kind).toBe('row')
     expect(entries[2]?.kind).toBe('header')
     expect(entries[3]?.kind).toBe('row')
     expect(entries.filter((entry) => entry.kind === 'header')).toHaveLength(2)
+  })
+
+  test('preserves true aspect ratio across 21:9, 16:9, 4:3, 1:1, and 9:16 tiles without stretching', () => {
+    const mixed = [
+      item('ultra', '2026-10-02T00:00:00Z', 2560, 1080),
+      item('hd', '2026-10-02T00:00:00Z', 1920, 1080),
+      item('classic', '2026-10-02T00:00:00Z', 1600, 1200),
+      item('square', '2026-10-02T00:00:00Z', 1000, 1000),
+      item('portrait', '2026-10-02T00:00:00Z', 1080, 1920),
+    ]
+    const entries = buildGalleryEntries(mixed, 980, { gap: 3, targetHeight: TARGET })
+    const placed = entries.flatMap((entry) => (entry.kind === 'row' ? entry.items : []))
+    expect(placed).toHaveLength(5)
+    for (const tile of placed) {
+      const expectedRatio = (tile.item.width ?? 1) / (tile.item.height ?? 1)
+      const actualRatio = tile.width / tile.height
+      expect(Math.abs(actualRatio - expectedRatio) / expectedRatio).toBeLessThanOrEqual(0.02)
+    }
   })
 
   test('full rows fill the container exactly', () => {

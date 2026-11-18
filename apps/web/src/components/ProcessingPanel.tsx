@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Cpu } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle, Cpu, Pause, Play, Square } from 'lucide-react'
 import type {
   AsrStage,
   EmbeddingStage,
+  JobDTO,
   TranslationStage,
   WorkItemDTO,
   WorkPipelineDTO,
@@ -11,6 +12,7 @@ import type {
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatAgo, formatCount, formatEta } from '../lib/format'
+import { useUi } from '../store/ui'
 import {
   ASR_STAGE_LABEL,
   EMBEDDING_STAGE_LABEL,
@@ -167,7 +169,7 @@ function StalledRow({ item }: { item: WorkItemDTO }) {
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
       <span className="min-w-0 flex-1 truncate text-[12px] text-muted">{assetLabel(item)}</span>
       <span className="shrink-0 text-[11px] text-faint">{pipelineLabel[item.pipeline]}</span>
-      <span className="shrink-0 rounded-full border border-[#4a2a2e] bg-[#241518] px-1.5 py-0.5 text-[10.5px] text-danger">
+      <span className="shrink-0 rounded-full border border-danger/35 bg-danger/10 px-1.5 py-0.5 text-[10.5px] text-danger">
         응답 없음
       </span>
     </div>
@@ -255,18 +257,134 @@ function EmptyState({ lastCompletedAt }: { lastCompletedAt: string | null }) {
   )
 }
 
+function JobControlRow({
+  job,
+  pending,
+  onPause,
+  onResume,
+  onCancel,
+}: {
+  job: JobDTO
+  pending: boolean
+  onPause: (id: number) => void
+  onResume: (id: number) => void
+  onCancel: (id: number) => void
+}) {
+  const canPause = job.state === 'running' || job.state === 'queued'
+  const canResume = job.state === 'paused'
+  const canCancel = job.state === 'running' || job.state === 'queued' || job.state === 'paused'
+  const progressText =
+    job.progressTotal && job.progressTotal > 0
+      ? `${formatCount(job.progressCurrent)} / ${formatCount(job.progressTotal)}`
+      : job.progressCurrent > 0
+        ? `${formatCount(job.progressCurrent)}개`
+        : null
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2 text-[12px]">
+      <span className="font-medium text-ink">{kindLabel[job.kind]}</span>
+      {job.phase ? <span className="text-muted">{job.phase}</span> : null}
+      {progressText ? <span className="tabular-nums text-faint">{progressText}</span> : null}
+      <span
+        className={cn(
+          'rounded-full border px-1.5 py-0.5 text-[10.5px] font-medium',
+          job.state === 'paused'
+            ? 'border-accent/40 bg-accent/12 text-accent'
+            : job.state === 'running'
+              ? 'border-[#34d399]/35 bg-[#34d399]/10 text-[#34d399]'
+              : 'border-line text-muted',
+        )}
+      >
+        {job.pauseRequested
+          ? '일시정지 요청됨'
+          : job.cancelRequested
+            ? '취소 요청됨'
+            : job.state === 'paused'
+              ? '일시정지됨'
+              : job.state === 'running'
+                ? '실행 중'
+                : '대기 중'}
+      </span>
+      <div className="ml-auto flex items-center gap-1">
+        {canPause ? (
+          <button
+            type="button"
+            disabled={pending || job.pauseRequested}
+            onClick={() => onPause(job.id)}
+            className="inline-flex items-center gap-1 rounded-md border border-line bg-panel-2 px-2 py-1 text-[11px] text-ink hover:border-line-strong disabled:opacity-45"
+          >
+            <Pause size={10} />
+            일시정지
+          </button>
+        ) : null}
+        {canResume ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => onResume(job.id)}
+            className="inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent/15 px-2 py-1 text-[11px] text-accent hover:bg-accent/25 disabled:opacity-45"
+          >
+            <Play size={10} />
+            재개
+          </button>
+        ) : null}
+        {canCancel ? (
+          <button
+            type="button"
+            disabled={pending || job.cancelRequested}
+            onClick={() => onCancel(job.id)}
+            className="inline-flex items-center gap-1 rounded-md border border-danger/35 bg-danger/10 px-2 py-1 text-[11px] text-danger hover:bg-danger/20 disabled:opacity-45"
+          >
+            <Square size={10} />
+            취소
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 export function ProcessingPanel() {
+  const queryClient = useQueryClient()
+  const toast = useUi((state) => state.toast)
   const queue = useQuery({
     queryKey: ['work-queue'],
     queryFn: api.workQueue,
     refetchInterval: (query) => ((query.state.data?.remaining ?? 0) > 0 ? 2000 : 15_000),
   })
+  const jobs = useQuery({
+    queryKey: ['jobs'],
+    queryFn: api.jobs,
+    refetchInterval: (query) => {
+      const counts = query.state.data?.counts
+      return (counts?.running ?? 0) + (counts?.queued ?? 0) + (counts?.paused ?? 0) > 0 ? 2500 : 15_000
+    },
+  })
+
+  const invalidateJobs = () => {
+    queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    queryClient.invalidateQueries({ queryKey: ['work-queue'] })
+    queryClient.invalidateQueries({ queryKey: ['libraries'] })
+  }
+
+  const control = useMutation({
+    mutationFn: ({ id, action }: { id: number; action: 'pause' | 'resume' | 'cancel' }) =>
+      action === 'pause'
+        ? api.pauseJob(id)
+        : action === 'resume'
+          ? api.resumeJob(id)
+          : api.cancelJob(id),
+    onSuccess: () => invalidateJobs(),
+    onError: (err) => toast(err instanceof Error ? err.message : '작업을 제어하지 못했습니다.', 'error'),
+  })
 
   const data = queue.data
+  const activeList = jobs.data?.active ?? []
   const hero = data && data.running.length === 1 ? (data.running[0] ?? null) : null
   const runningTotal = data?.pipelines.reduce((sum, lane) => sum + lane.running, 0) ?? 0
   const hasWork = Boolean(
-    data && (data.remaining > 0 || data.running.length > 0 || data.stalled.length > 0),
+    (data && (data.remaining > 0 || data.running.length > 0 || data.stalled.length > 0)) ||
+      activeList.length > 0,
   )
   const lanes =
     data?.pipelines.filter((lane) => lane.running + lane.queued + lane.stalled > 0) ?? []
@@ -341,6 +459,24 @@ export function ProcessingPanel() {
               </p>
               {lanes.map((lane) => (
                 <LaneRow key={lane.pipeline} lane={lane} />
+              ))}
+            </div>
+          ) : null}
+
+          {activeList.length > 0 ? (
+            <div className="divide-y divide-line/60 border-t border-line">
+              <p className="px-4 pb-1 pt-3 text-[10.5px] uppercase tracking-[0.08em] text-faint">
+                백그라운드 작업 제어 ({formatCount(activeList.length)}개)
+              </p>
+              {activeList.slice(0, 8).map((job) => (
+                <JobControlRow
+                  key={job.id}
+                  job={job}
+                  pending={control.isPending}
+                  onPause={(id) => control.mutate({ id, action: 'pause' })}
+                  onResume={(id) => control.mutate({ id, action: 'resume' })}
+                  onCancel={(id) => control.mutate({ id, action: 'cancel' })}
+                />
               ))}
             </div>
           ) : null}
