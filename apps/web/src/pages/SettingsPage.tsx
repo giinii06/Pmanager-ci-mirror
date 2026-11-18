@@ -839,16 +839,26 @@ export function SettingsPage() {
 
             {backups.data?.backups.length ? (
               <div className="space-y-1.5">
-                <p className="text-[11px] font-medium text-muted">검증된 데이터베이스 백업</p>
+                <p className="text-[11px] font-medium text-muted">최근 데이터베이스 백업</p>
                 <div className="divide-y divide-line/60 rounded-lg border border-line bg-panel-2/60">
-                  {backups.data.backups.slice(0, 5).map((b) => (
-                    <div key={b.id} className="flex flex-wrap items-center gap-2 px-3 py-1.5 text-[11.5px]">
-                      <span className="font-mono text-ink">{b.filename}</span>
-                      <span className="text-muted">{formatBytes(b.sizeBytes)}</span>
-                      <span className="text-emerald-500">{b.integrity}</span>
-                      <span className="ml-auto text-faint">{formatDate(b.createdAt)}</span>
-                    </div>
-                  ))}
+                  {backups.data.backups.slice(0, 5).map((b) => {
+                    const verified = !b.error && b.integrity === 'ok'
+                    return (
+                      <div key={b.id} className="flex flex-wrap items-center gap-2 px-3 py-1.5 text-[11.5px]">
+                        <span className="font-mono text-ink">{b.filename}</span>
+                        <span className="text-muted">{formatBytes(b.sizeBytes)}</span>
+                        <span className={verified ? 'text-emerald-500' : 'text-danger'}>
+                          {verified ? b.integrity : `실패 (${b.integrity})`}
+                        </span>
+                        {b.error ? (
+                          <span className="max-w-[280px] truncate text-[11px] text-danger" title={b.error}>
+                            {b.error}
+                          </span>
+                        ) : null}
+                        <span className="ml-auto text-faint">{formatDate(b.createdAt)}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             ) : null}

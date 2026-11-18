@@ -35,9 +35,7 @@ function rotateIfNeeded(filePath: string): void {
       if (existsSync(src)) renameSync(src, `${filePath}.${idx + 1}`)
     }
     renameSync(filePath, `${filePath}.1`)
-  } catch {
-    // Logging rotation must never crash the active process.
-  }
+  } catch {}
 }
 
 export class StructuredLogger {
@@ -74,9 +72,7 @@ export class StructuredLogger {
     try {
       rotateIfNeeded(this.filePath)
       appendFileSync(this.filePath, `${payload}\n`)
-    } catch {
-      // Console line is already emitted.
-    }
+    } catch {}
   }
 
   info(event: string, fields?: Record<string, unknown>): void {

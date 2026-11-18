@@ -115,4 +115,15 @@ describe('buildGalleryEntries', () => {
   test('returns nothing for an unmeasured container', () => {
     expect(buildGalleryEntries([item('a', '2026-10-02T00:00:00Z')], 0)).toEqual([])
   })
+
+  test('does not overflow ultra-narrow containers on wide panorama tiles', () => {
+    const entries = buildGalleryEntries(
+      [item('wide', '2026-10-02T00:00:00Z', 4_000, 1_000)],
+      280,
+      { gap: GAP, targetHeight: TARGET, groupByMonth: false },
+    )
+    const placed = entries.flatMap((entry) => (entry.kind === 'row' ? entry.items : []))
+    expect(placed).toHaveLength(1)
+    expect(placed[0]!.width).toBeLessThanOrEqual(280)
+  })
 })

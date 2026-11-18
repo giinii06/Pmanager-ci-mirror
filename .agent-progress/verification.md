@@ -27,3 +27,19 @@
 - `bun run typecheck`: exit 0 across all 6 TS packages.
 - `bun test apps/web`: **`21 pass, 0 fail`** (`57 expect() calls`, `justified.test.ts` + `viewerPages.test.ts`).
 - `bun run --cwd apps/web build`: `vite build` exit 0 (`2949` modules transformed in `244ms`).
+
+## Wave 5 Live Win11 Host Verification (`192.168.0.27`, `media-server`)
+- `/health/live` & `/health/ready`: HTTP `200`, `sqliteVersion: "3.53.4"`, `synchronousMode: "FULL"`, `dbIntegrity: "ok"`.
+- Live Schema v14 migration: `PRAGMA user_version = 14`, `PRAGMA synchronous = 2 (FULL)`, `assets = 13080`, `folders = 113`, `views = 3` (zero data loss).
+- Host Explorer & Security: `/api/fs/drives` returns `C:\` (510.9 GB), `D:\` (2.00 TB), `E:\` (1.00 TB); `/api/fs/browse?path=drives/e` returns folders; `/api/fs/browse?path=drives/c/Windows` blocked (`403`).
+- Backups & Ops: `POST /api/backups` created `mediavault-2026-11-18T03-25-13-870Z-mwxsyb.db` (`334,450,688` bytes, `integrity: "ok"`); `scripts/windows/check-health.ps1` passed on Win11 PowerShell.
+- Live 13,080-asset DrvFS Scan (`/mnt/e/d`): completed in **`3,432 ms`** (`scan.summary`: `files: 13080, unchanged: 13080, removed: 0`; `worker-1` idle CPU **`0.54%–1.55%`**, RSS **`34.4–51.1 MiB`**).
+- Live Win11 `D:\` DrvFS 1k Benchmark (`scripts/bench-scan.ts --count=1000 --dir=/media/drives/d`): `enumMs: 111`, `statMatrix {1:2390, 4:213, 8:155, 16:137, 32:141}`, `probeMatrix1kSubset {1:77143, 4:7754, 8:5525, 16:5503, 32:5529}`, `dbUnbatched1kMs: 2700`, `dbBatched250Ms: 35`, `initialScanMs: 9064`, `incrementalScanMs: 1569`, `rssMb: 110.5`.
+- Live Crash Recovery: `jobId 15468` auto-recovered expired lease and finished `13,080` files (`16.43s` resumed + verify); kernel `SIGKILL` to live worker PID `157691` auto-revived `mediavault-worker-1` (`PID 158150`) in **`5s`** with `recovery_logs` (`db_integrity: "ok"`) and `13,080` assets intact.
+
+## Wave 6 Post-Audit Hardening Verification
+- `bun run typecheck`: exit `0` across all 6 workspaces (`packages/{shared,database,media}`, `apps/{api,worker,web}`).
+- `bun test`: **`284 pass, 0 fail`** across 34 files (including new tests for cancelled scan non-resurrection, `lease_lost` batch rollback, deep symlink-to-Windows `403`, paused scan resume, non-double-counted `storageStats`, TZ-independent KST vote calendar, and narrow-container panorama layout).
+- `apps/asr-worker/.venv/bin/pytest`: **`110 passed, 1 skipped`**.
+- `bun run --cwd apps/web build`: `vite build` exit `0`.
+- Live post-Wave-6 verification on `media-server` (`192.168.0.27`): executed after Wave 6 bundle deploy (`api`, `worker`, `web`, `nginx`).

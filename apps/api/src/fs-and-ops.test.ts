@@ -3,11 +3,16 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
+  claimNextJob,
   createLibrary,
   createUser,
   enqueueJob,
+  getJob,
+  getVoteActivityStats,
   insertAsset,
   openDatabase,
+  pauseJob,
+  recordVoteEvent,
   upsertFolder,
   type Db,
 } from '@mediavault/database'
@@ -122,7 +127,7 @@ describe('FS explorer, security guards, health, backups, votes activity, and job
     }
     const ready = await h.app.inject({ method: 'GET', url: '/health/ready' })
     expect(ready.json().synchronousMode).toBe('FULL')
-    expect(ready.json().dbIntegrity).toBe('ok')
+    expect(ready.json().dbIntegrity).toBe('skipped')
     await h.app.close()
     h.db.close()
   })
@@ -328,6 +333,90 @@ describe('FS explorer, security guards, health, backups, votes activity, and job
     expect(sys.synchronousMode).toBe('FULL')
     expect(sys.lastBackup.id).toBe(backupPost.json().backup.id)
     expect(sys.libraries[0].status).toBe('available')
+
+    await h.app.close()
+    h.db.close()
+  })
+
+  test('blocks symlink chains reaching system folders, pauses/resumes scans, and avoids storage double-counting', async () => {
+    const h = await createHarness()
+    await mkdir(path.join(h.mediaRoot, 'drives/c/Windows/System32'), { recursive: true })
+    await symlink(path.join(h.mediaRoot, 'drives/c/Windows'), path.join(h.mediaRoot, 'drives/d/WinLink'))
+
+    const deepBlocked = await h.app.inject({
+      method: 'GET',
+      url: '/api/fs/browse?path=drives/d/WinLink/System32',
+      headers: { cookie: h.cookie },
+    })
+    expect(deepBlocked.statusCode).toBe(403)
+    expect(deepBlocked.json().error).toBe('blocked_system_path')
+
+    createLibrary(h.db, { id: 'lib-s', name: 'Sample', rootPath: 'drives/d/Media', createdAt: 100 })
+    const fId = upsertFolder(h.db, {
+      id: 'fs',
+      libraryId: 'lib-s',
+      parentId: null,
+      relativePath: '',
+      name: 'Media',
+      depth: 0,
+      scanId: 's1',
+    })
+    await writeFile(path.join(h.mediaRoot, 'drives/d/Media/vid.mp4'), '1234')
+    await writeFile(path.join(h.mediaRoot, 'drives/d/Media/readme.txt'), '0123456789')
+    await writeFile(path.join(h.mediaRoot, 'drives/d/Media/partial.tmp'), 'x'.repeat(100))
+    insertAsset(h.db, {
+      id: 'vid1',
+      libraryId: 'lib-s',
+      folderId: fId,
+      relativePath: 'vid.mp4',
+      filename: 'vid.mp4',
+      kind: 'video',
+      mimeType: 'video/mp4',
+      sizeBytes: 4,
+      mtimeMs: 1000,
+      width: 640,
+      height: 360,
+      durationMs: 1000,
+      takenAt: 1000,
+      videoCodec: 'h264',
+      audioCodec: 'aac',
+      container: 'mp4',
+      indexedAt: 1000,
+      scanId: 's1',
+    })
+
+    const storageRes = await h.app.inject({
+      method: 'GET',
+      url: '/api/stats/storage?refresh=1',
+      headers: { cookie: h.cookie },
+    })
+    expect(storageRes.statusCode).toBe(200)
+    const storage = storageRes.json()
+    expect(storage.videoBytes).toBe(4)
+    expect(storage.tempBytes).toBe(100)
+    expect(storage.totalLibraryBytes).toBe(14)
+
+    enqueueJob(h.db, { dedupeKey: 'scan:lib-s', kind: 'scan_library', priority: 2, libraryId: 'lib-s' }, 100)
+    const claimed = claimNextJob(h.db, 100, { workerId: 'w1', leaseMs: 10_000 })!
+    pauseJob(h.db, claimed.id, 150)
+    h.db.query("UPDATE jobs SET state = 'paused', worker_id = NULL, lease_expires_at = NULL WHERE id = ?").run(
+      claimed.id,
+    )
+
+    const triggerRes = await h.app.inject({
+      method: 'POST',
+      url: '/api/libraries/lib-s/scan',
+      headers: { cookie: h.cookie },
+    })
+    expect(triggerRes.statusCode).toBe(202)
+    expect(getJob(h.db, claimed.id)?.state).toBe('queued')
+
+    const kstMidnightPlusOne = Date.UTC(2026, 10, 17, 16, 0, 0)
+    recordVoteEvent(h.db, 'asset', 'vid1', 'vid.mp4', kstMidnightPlusOne)
+    const voteCal = getVoteActivityStats(h.db, kstMidnightPlusOne)
+    expect(voteCal.days[voteCal.days.length - 1]?.date).toBe('2026-11-18')
+    expect(voteCal.days[voteCal.days.length - 1]?.count).toBe(1)
+    expect(voteCal.streakDays).toBe(1)
 
     await h.app.close()
     h.db.close()

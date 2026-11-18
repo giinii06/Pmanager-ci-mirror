@@ -26,6 +26,7 @@ const FOLDER_CTE = `
       f.cover_width AS coverWidth,
       f.cover_height AS coverHeight,
       f.cover_poster_version AS coverPosterVersion,
+      COALESCE((SELECT a.file_version FROM assets a WHERE a.id = f.cover_asset_id), 1) AS coverFileVersion,
       f.vote_count AS voteCount,
       f.created_at AS createdAt,
       (SELECT COUNT(*) FROM assets a
@@ -143,10 +144,6 @@ interface CoverCandidate {
   takenAt: number
 }
 
-/**
- * Selects the middle image in deterministic filename order (`Math.floor(len / 2)`):
- * index 0 for 1 photo, index 1 for 2 or 3 photos, upper-middle for even counts.
- */
 export function pickMiddleCover<T>(sorted: T[]): T | null {
   if (sorted.length === 0) return null
   return sorted[Math.floor(sorted.length / 2)] ?? null
@@ -163,7 +160,11 @@ export function recomputeFolderCounts(db: Db, libraryId: string): void {
     .all(libraryId)
   for (const row of rows) direct.set(row.folderId, row.n)
 
-  const folders = listFolders(db, libraryId)
+  const folders = db
+    .query<{ id: string; parentId: string | null; depth: number }, Params>(
+      'SELECT id, parent_id AS parentId, depth FROM folders WHERE library_id = ?',
+    )
+    .all(libraryId)
   const children = new Map<string, string[]>()
   for (const folder of folders) {
     if (!folder.parentId) continue
@@ -241,16 +242,23 @@ export function recomputeFolderCounts(db: Db, libraryId: string): void {
 }
 
 export function deleteStaleFolders(db: Db, libraryId: string, scanId: string): number {
-  const remove = db.query<null, Params>(
+  const remove = db.query<{ id: string }, Params>(
     `DELETE FROM folders
      WHERE library_id = ? AND (last_seen_scan IS NULL OR last_seen_scan <> ?)
-       AND NOT EXISTS (SELECT 1 FROM folders child WHERE child.parent_id = folders.id)`,
+       AND NOT EXISTS (SELECT 1 FROM folders child WHERE child.parent_id = folders.id)
+     RETURNING id`,
+  )
+  const removeVotes = db.query<null, Params>(
+    "DELETE FROM vote_events WHERE target_type = 'folder' AND target_id = ?",
   )
   let deleted = 0
-  for (let pass = 0; pass < 64; pass += 1) {
-    const result = remove.run(libraryId, scanId)
-    deleted += result.changes
-    if (result.changes === 0) break
-  }
+  db.transaction(() => {
+    for (let pass = 0; pass < 64; pass += 1) {
+      const removed = remove.all(libraryId, scanId)
+      for (const row of removed) removeVotes.run(row.id)
+      deleted += removed.length
+      if (removed.length === 0) break
+    }
+  })()
   return deleted
 }

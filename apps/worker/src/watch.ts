@@ -58,8 +58,7 @@ function shouldSkipName(name: string): boolean {
   return name.startsWith('.') || BLOCKED_WATCH_DIRS.has(name.toLowerCase())
 }
 
-function isCrossMountSkip(dirAbs: string, mediaRoot: string, rootsSet: Set<string>): boolean {
-  if (!rootsSet.has(mediaRoot)) return false
+function isMediaSubMount(dirAbs: string, mediaRoot: string): boolean {
   const drivesMount = path.join(mediaRoot, 'drives')
   const extraMount = path.join(mediaRoot, 'extra')
   return (
@@ -79,7 +78,7 @@ function createDirectoryMtimePoller(
   const emitter = new EventEmitter()
   const stableMs = config.archiveStableMs ?? 1_500
   const pollMs = Math.min(2_500, Math.max(150, stableMs * 2))
-  const dirState = new Map<string, { mtimeMs: number; files: Set<string> }>()
+  const dirState = new Map<string, { rootDir: string; mtimeMs: number; files: Set<string> }>()
   const dirsWithTemp = new Set<string>()
   const pendingFiles = new Map<
     string,
@@ -87,16 +86,13 @@ function createDirectoryMtimePoller(
   >()
   let stopped = false
   let pollTimer: ReturnType<typeof setTimeout> | null = null
+  let activePoll: Promise<void> | null = null
 
-  const indexTree = async (
-    rootDir: string,
-    rootsSet: Set<string>,
-    notifyNewFiles: boolean,
-  ): Promise<void> => {
-    const queue = [rootDir]
+  const indexTree = async (startDir: string, rootDir: string, notifyNewFiles: boolean): Promise<void> => {
+    const queue = [startDir]
     while (queue.length > 0 && !stopped) {
       const dir = queue.pop()!
-      if (isCrossMountSkip(dir, config.mediaRoot, rootsSet)) continue
+      if (rootDir === config.mediaRoot && isMediaSubMount(dir, config.mediaRoot)) continue
       try {
         const [dirInfo, entries] = await Promise.all([
           stat(dir),
@@ -132,7 +128,7 @@ function createDirectoryMtimePoller(
             }
           }
         }
-        dirState.set(dir, { mtimeMs: dirInfo.mtimeMs, files })
+        dirState.set(dir, { rootDir, mtimeMs: dirInfo.mtimeMs, files })
         if (hasTemp) dirsWithTemp.add(dir)
         else dirsWithTemp.delete(dir)
       } catch {
@@ -144,12 +140,11 @@ function createDirectoryMtimePoller(
 
   const pollOnce = async (): Promise<void> => {
     const roots = collectLibraryRoots(db, config.mediaRoot)
-    const rootsSet = new Set(roots)
 
     for (const root of roots) {
       if (stopped) return
       if (!dirState.has(root)) {
-        await indexTree(root, rootsSet, true)
+        await indexTree(root, root, false)
       }
     }
 
@@ -188,7 +183,7 @@ function createDirectoryMtimePoller(
               const childAbs = path.join(dir, entry.name)
               if (entry.isDirectory()) {
                 if (!dirState.has(childAbs)) {
-                  await indexTree(childAbs, rootsSet, true)
+                  await indexTree(childAbs, prev.rootDir, true)
                 }
                 continue
               }
@@ -213,7 +208,7 @@ function createDirectoryMtimePoller(
                 }
               }
             }
-            dirState.set(dir, { mtimeMs: info.mtimeMs, files: nextFiles })
+            dirState.set(dir, { rootDir: prev.rootDir, mtimeMs: info.mtimeMs, files: nextFiles })
             if (hasTemp) dirsWithTemp.add(dir)
             else dirsWithTemp.delete(dir)
           } catch {
@@ -247,25 +242,44 @@ function createDirectoryMtimePoller(
     }
   }
 
+  const runPoll = async () => {
+    const task = pollOnce().catch((error) => {
+      console.warn(`[watch] poll failed: ${(error as Error).message}`)
+    })
+    activePoll = task
+    try {
+      await task
+    } finally {
+      if (activePoll === task) activePoll = null
+    }
+  }
+
   const scheduleNext = () => {
     if (stopped) return
     pollTimer = setTimeout(() => {
-      void pollOnce().finally(scheduleNext)
+      void runPoll().finally(scheduleNext)
     }, pollMs)
     pollTimer.unref?.()
   }
 
-  void (async () => {
-    const roots = collectLibraryRoots(db, config.mediaRoot)
-    const rootsSet = new Set(roots)
-    for (const root of roots) {
-      await indexTree(root, rootsSet, false)
-    }
-    if (!stopped) {
-      emitter.emit('ready')
-      scheduleNext()
+  const initialTask = (async () => {
+    try {
+      const roots = collectLibraryRoots(db, config.mediaRoot)
+      for (const root of roots) {
+        await indexTree(root, root, false)
+      }
+      if (!stopped) {
+        emitter.emit('ready')
+        scheduleNext()
+      }
+    } catch (error) {
+      console.warn(`[watch] initial index failed: ${(error as Error).message}`)
     }
   })()
+  activePoll = initialTask
+  void initialTask.finally(() => {
+    if (activePoll === initialTask) activePoll = null
+  })
 
   return {
     once(event, listener) {
@@ -277,6 +291,7 @@ function createDirectoryMtimePoller(
       if (pollTimer !== null) clearTimeout(pollTimer)
       pollTimer = null
       cleanupTimers()
+      if (activePoll) await activePoll
     },
   }
 }

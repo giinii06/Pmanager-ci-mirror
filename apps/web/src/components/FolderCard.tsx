@@ -19,9 +19,9 @@ export function FolderCard({
   const photoCount = count ?? folder.assetCount
   const aspectW = folder.coverWidth && folder.coverWidth > 0 ? folder.coverWidth : 4
   const aspectH = folder.coverHeight && folder.coverHeight > 0 ? folder.coverHeight : 3
-  const versionParam = folder.coverPosterVersion ? `&v=${folder.coverPosterVersion}` : ''
+  const clampedRatio = Math.min(2.4, Math.max(0.45, aspectW / aspectH))
   const coverSrc = folder.coverAssetId
-    ? `/api/assets/${folder.coverAssetId}/thumbnail?size=640${versionParam}&p=${POSTER_SCHEME}`
+    ? `/api/assets/${folder.coverAssetId}/thumbnail?size=640&v=${folder.coverFileVersion}&pv=${folder.coverPosterVersion}&p=${POSTER_SCHEME}`
     : null
 
   return (
@@ -33,7 +33,7 @@ export function FolderCard({
       >
         <div
           className="relative w-full overflow-hidden bg-panel-2"
-          style={{ aspectRatio: `${aspectW} / ${aspectH}` }}
+          style={{ aspectRatio: String(clampedRatio) }}
         >
           {coverSrc ? (
             <Thumb
@@ -51,7 +51,7 @@ export function FolderCard({
 
           <div
             className={cn(
-              'pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/85 via-black/45 to-black/10 p-3 transition-opacity duration-200',
+              'pointer-events-none absolute inset-0 flex max-h-full flex-col justify-end overflow-y-auto bg-gradient-to-t from-black/85 via-black/45 to-black/10 p-3 transition-opacity duration-200',
               infoOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
             )}
           >

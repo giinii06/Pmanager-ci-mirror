@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft,
@@ -47,13 +47,6 @@ export function HostFolderPicker({ selectedPath, onSelect }: HostFolderPickerPro
     queryFn: () => api.fsBrowse(browsePath, debouncedFilter),
     staleTime: 10_000,
   })
-
-  useEffect(() => {
-    if (!selectedPath) return
-    if (browsePath === '' && selectedPath.includes('/')) {
-      setBrowsePath(selectedPath)
-    }
-  }, [selectedPath])
 
   const navigateTo = (target: string) => {
     if (target === browsePath) return

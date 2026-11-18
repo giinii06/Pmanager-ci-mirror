@@ -80,6 +80,7 @@ export function toFolderDTO(folder: FolderRecord): FolderDTO {
     coverWidth: folder.coverWidth,
     coverHeight: folder.coverHeight,
     coverPosterVersion: folder.coverPosterVersion,
+    coverFileVersion: folder.coverFileVersion,
     viewCount: folder.viewCount,
     voteCount: folder.voteCount,
     rate: folder.rate,

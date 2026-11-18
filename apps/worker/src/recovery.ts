@@ -1,7 +1,6 @@
 import { readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  completeJob,
   enqueueJob,
   getAssetFileInfo,
   getSqliteRuntimeInfo,
@@ -27,6 +26,11 @@ export interface RecoverySummary {
   dbIntegrity: string
 }
 
+function warnUnlessEnoent(context: string, error: unknown): void {
+  if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return
+  console.warn(`[recovery] ${context}: ${(error as Error).message}`)
+}
+
 async function cleanStaleTempFiles(
   rootDir: string,
   cutoffMs: number,
@@ -38,7 +42,8 @@ async function cleanStaleTempFiles(
   let entries
   try {
     entries = await readdir(rootDir, { withFileTypes: true })
-  } catch {
+  } catch (error) {
+    warnUnlessEnoent(`readdir ${rootDir}`, error)
     return 0
   }
 
@@ -56,8 +61,8 @@ async function cleanStaleTempFiles(
         await rm(abs, { force: true })
         cleaned += 1
       }
-    } catch {
-      // Ignore concurrent deletion.
+    } catch (error) {
+      warnUnlessEnoent(`clean temp ${abs}`, error)
     }
   }
   return cleaned
@@ -82,7 +87,8 @@ async function cleanOrphanExtractDirs(
     let entries
     try {
       entries = await readdir(dir, { withFileTypes: true })
-    } catch {
+    } catch (error) {
+      warnUnlessEnoent(`readdir ${dir}`, error)
       return
     }
     for (const entry of entries) {
@@ -95,8 +101,8 @@ async function cleanOrphanExtractDirs(
             await rm(abs, { recursive: true, force: true })
             cleaned += 1
           }
-        } catch {
-          // Ignore disappeared dir.
+        } catch (error) {
+          warnUnlessEnoent(`clean extract ${abs}`, error)
         }
         continue
       }
@@ -256,5 +262,3 @@ export async function runWorkerRecovery(
     dbIntegrity,
   }
 }
-
-export { completeJob }

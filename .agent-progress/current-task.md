@@ -1,7 +1,7 @@
 # Current Task
 
-- **Active Phase / Wave:** Wave 4 Complete -> Starting Wave 5 (Win11 Boot Supervision Scripts, macOS `ssh media-server`, Live Host Deploy & Verification)
-- **Repository Root:** `/Users/xo/cod/Pmanager` (`branch: main`, Wave 3 at `7dbef44`, committing Wave 4 now)
-- **Live Win11 Host:** `giini@192.168.0.27` (`~/Pmanager`, WSL `3.0.5.0` `Ubuntu-24.04`, native `docker.service`, ASRock `B650M PG Lightning`)
-- **Active Migration:** Schema `v14`, Wave 3 backend, and Wave 4 frontend tested and built locally; ready for Wave 5 deployment to Win11 host (pre-v14 backup preserved in `~/Pmanager-backups/pre-v14-*`)
-- **Next Action:** Author `scripts/windows/*.ps1`, set up passwordless SSH (`ssh media-server` + WSL2 `ssh.service`), ship commits to `192.168.0.27`, rebuild & restart containers (`api`, `worker`, `web`, `asr-worker`, `nginx`), verify live Schema v14, Host Drive Explorer, Vote Orange Weeds, DrvFS benchmark, and `docker kill mediavault-worker-1` crash recovery.
+- **Active Phase / Wave:** Wave 6 Complete -> Phase D & E Verification & Delivery
+- **Repository Root:** `/Users/xo/cod/Pmanager` (`branch: main`)
+- **Live Win11 Host:** `media-server` (`192.168.0.27`, `~/Pmanager`, WSL `3.0.5.0` `Ubuntu-24.04`, native `docker.service` + `ssh.service`)
+- **Live Deployment Status:** Schema `v14` (`synchronous=FULL`, `dbIntegrity=ok` cached via `/api/system/status`), `13,080` active assets & `113` folders preserved; `/api/fs/drives` (`C:\`, `D:\`, `E:\`), middle-cover folders (`coverFileVersion` + `coverPosterVersion`), Vote Orange Weeds, Server Ops & `VACUUM INTO` backups live; idle worker CPU `< 2%`.
+- **Next Action:** Run post-final-edit verification (`bun run typecheck`, `bun test`, `apps/web build`, `pytest`), ship Wave 6 commit via `git bundle` to `media-server`, re-verify live host health/stats/worker CPU, and deliver final Korean report.

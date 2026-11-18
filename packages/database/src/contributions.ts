@@ -140,15 +140,13 @@ function buildRollingYearCalendar<TItem>(
   activeDays: number
   streakDays: number
 } {
-  const end = new Date(now)
-  end.setHours(0, 0, 0, 0)
+  const [year, month, day] = formatLocalDayKey(now).split('-').map(Number)
+  const endUtcMs = Date.UTC(year!, month! - 1, day!)
   const days: Array<{ date: string; count: number; level: 0 | 1 | 2 | 3 | 4; items: TItem[] }> = []
   let activeDays = 0
 
   for (let offset = 364; offset >= 0; offset -= 1) {
-    const day = new Date(end)
-    day.setDate(end.getDate() - offset)
-    const key = formatLocalDayKey(day.getTime())
+    const key = new Date(endUtcMs - offset * 86_400_000).toISOString().slice(0, 10)
     const items = byDay.get(key) ?? []
     const count = items.length
     if (count > 0) activeDays += 1
@@ -233,6 +231,14 @@ export function deleteAssetVoteEvents(db: Db, assetId: string): void {
   db.query<null, Params>("DELETE FROM vote_events WHERE target_type = 'asset' AND target_id = ?").run(
     assetId,
   )
+}
+
+export function deleteLibraryVoteEvents(db: Db, libraryId: string): void {
+  db.query<null, Params>(
+    `DELETE FROM vote_events
+     WHERE (target_type = 'asset' AND target_id IN (SELECT id FROM assets WHERE library_id = ?))
+        OR (target_type = 'folder' AND target_id IN (SELECT id FROM folders WHERE library_id = ?))`,
+  ).run(libraryId, libraryId)
 }
 
 /**

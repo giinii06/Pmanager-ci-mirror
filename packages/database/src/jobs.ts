@@ -51,26 +51,42 @@ export interface JobProgressPatch {
  * Deduplicates against active (`queued`, `running`, `paused`) rows so a paused
  * job keeps its reservation and checkpoint instead of spawning a duplicate run.
  */
-export function enqueueJob(db: Db, input: EnqueueJobInput, now: number): void {
-  db.query<null, Params>(
-    `INSERT INTO jobs (
-       dedupe_key, kind, state, priority, asset_id, library_id, payload, max_attempts,
-       progress_total, created_at, updated_at
-     ) VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (dedupe_key) WHERE state IN ('queued','running','paused') DO UPDATE SET
-       priority = MIN(jobs.priority, excluded.priority),
-       updated_at = excluded.updated_at`,
-  ).run(
-    input.dedupeKey,
-    input.kind,
-    input.priority,
-    input.assetId ?? null,
-    input.libraryId ?? null,
-    input.payload === undefined ? null : JSON.stringify(input.payload),
-    input.maxAttempts ?? 3,
-    input.progressTotal ?? null,
-    now,
-    now,
+export function enqueueJob(db: Db, input: EnqueueJobInput, now: number): JobState {
+  const row = db
+    .query<{ state: JobState }, Params>(
+      `INSERT INTO jobs (
+         dedupe_key, kind, state, priority, asset_id, library_id, payload, max_attempts,
+         progress_total, created_at, updated_at
+       ) VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (dedupe_key) WHERE state IN ('queued','running','paused') DO UPDATE SET
+         priority = MIN(jobs.priority, excluded.priority),
+         updated_at = excluded.updated_at
+       RETURNING state`,
+    )
+    .get(
+      input.dedupeKey,
+      input.kind,
+      input.priority,
+      input.assetId ?? null,
+      input.libraryId ?? null,
+      input.payload === undefined ? null : JSON.stringify(input.payload),
+      input.maxAttempts ?? 3,
+      input.progressTotal ?? null,
+      now,
+      now,
+    )
+  return row?.state ?? 'queued'
+}
+
+export function findPausedScanJob(db: Db, libraryId: string): JobRecord | null {
+  return (
+    db
+      .query<JobRecord, Params>(
+        `SELECT ${JOB_SELECT} FROM jobs
+         WHERE kind = 'scan_library' AND library_id = ? AND state = 'paused'
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(libraryId) ?? null
   )
 }
 
@@ -240,68 +256,39 @@ export function failJob(
   let mutated = false
   db.transaction(() => {
     const job = db
-      .query<
-        {
-          state: JobState
-          attempts: number
-          maxAttempts: number
-          workerId: string | null
-          leaseEpoch: number
-          leaseExpiresAt: number | null
-        },
-        Params
-      >(
-        `SELECT state, attempts, max_attempts AS maxAttempts,
-                worker_id AS workerId, lease_epoch AS leaseEpoch, lease_expires_at AS leaseExpiresAt
-         FROM jobs WHERE id = ?`,
+      .query<{ attempts: number; maxAttempts: number }, Params>(
+        "SELECT attempts, max_attempts AS maxAttempts FROM jobs WHERE id = ? AND state = 'running'",
       )
       .get(id)
-    if (!job || job.state !== 'running') return
-    if (
-      fence &&
-      (job.workerId !== fence.workerId ||
-        job.leaseEpoch !== fence.leaseEpoch ||
-        job.leaseExpiresAt === null ||
-        job.leaseExpiresAt <= fence.now)
-    ) {
-      return
-    }
-    const fenceClause = fence
-      ? ' AND state = \'running\' AND worker_id = ? AND lease_epoch = ? AND lease_expires_at > ?'
-      : " AND state = 'running'"
-    const fenceParams: SQLQueryBindings[] = fence ? [fence.workerId, fence.leaseEpoch, fence.now] : []
-
-    if (job.attempts >= job.maxAttempts) {
-      mutated =
-        db
-          .query<null, Params>(
-            `UPDATE jobs SET
-               state = 'failed',
-               worker_id = NULL,
-               lease_expires_at = NULL,
-               last_error = ?,
-               completed_at = ?,
-               updated_at = ?
-             WHERE id = ?${fenceClause}`,
-          )
-          .run(message, now, now, id, ...fenceParams).changes === 1
-      return
-    }
-
-    const backoff = Math.min(30_000, 1_000 * job.attempts * job.attempts)
+    if (!job) return
+    const guard = fence
+      ? assertFencedRunning(fence)
+      : { clause: "WHERE id = ? AND state = 'running'", params: [] as SQLQueryBindings[] }
+    const exhausted = job.attempts >= job.maxAttempts
+    const backoff = exhausted ? 0 : Math.min(30_000, 1_000 * job.attempts * job.attempts)
     mutated =
       db
         .query<null, Params>(
-          `UPDATE jobs SET
-             state = 'queued',
-             worker_id = NULL,
-             lease_expires_at = NULL,
-             last_error = ?,
-             run_after = ?,
-             updated_at = ?
-           WHERE id = ?${fenceClause}`,
+          exhausted
+            ? `UPDATE jobs SET
+                 state = 'failed',
+                 worker_id = NULL,
+                 lease_expires_at = NULL,
+                 last_error = ?,
+                 completed_at = ?,
+                 updated_at = ?
+               ${guard.clause}`
+            : `UPDATE jobs SET
+                 state = 'queued',
+                 worker_id = NULL,
+                 lease_expires_at = NULL,
+                 last_error = ?,
+                 run_after = ?,
+                 updated_at = ?
+               ${guard.clause}`,
         )
-        .run(message, now + backoff, now, id, ...fenceParams).changes === 1
+        .run(message, ...(exhausted ? [now, now] : [now + backoff, now]), id, ...guard.params)
+        .changes === 1
   }).immediate()
   return mutated
 }
@@ -343,11 +330,19 @@ export function requeueInterruptedJobWithFence(db: Db, id: number, fence: LeaseF
   )
 }
 
+function clearCancelledScanLibraryState(db: Db, libraryId: string): void {
+  db.query<null, Params>('DELETE FROM scan_checkpoints WHERE library_id = ?').run(libraryId)
+  db.query<null, Params>(
+    "UPDATE libraries SET scan_state = 'idle', last_error = NULL WHERE id = ? AND scan_state IN ('queued','scanning','paused')",
+  ).run(libraryId)
+}
+
 export function cancelRunningJobWithFence(db: Db, id: number, fence: LeaseFence): boolean {
   const guard = assertFencedRunning(fence)
-  return (
-    db
-      .query<null, Params>(
+  let changed = false
+  db.transaction(() => {
+    const cancelled = db
+      .query<{ kind: JobKind; libraryId: string | null }, Params>(
         `UPDATE jobs SET
            state = 'cancelled',
            worker_id = NULL,
@@ -356,10 +351,17 @@ export function cancelRunningJobWithFence(db: Db, id: number, fence: LeaseFence)
            phase = 'cancelled',
            completed_at = ?,
            updated_at = ?
-         ${guard.clause}`,
+         ${guard.clause}
+         RETURNING kind, library_id AS libraryId`,
       )
-      .run(fence.now, fence.now, id, ...guard.params).changes === 1
-  )
+      .get(fence.now, fence.now, id, ...guard.params)
+    if (!cancelled) return
+    changed = true
+    if (cancelled.kind === 'scan_library' && cancelled.libraryId) {
+      clearCancelledScanLibraryState(db, cancelled.libraryId)
+    }
+  }).immediate()
+  return changed
 }
 
 export function pauseJob(db: Db, id: number, now: number): JobRecord | null {
@@ -394,7 +396,7 @@ export function resumeJob(db: Db, id: number, now: number): JobRecord | null {
 export function cancelJob(db: Db, id: number, now: number): JobRecord | null {
   db.transaction(() => {
     const inactive = db
-      .query<null, Params>(
+      .query<{ kind: JobKind; libraryId: string | null }, Params>(
         `UPDATE jobs SET
            state = 'cancelled',
            worker_id = NULL,
@@ -404,10 +406,16 @@ export function cancelJob(db: Db, id: number, now: number): JobRecord | null {
            phase = 'cancelled',
            completed_at = ?,
            updated_at = ?
-         WHERE id = ? AND state IN ('queued','paused')`,
+         WHERE id = ? AND state IN ('queued','paused')
+         RETURNING kind, library_id AS libraryId`,
       )
-      .run(now, now, id)
-    if (inactive.changes > 0) return
+      .get(now, now, id)
+    if (inactive) {
+      if (inactive.kind === 'scan_library' && inactive.libraryId) {
+        clearCancelledScanLibraryState(db, inactive.libraryId)
+      }
+      return
+    }
     db.query<null, Params>(
       "UPDATE jobs SET cancel_requested = 1, updated_at = ? WHERE id = ? AND state = 'running'",
     ).run(now, id)
@@ -419,7 +427,7 @@ export function recoverExpiredJobs(db: Db, now: number): number {
   let recovered = 0
   db.transaction(() => {
     const cancelled = db
-      .query<null, Params>(
+      .query<{ kind: JobKind; libraryId: string | null }, Params>(
         `UPDATE jobs SET
            state = 'cancelled',
            worker_id = NULL,
@@ -429,9 +437,15 @@ export function recoverExpiredJobs(db: Db, now: number): number {
            completed_at = ?,
            updated_at = ?
          WHERE state = 'running' AND cancel_requested = 1
-           AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+           AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
+         RETURNING kind, library_id AS libraryId`,
       )
-      .run(now, now, now).changes
+      .all(now, now, now)
+    for (const row of cancelled) {
+      if (row.kind === 'scan_library' && row.libraryId) {
+        clearCancelledScanLibraryState(db, row.libraryId)
+      }
+    }
 
     const paused = db
       .query<null, Params>(
@@ -461,7 +475,7 @@ export function recoverExpiredJobs(db: Db, now: number): number {
       )
       .run(now, now, now).changes
 
-    recovered = cancelled + paused + requeued
+    recovered = cancelled.length + paused + requeued
   }).immediate()
   return recovered
 }

@@ -149,9 +149,9 @@ function ensureScans(ctx: AppContext, now: number): number {
       continue
     }
 
+    let bumped = false
     ctx.db.transaction(() => {
-      setScanState(ctx.db, library.id, 'queued')
-      enqueueJob(
+      const jobState = enqueueJob(
         ctx.db,
         {
           dedupeKey: `scan:${library.id}`,
@@ -161,8 +161,12 @@ function ensureScans(ctx: AppContext, now: number): number {
         },
         now,
       )
+      if (jobState === 'queued') {
+        setScanState(ctx.db, library.id, 'queued')
+        bumped = true
+      }
     })()
-    queued += 1
+    if (bumped) queued += 1
   }
   return queued
 }

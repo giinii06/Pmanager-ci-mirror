@@ -140,9 +140,7 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
     .query<RawItem, Params>(
       `SELECT j.id, j.kind, j.asset_id AS assetId, a.filename AS assetName,
               j.state, j.phase AS stage,
-              CASE WHEN j.progress_total > 0
-                THEN MIN(100, CAST(ROUND((j.progress_current * 100.0) / j.progress_total) AS INTEGER))
-                ELSE NULL END AS progress,
+              NULL AS progress,
               NULL AS onGpu,
               j.started_at AS startedAt, j.updated_at AS updatedAt,
               j.lease_expires_at AS leaseExpiresAt, j.last_error AS errorMessage
@@ -265,7 +263,7 @@ export function workQueue(db: Db, now: number, gpuResource: string): WorkQueueRe
               ? 'running'
               : 'queued',
       stage: raw.stage,
-      progress: pipeline === 'media' ? null : raw.progress,
+      progress: raw.progress,
       onGpu: pipeline === 'media' ? null : raw.onGpu === 1,
       startedAt: raw.startedAt,
       updatedAt: raw.updatedAt,

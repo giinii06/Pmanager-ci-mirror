@@ -70,12 +70,14 @@ export function buildGalleryEntries<T extends GalleryItem>(
       return
     }
 
-    let height = (width - gaps) / sum
+    const naturalFit = (width - gaps) / sum
+    const minHeight = Math.min(80, naturalFit)
+    let height = naturalFit
     const clampedDown = height > target * 1.6
-    const clampedUp = height < 80
+    const clampedUp = height < minHeight
     height = Math.min(height, target * 1.6)
     if (!full) height = Math.min(height, target)
-    height = Math.max(80, height)
+    height = Math.max(minHeight, height)
 
     const placed: Array<PlacedItem<T>> = []
     let used = 0

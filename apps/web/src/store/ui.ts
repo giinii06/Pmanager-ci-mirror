@@ -13,12 +13,22 @@ export interface Toast {
 const SIDEBAR_COLLAPSED_KEY = 'mediavault.sidebarCollapsed'
 const THEME_MODE_KEY = 'mediavault.themeMode'
 
-function loadCollapsed(): boolean {
+function safeStorageGet(key: string): string | null {
   try {
-    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+    return localStorage.getItem(key)
   } catch {
-    return false
+    return null
   }
+}
+
+function safeStorageSet(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {}
+}
+
+function loadCollapsed(): boolean {
+  return safeStorageGet(SIDEBAR_COLLAPSED_KEY) === '1'
 }
 
 export function resolveTheme(mode: ThemeMode): ResolvedTheme {
@@ -30,12 +40,8 @@ export function resolveTheme(mode: ThemeMode): ResolvedTheme {
 }
 
 function loadThemeMode(): ThemeMode {
-  try {
-    const raw = localStorage.getItem(THEME_MODE_KEY)
-    if (raw === 'dark' || raw === 'light' || raw === 'system') return raw
-  } catch {
-    // Ignore storage restriction.
-  }
+  const raw = safeStorageGet(THEME_MODE_KEY)
+  if (raw === 'dark' || raw === 'light' || raw === 'system') return raw
   return 'system'
 }
 
@@ -76,21 +82,13 @@ export const useUi = create<UiState>((set) => ({
   toggleSidebarCollapsed: () =>
     set((state) => {
       const next = !state.sidebarCollapsed
-      try {
-        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
-      } catch {
-        // Ignore blocked storage in private browsing.
-      }
+      safeStorageSet(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
       return { sidebarCollapsed: next }
     }),
   themeMode: initialThemeMode,
   resolvedTheme: initialResolved,
   setThemeMode: (mode) => {
-    try {
-      localStorage.setItem(THEME_MODE_KEY, mode)
-    } catch {
-      // Ignore blocked storage.
-    }
+    safeStorageSet(THEME_MODE_KEY, mode)
     const resolved = applyThemeToDom(mode)
     set({ themeMode: mode, resolvedTheme: resolved })
   },

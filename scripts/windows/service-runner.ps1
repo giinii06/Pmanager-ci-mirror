@@ -28,12 +28,19 @@ function Wait-WslAndDocker {
 }
 
 function Wait-DrivesReady {
+    $expected = @([System.IO.DriveInfo]::GetDrives() |
+        Where-Object { $_.Name -match '^[CDE]:\\$' } |
+        ForEach-Object { "/mnt/$($_.Name.Substring(0, 1).ToLowerInvariant())" })
+    if ($expected.Count -eq 0) {
+        return $true
+    }
+    $checks = ($expected | ForEach-Object { "test -d $_ && ls $_ >/dev/null 2>&1" }) -join " && "
     for ($attempt = 1; $attempt -le 18; $attempt++) {
-        $probe = Invoke-WslBash -Command "test -d /mnt/c -a -d /mnt/d -a -d /mnt/e && ls /mnt/e >/dev/null 2>&1"
+        $probe = Invoke-WslBash -Command $checks
         if ($probe.ExitCode -eq 0) {
             return $true
         }
-        Write-MvLog "Waiting for /mnt/{c,d,e} DrvFS mounts (attempt $attempt/18)..." "WARN"
+        Write-MvLog "Waiting for DrvFS mounts ($($expected -join ', ')) (attempt $attempt/18)..." "WARN"
         Start-Sleep -Seconds 5
     }
     return $false
@@ -52,15 +59,30 @@ function Start-ComposeStack {
 
 function Ensure-PortProxy {
     try {
-        $lan = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notlike "*Loopback*" -and $_.IPAddress -like "192.168.*" } | Select-Object -First 1).IPAddress
-        if (-not $lan) { $lan = "0.0.0.0" }
+        $ipObj = Get-NetIPAddress -AddressFamily IPv4 |
+            Where-Object { $_.InterfaceAlias -notlike "*Loopback*" -and $_.IPAddress -like "192.168.*" } |
+            Select-Object -First 1
+        $lan = if ($ipObj) { $ipObj.IPAddress } else { $null }
+        if (-not $lan) {
+            Write-MvLog "LAN IPv4 address not ready yet; skipping portproxy update." "WARN"
+            return
+        }
+        $escapedLan = [regex]::Escape($lan)
         $existing = & netsh interface portproxy show v4tov4 2>&1 | Out-String
-        if ($existing -notmatch "8080\s+127\.0\.0\.1\s+8080") {
-            & netsh interface portproxy delete v4tov4 listenport=8080 listenaddress=$lan 2>$null | Out-Null
+        if ($existing -notmatch "(?m)^$escapedLan\s+8080\s+127\.0\.0\.1\s+8080\b") {
+            foreach ($line in ($existing -split "`r?`n")) {
+                if ($line -match "^\s*(\d+\.\d+\.\d+\.\d+)\s+8080\s+") {
+                    & netsh interface portproxy delete v4tov4 listenport=8080 listenaddress=$($Matches[1]) 2>$null | Out-Null
+                }
+            }
             & netsh interface portproxy add v4tov4 listenport=8080 listenaddress=$lan connectport=8080 connectaddress=127.0.0.1 | Out-Null
         }
-        if ($existing -notmatch "22\s+127\.0\.0\.1\s+2222") {
-            & netsh interface portproxy delete v4tov4 listenport=22 listenaddress=$lan 2>$null | Out-Null
+        if ($existing -notmatch "(?m)^$escapedLan\s+22\s+127\.0\.0\.1\s+2222\b") {
+            foreach ($line in ($existing -split "`r?`n")) {
+                if ($line -match "^\s*(\d+\.\d+\.\d+\.\d+)\s+22\s+") {
+                    & netsh interface portproxy delete v4tov4 listenport=22 listenaddress=$($Matches[1]) 2>$null | Out-Null
+                }
+            }
             & netsh interface portproxy add v4tov4 listenport=22 listenaddress=$lan connectport=2222 connectaddress=127.0.0.1 | Out-Null
         }
     } catch {
@@ -88,7 +110,12 @@ try {
     $null = Start-ComposeStack
 
     $failures = 0
+    $ticks = 0
     while (-not (Test-Path $script:StopFlag)) {
+        $ticks++
+        if ($ticks % 4 -eq 0) {
+            Ensure-PortProxy
+        }
         if (Test-MediaVaultReady) {
             if ($failures -gt 0) {
                 Write-MvLog "Health probe recovered (/health/ready = 200)."

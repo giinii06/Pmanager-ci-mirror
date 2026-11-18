@@ -4,7 +4,7 @@ import Hls from 'hls.js'
 import { Maximize, Minimize, Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import type { AssetDTO, SubtitleTrackDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
-import { patchAssetInCaches } from '../lib/cachePatch'
+import { patchAssetPlaybackStats } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
 import { formatDuration } from '../lib/format'
 import {
@@ -137,33 +137,6 @@ export function VideoPlayer({
     const video = videoRef.current
     if (!video) return
 
-    let hls: Hls | null = null
-    const source = useHls ? asset.hlsUrl : asset.streamUrl
-    if (useHls && hlsState !== 'ready') return
-
-    if (useHls && Hls.isSupported()) {
-      hls = new Hls({ enableWorker: true, backBufferLength: 90 })
-      hls.loadSource(source)
-      hls.attachMedia(video)
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) setFailure('영상을 재생하지 못했습니다.')
-      })
-    } else {
-      video.src = source
-    }
-
-    return () => {
-      hls?.destroy()
-      video.pause()
-      video.removeAttribute('src')
-      video.load()
-    }
-  }, [asset.hlsUrl, asset.streamUrl, hlsState, useHls])
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-
     const restore = () => {
       if (startAt.current > 0 && Number.isFinite(video.duration)) {
         if (startAt.current < video.duration - 8) video.currentTime = startAt.current
@@ -208,6 +181,33 @@ export function VideoPlayer({
     const video = videoRef.current
     if (!video) return
 
+    let hls: Hls | null = null
+    const source = useHls ? asset.hlsUrl : asset.streamUrl
+    if (useHls && hlsState !== 'ready') return
+
+    if (useHls && Hls.isSupported()) {
+      hls = new Hls({ enableWorker: true, backBufferLength: 90 })
+      hls.loadSource(source)
+      hls.attachMedia(video)
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) setFailure('영상을 재생하지 못했습니다.')
+      })
+    } else {
+      video.src = source
+    }
+
+    return () => {
+      hls?.destroy()
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+    }
+  }, [asset.hlsUrl, asset.streamUrl, hlsState, useHls])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
     let viewSent = false
     let activeSince: number | null = null
     let pendingMs = 0
@@ -233,7 +233,7 @@ export function VideoPlayer({
       pendingMs = Math.max(0, rawDelta - deltaMs)
       api
         .addWatchTime(asset.id, deltaMs, keepalive)
-        .then((updated) => patchAssetInCaches(queryClient, updated))
+        .then((updated) => patchAssetPlaybackStats(queryClient, updated))
         .catch(() => {
           pendingMs = Math.min(pendingMs + deltaMs, 600_000)
         })
@@ -249,7 +249,7 @@ export function VideoPlayer({
         viewSent = true
         api
           .incrementView(asset.id)
-          .then((updated) => patchAssetInCaches(queryClient, updated))
+          .then((updated) => patchAssetPlaybackStats(queryClient, updated))
           .catch(() => {
             viewSent = false
           })
@@ -472,8 +472,13 @@ export function VideoPlayer({
 
   const toggleFullscreen = () => {
     const container = containerRef.current
-    if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => undefined)
+    const fsDoc = document as Document & {
+      webkitFullscreenElement?: Element | null
+      webkitExitFullscreen?: () => Promise<void> | void
+    }
+    if (document.fullscreenElement || fsDoc.webkitFullscreenElement) {
+      if (document.exitFullscreen) void document.exitFullscreen().catch(() => undefined)
+      else void fsDoc.webkitExitFullscreen?.()
       return
     }
     if (pseudoFullscreen) {
@@ -494,14 +499,14 @@ export function VideoPlayer({
     return (
       <div
         className={cn(
-          'flex flex-col items-center gap-3 text-center text-[13px] text-muted',
+          'flex flex-col items-center gap-3 text-center text-[13px] text-white/75',
           fill ? 'h-full w-full justify-center px-6' : 'max-w-sm',
         )}
       >
-        <p className="text-ink">{failure}</p>
+        <p className="text-white">{failure}</p>
         <a
           href={`${asset.streamUrl}&download=1`}
-          className="rounded-lg border border-line-strong px-3 py-1.5 text-ink transition-colors hover:bg-raised"
+          className="rounded-lg border border-white/25 px-3 py-1.5 text-white transition-colors hover:bg-white/10"
         >
           원본 내려받기
         </a>
@@ -712,8 +717,8 @@ export function VideoPlayer({
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/70 text-center">
           <Spinner className="text-accent" />
           <div>
-            <p className="text-[13px] font-medium text-ink">재생을 준비하고 있습니다</p>
-            <p className="mt-1 text-[12px] text-muted">
+            <p className="text-[13px] font-medium text-white">재생을 준비하고 있습니다</p>
+            <p className="mt-1 text-[12px] text-white/75">
               이 형식은 브라우저에서 바로 재생되지 않아 H.264로 변환합니다.
             </p>
           </div>

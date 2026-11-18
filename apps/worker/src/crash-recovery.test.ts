@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import sharp from 'sharp'
 import {
+  cancelJob,
   claimNextJob,
   completeJob,
   countAssets,
@@ -13,12 +14,14 @@ import {
   enqueueJob,
   getJob,
   getLatestRecoveryLog,
+  getLibrary,
   getScanCheckpoint,
   insertAsset,
   openDatabase,
   pauseJob,
   requeueInterruptedJobWithFence,
   restoreDatabaseBackup,
+  setScanState,
   upsertFolder,
   type Db,
 } from '@mediavault/database'
@@ -27,7 +30,7 @@ import { PRIORITY, THUMBNAIL_SIZES } from '@mediavault/shared'
 import type { WorkerConfig } from './config'
 import { executeJob } from './handlers'
 import { runWorkerRecovery } from './recovery'
-import { scanLibrary } from './scan'
+import { ScanInterruptedError, scanLibrary } from './scan'
 
 function getLatestScanRunRow(db: Db, libraryId: string): { status: string; resumedFromRunId: string | null } | null {
   return (
@@ -361,5 +364,64 @@ describe('crash recovery & durability release gates', () => {
     const libs = restoredDb.query<{ id: string }, []>('SELECT id FROM libraries').all()
     expect(libs.map((l) => l.id)).toEqual(['lib-b'])
     restoredDb.close()
+  })
+
+  test('cancelled scan does not resurrect across worker recovery', async () => {
+    const { dir, config } = await makeTempConfig()
+    const libRoot = path.join(config.mediaRoot, 'CancelLib')
+    await mkdir(libRoot, { recursive: true })
+    const db = openDatabase(path.join(dir, 'cancel-scan.db'))
+    createLibrary(db, { id: 'lib-c', name: 'CancelLib', rootPath: 'CancelLib', createdAt: 1 })
+    setScanState(db, 'lib-c', 'queued')
+    enqueueJob(db, { dedupeKey: 'scan:lib-c', kind: 'scan_library', priority: 2, libraryId: 'lib-c' }, 100)
+    const row = db.query<{ id: number }, []>('SELECT id FROM jobs ORDER BY id DESC LIMIT 1').get()!
+
+    const cancelled = cancelJob(db, row.id, 200)
+    expect(cancelled?.state).toBe('cancelled')
+    expect(getLibrary(db, 'lib-c')?.scanState).toBe('idle')
+    expect(getScanCheckpoint(db, 'lib-c')).toBeNull()
+
+    const recovery = await runWorkerRecovery(db, config, { now: 300 })
+    expect(recovery.repairedScans).toBe(0)
+    const jobsAfter = db.query<{ state: string }, []>('SELECT state FROM jobs').all()
+    expect(jobsAfter.map((j) => j.state)).toEqual(['cancelled'])
+    db.close()
+  })
+
+  test('lost lease during scan checkpoint rolls back uncommitted batch atomically', async () => {
+    const { dir, config } = await makeTempConfig()
+    const libRoot = path.join(config.mediaRoot, 'FencedScan')
+    await mkdir(libRoot, { recursive: true })
+    const jpg = await sampleJpegBuffer()
+    await writeFile(path.join(libRoot, 'one.jpg'), jpg)
+
+    const db = openDatabase(path.join(dir, 'lease-lost.db'))
+    createLibrary(db, { id: 'lib-f', name: 'FencedScan', rootPath: 'FencedScan', createdAt: 1 })
+    enqueueJob(db, { dedupeKey: 'scan:lib-f', kind: 'scan_library', priority: 2, libraryId: 'lib-f' }, 100)
+    const claimed = claimNextJob(db, 100, { workerId: 'worker-a', leaseMs: 10_000 })!
+
+    db.query("UPDATE jobs SET lease_epoch = lease_epoch + 1, worker_id = 'worker-b' WHERE id = ?").run(
+      claimed.id,
+    )
+
+    let caught: unknown = null
+    try {
+      await scanLibrary(db, config, 'lib-f', {
+        fence: {
+          jobId: claimed.id,
+          workerId: 'worker-a',
+          leaseEpoch: claimed.leaseEpoch,
+          leaseMs: 10_000,
+        },
+      })
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toBeInstanceOf(ScanInterruptedError)
+    expect((caught as ScanInterruptedError).reason).toBe('lease_lost')
+    expect(countAssets(db, 'lib-f')).toBe(0)
+    expect(getScanCheckpoint(db, 'lib-f')).toBeNull()
+    db.close()
   })
 })

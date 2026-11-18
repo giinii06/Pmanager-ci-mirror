@@ -68,6 +68,7 @@ export function Lightbox() {
   useEffect(() => {
     if (!asset || asset.kind !== 'video') return
     const onKey = (event: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return
       const target = event.target as HTMLElement | null
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
       if (event.key === 'Escape') {

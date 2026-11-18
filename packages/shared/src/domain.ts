@@ -63,6 +63,7 @@ export interface FolderDTO {
   coverWidth: number | null
   coverHeight: number | null
   coverPosterVersion: number
+  coverFileVersion: number
   viewCount: number
   voteCount: number
   rate: number | null

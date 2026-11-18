@@ -8,17 +8,21 @@ $ErrorActionPreference = "Stop"
 
 $stamp = (Get-Date).ToString("yyyyMMdd-HHmmss")
 $cmd = @"
-mkdir -p $HostBackupDir && \
+set -euo pipefail
+cleanup() { docker exec mediavault-api-1 rm -f /tmp/mv-manual.db >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+mkdir -p "$HostBackupDir"
+docker exec mediavault-api-1 rm -f /tmp/mv-manual.db
 docker exec mediavault-api-1 bun -e '
 import { Database } from "bun:sqlite";
 const db = new Database("/data/mediavault.db", { readonly: true });
 db.exec("VACUUM INTO \x27/tmp/mv-manual.db\x27");
 const chk = new Database("/tmp/mv-manual.db", { readonly: true }).query("PRAGMA integrity_check").get();
 console.log(JSON.stringify(chk));
-' && \
-docker cp mediavault-api-1:/tmp/mv-manual.db $HostBackupDir/mediavault-$stamp.db && \
-docker exec mediavault-api-1 rm -f /tmp/mv-manual.db && \
-ls -lh $HostBackupDir/mediavault-$stamp.db
+if (chk?.integrity_check !== "ok") process.exit(2);
+'
+docker cp mediavault-api-1:/tmp/mv-manual.db "$HostBackupDir/mediavault-$stamp.db"
+ls -lh "$HostBackupDir/mediavault-$stamp.db"
 "@
 
 $res = Invoke-WslBash -Command $cmd

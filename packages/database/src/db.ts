@@ -10,7 +10,7 @@ function runBusyRetry<T>(fn: () => T): T {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       if (msg.includes('SQLITE_BUSY') || msg.includes('database is locked')) {
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * (attempt + 1))
+        Bun.sleepSync(50 * (attempt + 1))
         continue
       }
       throw error
@@ -31,7 +31,10 @@ export function openDatabase(filename: string): Db {
   return db
 }
 
-export function getSqliteRuntimeInfo(db: Db): {
+export function getSqliteRuntimeInfo(
+  db: Db,
+  options: { checkIntegrity?: boolean } = {},
+): {
   sqliteVersion: string
   synchronousMode: string
   integrity: string
@@ -40,11 +43,13 @@ export function getSqliteRuntimeInfo(db: Db): {
   const syncRow = db.query<{ synchronous: number }, []>('PRAGMA synchronous').get()
   const syncNum = syncRow?.synchronous ?? -1
   const syncMap: Record<number, string> = { 0: 'OFF', 1: 'NORMAL', 2: 'FULL', 3: 'EXTRA' }
-  const checkRow = db.query<{ quick_check: string }, []>('PRAGMA quick_check(1)').get()
+  const integrity = options.checkIntegrity === false
+    ? 'skipped'
+    : (db.query<{ quick_check: string }, []>('PRAGMA quick_check(1)').get()?.quick_check ?? 'unknown')
   return {
     sqliteVersion: versionRow?.v ?? 'unknown',
     synchronousMode: syncMap[syncNum] ?? String(syncNum),
-    integrity: checkRow?.quick_check ?? 'unknown',
+    integrity,
   }
 }
 

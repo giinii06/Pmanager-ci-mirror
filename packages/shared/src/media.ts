@@ -67,3 +67,35 @@ export function playbackModeFor(info: CodecInfo): PlaybackMode {
   if (info.audioCodec && !DIRECT_AUDIO_CODECS.has(info.audioCodec)) return 'hls'
   return 'direct'
 }
+
+const BLOCKED_SYSTEM_SEGMENTS = new Set([
+  '$recycle.bin',
+  'system volume information',
+  'windows',
+  'program files',
+  'program files (x86)',
+  'programdata',
+  'recovery',
+  'perflogs',
+  'msocache',
+  'config.msi',
+  'boot',
+  'documents and settings',
+  'appdata',
+  '$windows.~bt',
+  '$windows.~ws',
+])
+
+export function isBlockedSystemRelativePath(relPosix: string): boolean {
+  const segments = relPosix
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+  return segments.some((seg) => BLOCKED_SYSTEM_SEGMENTS.has(seg))
+}
+
+export function isMountBoundaryRoot(rootPath: string): boolean {
+  const clean = rootPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  return clean === '' || clean === 'extra' || clean === 'drives' || /^drives\/[a-z]$/i.test(clean)
+}

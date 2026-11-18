@@ -1,5 +1,6 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
 import type { ScanState } from '@mediavault/shared'
+import { deleteLibraryVoteEvents } from './contributions'
 import type { Db } from './db'
 import type { LibraryRecord } from './types'
 
@@ -48,7 +49,12 @@ export function createLibrary(db: Db, library: NewLibrary): void {
 }
 
 export function deleteLibrary(db: Db, id: string): boolean {
-  return db.query<null, Params>('DELETE FROM libraries WHERE id = ?').run(id).changes > 0
+  let removed = false
+  db.transaction(() => {
+    deleteLibraryVoteEvents(db, id)
+    removed = db.query<null, Params>('DELETE FROM libraries WHERE id = ?').run(id).changes > 0
+  }).immediate()
+  return removed
 }
 
 export function setScanState(

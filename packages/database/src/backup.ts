@@ -1,5 +1,5 @@
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
-import { copyFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { newId } from '@mediavault/shared'
 import type { Db } from './db'
@@ -77,10 +77,8 @@ export function createDatabaseBackup(
 
     for (const stale of existing.slice(retentionCount)) {
       try {
-        unlinkSync(path.join(backupDir, stale.name))
-      } catch {
-        // Ignore cleanup failures for locked files.
-      }
+        rmSync(path.join(backupDir, stale.name), { force: true })
+      } catch {}
     }
 
     return {
@@ -92,6 +90,7 @@ export function createDatabaseBackup(
       error: null,
     }
   } catch (error) {
+    rmSync(outPath, { force: true })
     const message = error instanceof Error ? error.message : String(error)
     db.query<null, Params>(
       `INSERT INTO backup_logs (id, filename, size_bytes, integrity, created_at, error)
@@ -106,15 +105,19 @@ export function restoreDatabaseBackup(backupPath: string, destPath: string): Bac
   if (verified.integrity !== 'ok') {
     throw new Error(`refusing to restore corrupt backup: ${verified.integrity}`)
   }
-  mkdirSync(path.dirname(destPath), { recursive: true })
-  for (const suffix of ['-wal', '-shm']) {
-    try {
-      unlinkSync(`${destPath}${suffix}`)
-    } catch {
-      // Sidecar may not exist.
+  const destDir = path.dirname(destPath)
+  mkdirSync(destDir, { recursive: true })
+  const tempPath = path.join(destDir, `.${path.basename(destPath)}.restore-${process.pid}-${Date.now()}`)
+  try {
+    copyFileSync(backupPath, tempPath)
+    for (const suffix of ['-wal', '-shm']) {
+      rmSync(`${destPath}${suffix}`, { force: true })
     }
+    renameSync(tempPath, destPath)
+  } catch (error) {
+    rmSync(tempPath, { force: true })
+    throw error
   }
-  copyFileSync(backupPath, destPath)
   return verifyDatabaseBackup(destPath)
 }
 
@@ -127,12 +130,13 @@ export function listBackupLogs(db: Db, limit = 20): BackupLogRecord[] {
     .all(limit)
 }
 
-export function getLatestBackupLog(db: Db): BackupLogRecord | null {
+export function getLatestBackupLog(db: Db, successfulOnly = false): BackupLogRecord | null {
+  const where = successfulOnly ? "WHERE error IS NULL AND integrity = 'ok'" : ''
   return (
     db
       .query<BackupLogRecord, []>(
         `SELECT id, filename, size_bytes AS sizeBytes, integrity, created_at AS createdAt, error
-         FROM backup_logs ORDER BY created_at DESC LIMIT 1`,
+         FROM backup_logs ${where} ORDER BY created_at DESC LIMIT 1`,
       )
       .get() ?? null
   )

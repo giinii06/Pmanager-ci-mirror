@@ -21,13 +21,16 @@ if (-not (Test-Path $script:LogDir)) {
     New-Item -ItemType Directory -Path $script:LogDir -Force | Out-Null
 }
 
-# Remove superseded Interactive boot tasks so only a single supervisor owns startup.
-foreach ($legacyTask in @("MediaVault-WSL-Boot", "WSL Ubuntu SSH")) {
-    if (Get-ScheduledTask -TaskName $legacyTask -ErrorAction SilentlyContinue) {
-        Disable-ScheduledTask -TaskName $legacyTask -ErrorAction SilentlyContinue | Out-Null
-        Write-MvLog "Disabled legacy task '$legacyTask' in favor of single-owner '$($script:TaskName)'."
+function Disable-SupersededBootTasks {
+    foreach ($supersededBootTask in @("MediaVault-WSL-Boot", "WSL Ubuntu SSH")) {
+        if (Get-ScheduledTask -TaskName $supersededBootTask -ErrorAction SilentlyContinue) {
+            Disable-ScheduledTask -TaskName $supersededBootTask -ErrorAction SilentlyContinue | Out-Null
+            Write-MvLog "Disabled legacy task '$supersededBootTask' in favor of single-owner '$($script:TaskName)'."
+        }
     }
 }
+
+Disable-SupersededBootTasks
 
 $runnerPath = Join-Path $PSScriptRoot "service-runner.ps1"
 $argLine = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runnerPath`""

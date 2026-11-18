@@ -79,7 +79,7 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
 
       if (!config.once && now - lastBackupCheck >= 60_000) {
         lastBackupCheck = now
-        const latestBackup = getLatestBackupLog(db)
+        const latestBackup = getLatestBackupLog(db, true)
         if (!latestBackup || now - latestBackup.createdAt >= BACKUP_INTERVAL_MS) {
           try {
             const backupDir = path.join(config.dataDir, 'backups')
@@ -165,6 +165,8 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
           } else if (error.reason === 'cancelled') {
             cancelRunningJobWithFence(db, job.id, fence)
             logger.info('worker.job.cancelled', { jobId: job.id, kind: job.kind })
+          } else if (error.reason === 'lease_lost') {
+            logger.warn('worker.job.lease_lost', { jobId: job.id, kind: job.kind })
           } else {
             requeueInterruptedJobWithFence(db, job.id, fence)
             logger.info('worker.job.shutdown_requeued', { jobId: job.id, kind: job.kind })

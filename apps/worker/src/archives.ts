@@ -25,37 +25,39 @@ export async function enqueueArchivesInDir(
     ? await discoverArchiveSetsFromEntries(dir, entries)
     : await discoverArchiveSetsInDir(dir)
   let queued = 0
-  for (const set of sets) {
-    const relPath = path.relative(libRoot, set.primaryPath).replace(/\\/g, '/')
-    if (!relPath || relPath.startsWith('..')) continue
-    const { created, record } = enqueueArchiveJobIfNeeded(
-      db,
-      {
-        id: newId(),
-        libraryId,
-        archivePath: relPath,
-        signature: set.signature,
-      },
-      now,
-    )
-    if (!created) continue
-    enqueueJob(
-      db,
-      {
-        dedupeKey: `archive:${record.id}`,
-        kind: 'process_archive',
-        priority,
-        libraryId,
-        payload: {
-          archiveJobId: record.id,
+  db.transaction(() => {
+    for (const set of sets) {
+      const relPath = path.relative(libRoot, set.primaryPath).replace(/\\/g, '/')
+      if (!relPath || relPath.startsWith('..')) continue
+      const { created, record } = enqueueArchiveJobIfNeeded(
+        db,
+        {
+          id: newId(),
           libraryId,
-          primaryPath: set.primaryPath,
-          volumes: set.volumes,
+          archivePath: relPath,
+          signature: set.signature,
         },
-      },
-      now,
-    )
-    queued += 1
-  }
+        now,
+      )
+      if (!created && record.state !== 'queued') continue
+      enqueueJob(
+        db,
+        {
+          dedupeKey: `archive:${record.id}`,
+          kind: 'process_archive',
+          priority,
+          libraryId,
+          payload: {
+            archiveJobId: record.id,
+            libraryId,
+            primaryPath: set.primaryPath,
+            volumes: set.volumes,
+          },
+        },
+        now,
+      )
+      if (created) queued += 1
+    }
+  }).immediate()
   return queued
 }

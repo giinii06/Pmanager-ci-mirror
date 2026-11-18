@@ -48,6 +48,7 @@ export async function loadWorkerConfig(
     archiveStableMs: resolveNonNegativeInt(env.ARCHIVE_STABLE_MS, 1_500),
     archiveTimeoutMs: resolveNonNegativeInt(env.ARCHIVE_TIMEOUT_MS, 15 * 60_000),
     watchPolling: env.WATCH_POLLING === '1',
+    staleTempAgeMs: resolveNonNegativeInt(env.STALE_TEMP_AGE_MS, 2 * 60_000),
   }
 }
 

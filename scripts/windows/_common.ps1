@@ -52,9 +52,16 @@ function Invoke-WslBash {
         [switch]$AsRoot
     )
     $targetUser = if ($AsRoot) { "root" } else { $script:WslUser }
-    $output = & wsl.exe -d $script:WslDistro -u $targetUser -- bash -lc $Command 2>&1
+    $prevPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $output = & wsl.exe -d $script:WslDistro -u $targetUser -- bash -lc $Command 2>&1
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevPreference
+    }
     return [pscustomobject]@{
-        ExitCode = $LASTEXITCODE
+        ExitCode = $exitCode
         Output   = ($output -join "`n")
     }
 }

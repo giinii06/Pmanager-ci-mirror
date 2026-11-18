@@ -4,44 +4,40 @@ import path from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { resolveInside } from '@mediavault/media'
-import type { HostBrowseResponseDTO, HostDriveDTO, HostFolderEntryDTO } from '@mediavault/shared'
+import {
+  isBlockedSystemRelativePath,
+  type HostBrowseResponseDTO,
+  type HostDriveDTO,
+  type HostFolderEntryDTO,
+} from '@mediavault/shared'
 import type { AppContext } from '../context'
 import { parseInput } from '../validate'
 
 const DRIVE_LETTERS = ['c', 'd', 'e'] as const
-
-const BLOCKED_SYSTEM_SEGMENTS = new Set([
-  '$recycle.bin',
-  'system volume information',
-  'windows',
-  'program files',
-  'program files (x86)',
-  'programdata',
-  'recovery',
-  'perflogs',
-  'msocache',
-  'config.msi',
-  'boot',
-  'documents and settings',
-])
 
 const browseQuery = z.object({
   path: z.string().max(1024).optional().default(''),
   q: z.string().trim().max(120).optional().default(''),
 })
 
-export function isBlockedSystemRelativePath(relPosix: string): boolean {
-  const segments = relPosix
-    .replace(/\\/g, '/')
-    .split('/')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean)
-  for (let i = 0; i < segments.length; i += 1) {
-    const seg = segments[i]!
-    if (BLOCKED_SYSTEM_SEGMENTS.has(seg)) return true
-    if (seg === 'appdata' || seg === '$windows.~bt' || seg === '$windows.~ws') return true
-  }
-  return false
+async function mapLimited<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return []
+  const out = new Array<R>(items.length)
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const idx = next
+        next += 1
+        out[idx] = await fn(items[idx]!)
+      }
+    }),
+  )
+  return out
 }
 
 function normalizePosixRel(raw: string): string | null {
@@ -76,7 +72,7 @@ async function checkDirHasChildren(dirPath: string): Promise<boolean> {
         entry.isDirectory() &&
         !entry.isSymbolicLink() &&
         !entry.name.startsWith('.') &&
-        !BLOCKED_SYSTEM_SEGMENTS.has(entry.name.toLowerCase()),
+        !isBlockedSystemRelativePath(entry.name),
     )
   } catch {
     return false
@@ -141,6 +137,13 @@ export async function resolveSafeDirectory(
   if (relReal.startsWith('..') || path.isAbsolute(relReal)) {
     return { error: 'outside_media_root', code: 403, message: 'Resolved path escapes root.' }
   }
+  if (isBlockedSystemRelativePath(relReal)) {
+    return {
+      error: 'blocked_system_path',
+      code: 403,
+      message: 'System directories cannot be browsed or added.',
+    }
+  }
   const stats = await stat(abs).catch(() => null)
   if (!stats?.isDirectory()) {
     return { error: 'not_a_directory', code: 400, message: 'Path is not a directory.' }
@@ -166,9 +169,7 @@ export async function listHostDrives(mediaRoot: string): Promise<HostDriveDTO[]>
           rootPath: `drives/${letter}`,
           ...cap,
         })
-      } catch {
-        // Unmounted or absent drive slot on this host.
-      }
+      } catch {}
     }
   }
 
@@ -247,31 +248,29 @@ export function registerFsRoutes(app: FastifyInstance, ctx: AppContext): void {
       }
       const lower = entry.name.toLowerCase()
       if (isBlockedSystemRelativePath(lower)) return false
-      if (effectiveRel === '' && (lower === 'drives' || lower === 'extra')) return false
+      if (effectiveRel === '' && lower === 'drives') return false
       if (needle && !lower.includes(needle)) return false
       return true
     })
 
     candidateDirs.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 
-    const folders: HostFolderEntryDTO[] = await Promise.all(
-      candidateDirs.map(async (entry) => {
-        const childAbs = path.join(resolved.abs, entry.name)
-        const childRel = effectiveRel === '' ? entry.name : `${effectiveRel}/${entry.name}`
-        let modifiedAt: string | null = null
-        try {
-          modifiedAt = new Date((await stat(childAbs)).mtimeMs).toISOString()
-        } catch {
-          modifiedAt = null
-        }
-        return {
-          name: entry.name,
-          path: childRel,
-          hasChildren: await checkDirHasChildren(childAbs),
-          modifiedAt,
-        }
-      }),
-    )
+    const folders: HostFolderEntryDTO[] = await mapLimited(candidateDirs, 16, async (entry) => {
+      const childAbs = path.join(resolved.abs, entry.name)
+      const childRel = effectiveRel === '' ? entry.name : `${effectiveRel}/${entry.name}`
+      let modifiedAt: string | null = null
+      try {
+        modifiedAt = new Date((await stat(childAbs)).mtimeMs).toISOString()
+      } catch {
+        modifiedAt = null
+      }
+      return {
+        name: entry.name,
+        path: childRel,
+        hasChildren: await checkDirHasChildren(childAbs),
+        modifiedAt,
+      }
+    })
 
     const segments = effectiveRel.split('/').filter(Boolean)
     let parentPath: string | null = null

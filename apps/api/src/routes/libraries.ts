@@ -7,11 +7,13 @@ import {
   createLibrary,
   deleteLibrary,
   enqueueJob,
+  findPausedScanJob,
   getFolder,
   getLibrary,
   listAllFolders,
   listFolders,
   listLibraries,
+  resumeJob,
   setScanState,
   voteFolder,
 } from '@mediavault/database'
@@ -52,12 +54,13 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
       reply.code(400).send({ error: 'invalid_path', message: 'Invalid directory path.' })
       return
     }
+    const normalizedInput = body.rootPath.replace(/\\/g, '/')
     const requested =
-      body.rootPath === ''
+      normalizedInput === ''
         ? mediaRoot
-        : path.isAbsolute(body.rootPath)
-          ? path.resolve(body.rootPath)
-          : path.resolve(mediaRoot, body.rootPath)
+        : path.isAbsolute(normalizedInput)
+          ? path.resolve(normalizedInput)
+          : path.resolve(mediaRoot, normalizedInput)
     const relative = path.relative(mediaRoot, requested)
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
       reply.code(400).send({
@@ -126,8 +129,15 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
       reply.code(404).send({ error: 'not_found', message: 'Library not found.' })
       return
     }
-    if (library.scanState === 'idle') setScanState(ctx.db, params.id, 'queued')
-    enqueueJob(
+    const now = Date.now()
+    const paused = findPausedScanJob(ctx.db, params.id)
+    if (paused) {
+      resumeJob(ctx.db, paused.id, now)
+      setScanState(ctx.db, params.id, 'queued')
+      reply.code(202).send({ ok: true })
+      return
+    }
+    const state = enqueueJob(
       ctx.db,
       {
         dedupeKey: `scan:${params.id}`,
@@ -135,8 +145,9 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
         priority: PRIORITY.next,
         libraryId: params.id,
       },
-      Date.now(),
+      now,
     )
+    if (state === 'queued' && library.scanState === 'idle') setScanState(ctx.db, params.id, 'queued')
     reply.code(202).send({ ok: true })
   })
 

@@ -19,7 +19,18 @@ import {
 } from '@mediavault/media'
 import type { WorkerConfig } from './config'
 import { withGpuLease } from './gpu'
-import { scanLibrary, type ScanFenceContext } from './scan'
+import { ScanInterruptedError, scanLibrary, type ScanFenceContext } from './scan'
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return
+  const reason =
+    signal.reason === 'paused' ||
+    signal.reason === 'cancelled' ||
+    signal.reason === 'lease_lost'
+      ? signal.reason
+      : 'shutdown'
+  throw new ScanInterruptedError(reason, `job interrupted (${reason})`)
+}
 
 const HLS_LEASE_WAIT_MS = 5_000
 const HLS_LEASE_MS = 120_000
@@ -66,16 +77,24 @@ function safeResolveVolumes(
   return { primaryPath, volumes }
 }
 
-async function runArchiveJob(db: Db, config: WorkerConfig, job: JobRecord): Promise<void> {
+async function runArchiveJob(
+  db: Db,
+  config: WorkerConfig,
+  job: JobRecord,
+  signal?: AbortSignal,
+): Promise<void> {
   if (!job.payload) throw new Error('process_archive job missing payload')
+  throwIfAborted(signal)
   const payload = JSON.parse(job.payload) as ArchiveJobPayload
   const { primaryPath, volumes } = safeResolveVolumes(db, config, payload)
 
+  let completedArchive = false
   try {
     await waitForArchiveStability(volumes, {
       stableMs: config.archiveStableMs ?? 1_500,
       timeoutMs: config.archiveTimeoutMs ?? 15 * 60_000,
     })
+    throwIfAborted(signal)
 
     const result = await extractAndProcessArchive({
       primaryPath,
@@ -96,7 +115,7 @@ async function runArchiveJob(db: Db, config: WorkerConfig, job: JobRecord): Prom
                   waitMs: HLS_LEASE_WAIT_MS,
                   leaseMs: TRANSCODE_LEASE_MS,
                 },
-                (held, signal) => fn(held ? 'nvenc' : null, signal),
+                (held, leaseSignal) => fn(held ? 'nvenc' : null, leaseSignal),
               )
           : undefined,
     })
@@ -125,8 +144,9 @@ async function runArchiveJob(db: Db, config: WorkerConfig, job: JobRecord): Prom
       },
       Date.now(),
     )
-    await scanLibrary(db, config, payload.libraryId)
+    completedArchive = true
   } catch (error) {
+    throwIfAborted(signal)
     updateArchiveJob(
       db,
       payload.archiveJobId,
@@ -134,6 +154,10 @@ async function runArchiveJob(db: Db, config: WorkerConfig, job: JobRecord): Prom
       Date.now(),
     )
     throw error
+  }
+  if (completedArchive) {
+    throwIfAborted(signal)
+    await scanLibrary(db, config, payload.libraryId, { signal })
   }
 }
 
@@ -160,17 +184,20 @@ export async function executeJob(
         `[scan] ${job.libraryId} files=${summary.files} added=${summary.added} updated=${summary.updated} removed=${summary.removed} skipped=${summary.skipped}`,
       )
     } catch (error) {
-      setScanState(db, job.libraryId, 'idle', (error as Error).message)
+      if (!(error instanceof ScanInterruptedError && error.reason === 'lease_lost')) {
+        setScanState(db, job.libraryId, 'idle', (error as Error).message)
+      }
       throw error
     }
     return
   }
 
   if (job.kind === 'process_archive') {
-    await runArchiveJob(db, config, job)
+    await runArchiveJob(db, config, job, execCtx.signal)
     return
   }
 
+  throwIfAborted(execCtx.signal)
   if (!job.assetId) throw new Error(`${job.kind} job without an asset id`)
   const info = getAssetFileInfo(db, job.assetId)
   if (!info || info.deletedAt !== null) return
@@ -213,29 +240,35 @@ export async function executeJob(
         { canPublish },
       )
     }
+    throwIfAborted(execCtx.signal)
     return
   }
 
   if (job.kind === 'preview') {
     if (info.kind !== 'image') return
     await ensurePreview(source, config.cacheDir, info.id, info.fileVersion)
+    throwIfAborted(execCtx.signal)
     return
   }
 
   if (job.kind === 'hls') {
-    const encode = (hwaccel: 'nvenc' | null, signal?: AbortSignal) =>
-      generateHls(source, config.cacheDir, info.id, info.fileVersion, {
+    const encode = (hwaccel: 'nvenc' | null, leaseSignal?: AbortSignal) => {
+      const combined = leaseSignal && execCtx.signal
+        ? AbortSignal.any([execCtx.signal, leaseSignal])
+        : (execCtx.signal ?? leaseSignal)
+      return generateHls(source, config.cacheDir, info.id, info.fileVersion, {
         hwaccel,
         width: info.width,
-        signal,
+        signal: combined,
       })
+    }
 
     if (config.hwaccel !== 'nvenc') {
       await encode(config.hwaccel)
+      throwIfAborted(execCtx.signal)
       return
     }
 
-    // Playback never waits on a busy card, so a refused lease encodes on the CPU.
     await withGpuLease(
       db,
       {
@@ -245,8 +278,9 @@ export async function executeJob(
         waitMs: HLS_LEASE_WAIT_MS,
         leaseMs: HLS_LEASE_MS,
       },
-      (held, signal) => encode(held ? 'nvenc' : null, signal),
+      (held, leaseSignal) => encode(held ? 'nvenc' : null, leaseSignal),
     )
+    throwIfAborted(execCtx.signal)
     return
   }
 

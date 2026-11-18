@@ -27,6 +27,8 @@ import {
 import { isTempDownloadFile, resolveInside } from '@mediavault/media'
 import {
   classifyFile,
+  isBlockedSystemRelativePath,
+  isMountBoundaryRoot,
   type BackupRecordDTO,
   type LibraryHealthDTO,
   type StorageStatsDTO,
@@ -39,6 +41,7 @@ import { parseInput } from '../validate'
 const BOOT_AT_MS = Date.now()
 const BOOT_AT_ISO = new Date(BOOT_AT_MS).toISOString()
 const STORAGE_CACHE_TTL_MS = 30_000
+const INTEGRITY_CACHE_TTL_MS = 60_000
 const WALK_CONCURRENCY = 24
 const jobIdParams = z.object({ id: z.coerce.number().int().positive() })
 
@@ -74,9 +77,11 @@ async function walkTreeSizes(
   seenDirs: Set<string>,
   skipIndexedMediaStat: boolean,
   tally: WalkTally,
+  skipRootSubMounts?: string | null,
 ): Promise<void> {
+  const resolvedRoot = path.resolve(root)
   const queue: Array<{ dir: string; forceTemp: boolean }> = [
-    { dir: path.resolve(root), forceTemp: false },
+    { dir: resolvedRoot, forceTemp: false },
   ]
 
   while (queue.length > 0) {
@@ -98,6 +103,14 @@ async function walkTreeSizes(
           if (entry.isSymbolicLink()) continue
           const abs = path.join(dir, entry.name)
           if (entry.isDirectory()) {
+            if (isBlockedSystemRelativePath(entry.name)) continue
+            if (
+              skipRootSubMounts &&
+              dir === skipRootSubMounts &&
+              (entry.name === 'drives' || entry.name === 'extra')
+            ) {
+              continue
+            }
             queue.push({ dir: abs, forceTemp: forceTemp || isTempPathName(entry.name) })
             continue
           }
@@ -135,12 +148,25 @@ async function computeStorageStats(ctx: AppContext): Promise<StorageStatsDTO> {
   const videoBytes = mediaRow?.videoBytes ?? 0
   const imageBytes = mediaRow?.imageBytes ?? 0
 
-  const seenMediaDirs = new Set<string>()
+  const seenMediaDirs = new Set<string>([
+    path.resolve(ctx.config.cacheDir),
+    path.resolve(ctx.config.dataDir),
+    path.resolve(ctx.config.asr.resultDir),
+    path.resolve(ctx.config.translation.resultDir),
+  ])
   const libTally: WalkTally = { totalBytes: 0, otherBytes: 0, tempBytes: 0 }
 
   for (const lib of listLibraries(ctx.db)) {
     const abs = resolveInside(ctx.config.mediaRoot, lib.rootPath)
-    if (abs) await walkTreeSizes(abs, seenMediaDirs, true, libTally)
+    if (abs) {
+      await walkTreeSizes(
+        abs,
+        seenMediaDirs,
+        true,
+        libTally,
+        lib.rootPath === '' ? path.resolve(ctx.config.mediaRoot) : null,
+      )
+    }
   }
 
   const thumbTally: WalkTally = { totalBytes: 0, otherBytes: 0, tempBytes: 0 }
@@ -158,7 +184,7 @@ async function computeStorageStats(ctx: AppContext): Promise<StorageStatsDTO> {
   const tempBytes = libTally.tempBytes + thumbTally.tempBytes + cacheTally.tempBytes
   const thumbnailBytes = thumbTally.otherBytes
   const cacheBytes = cacheTally.otherBytes
-  const totalLibraryBytes = videoBytes + imageBytes + libTally.otherBytes + libTally.tempBytes
+  const totalLibraryBytes = videoBytes + imageBytes + libTally.otherBytes
 
   return {
     computedAt: new Date().toISOString(),
@@ -185,10 +211,6 @@ function toBackupRecordDTO(row: BackupLogRecord): BackupRecordDTO {
   }
 }
 
-function isMountBoundaryPath(rootPath: string): boolean {
-  return rootPath === '' || rootPath === 'extra' || /^drives\/[a-z]$/i.test(rootPath)
-}
-
 async function checkLibraryHealth(ctx: AppContext): Promise<LibraryHealthDTO[]> {
   const libs = listLibraries(ctx.db)
   return Promise.all(
@@ -199,7 +221,7 @@ async function checkLibraryHealth(ctx: AppContext): Promise<LibraryHealthDTO[]> 
         try {
           const info = await stat(abs)
           if (info.isDirectory()) {
-            if (isMountBoundaryPath(lib.rootPath) && lib.assetCount > 0) {
+            if (isMountBoundaryRoot(lib.rootPath) && lib.assetCount > 0) {
               const entries = await readdir(abs)
               accessible = entries.length > 0
             } else {
@@ -236,6 +258,7 @@ async function checkLibraryHealth(ctx: AppContext): Promise<LibraryHealthDTO[]> 
 
 export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): void {
   let cachedStorage: { expiresAt: number; data: StorageStatsDTO } | null = null
+  let cachedIntegrity: { expiresAt: number; value: string } | null = null
 
   const liveHandler = async () => ({
     ok: true,
@@ -249,11 +272,11 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
       ctx.db.query<{ ok: number }, []>('SELECT 1 AS ok').get()
       await stat(ctx.config.mediaRoot)
       await stat(ctx.config.cacheDir)
-      const sqlite = getSqliteRuntimeInfo(ctx.db)
+      const sqlite = getSqliteRuntimeInfo(ctx.db, { checkIntegrity: false })
       reply.send({
-        ok: sqlite.integrity === 'ok',
+        ok: true,
         uptimeSeconds: Math.max(0, Math.floor((Date.now() - BOOT_AT_MS) / 1000)),
-        dbIntegrity: sqlite.integrity,
+        dbIntegrity: cachedIntegrity ? cachedIntegrity.value : sqlite.integrity,
         sqliteVersion: sqlite.sqliteVersion,
         synchronousMode: sqlite.synchronousMode,
       })
@@ -287,16 +310,19 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   app.get('/api/system/status', async (_request, reply) => {
     const now = Date.now()
-    const sqlite = getSqliteRuntimeInfo(ctx.db)
-    const [libraries, recovery, latestBackup] = await Promise.all([
-      checkLibraryHealth(ctx),
-      Promise.resolve(getLatestRecoveryLog(ctx.db)),
-      Promise.resolve(getLatestBackupLog(ctx.db)),
-    ])
+    const checkIntegrity = !cachedIntegrity || now >= cachedIntegrity.expiresAt
+    const sqlite = getSqliteRuntimeInfo(ctx.db, { checkIntegrity })
+    const integrity = checkIntegrity ? sqlite.integrity : cachedIntegrity!.value
+    if (checkIntegrity) {
+      cachedIntegrity = { expiresAt: now + INTEGRITY_CACHE_TTL_MS, value: integrity }
+    }
+    const libraries = await checkLibraryHealth(ctx)
+    const recovery = getLatestRecoveryLog(ctx.db)
+    const latestBackup = getLatestBackupLog(ctx.db)
     const payload: SystemStatusDTO = {
       startedAt: BOOT_AT_ISO,
       uptimeSeconds: Math.max(0, Math.floor((now - BOOT_AT_MS) / 1000)),
-      dbIntegrity: sqlite.integrity,
+      dbIntegrity: integrity,
       sqliteVersion: sqlite.sqliteVersion,
       synchronousMode: sqlite.synchronousMode,
       jobCounts: jobCounts(ctx.db),

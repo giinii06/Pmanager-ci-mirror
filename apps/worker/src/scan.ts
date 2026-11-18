@@ -1,5 +1,5 @@
 import type { Dirent, Stats } from 'node:fs'
-import { lstat, readdir, stat } from 'node:fs/promises'
+import { lstat, readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   clearScanCheckpoint,
@@ -31,7 +31,14 @@ import {
   type ScanAssetRow,
 } from '@mediavault/database'
 import { probeImage, probeVideo, resolveInside } from '@mediavault/media'
-import { PRIORITY, classifyFile, extensionOf, newId } from '@mediavault/shared'
+import {
+  PRIORITY,
+  classifyFile,
+  extensionOf,
+  isBlockedSystemRelativePath,
+  isMountBoundaryRoot,
+  newId,
+} from '@mediavault/shared'
 import { enqueueArchivesInDir } from './archives'
 import type { WorkerConfig } from './config'
 
@@ -40,13 +47,7 @@ const STAT_CONCURRENCY = 16
 const IMAGE_PROBE_CONCURRENCY = 16
 const VIDEO_PROBE_CONCURRENCY = 4
 
-const SKIP_DIRECTORIES = new Set([
-  '@eaDir',
-  '#recycle',
-  '$RECYCLE.BIN',
-  'System Volume Information',
-  'lost+found',
-])
+const SKIP_DIRECTORIES = new Set(['@eaDir', '#recycle', 'lost+found'])
 
 export interface ScanSummary {
   files: number
@@ -66,13 +67,12 @@ export interface ScanFenceContext {
 export interface ScanOptions {
   fence?: ScanFenceContext
   signal?: AbortSignal
-  /** Progress hook called whenever a batch transaction commits cleanly. */
   onBatchCommitted?: (processedFiles: number) => void
 }
 
 export class ScanInterruptedError extends Error {
   constructor(
-    public readonly reason: 'paused' | 'cancelled' | 'shutdown',
+    public readonly reason: 'paused' | 'cancelled' | 'shutdown' | 'lease_lost',
     message = `scan interrupted (${reason})`,
   ) {
     super(message)
@@ -97,11 +97,6 @@ async function mapPool<T, R>(
   })
   await Promise.all(workers)
   return results
-}
-
-function isMountBoundaryRoot(rootPath: string): boolean {
-  const clean = rootPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-  return clean === '' || clean === 'extra' || clean === 'drives' || /^drives\/[a-z]$/i.test(clean)
 }
 
 function compareNames(a: string, b: string): number {
@@ -155,7 +150,7 @@ async function probeMediaWithRecheck(
     const after = await stat(absPath)
     const changedMidProbe =
       after.size !== activeInfo.size || Math.round(after.mtimeMs) !== Math.round(activeInfo.mtimeMs)
-    if (!changedMidProbe || attempt === 1) {
+    if (!changedMidProbe) {
       if (videoProbe) {
         return {
           info: after,
@@ -179,7 +174,7 @@ async function probeMediaWithRecheck(
     }
     activeInfo = after
   }
-  throw new Error(`unreachable probe loop for ${absPath}`)
+  throw new Error(`file modified continuously during probe: ${absPath}`)
 }
 
 export async function scanLibrary(
@@ -227,12 +222,20 @@ export async function scanLibrary(
   let rootEntries: Dirent[]
   try {
     const rootLink = await lstat(root)
-    if (!rootLink.isDirectory() && !rootLink.isSymbolicLink()) {
-      return blockScan(`drive_unavailable: ${library.rootPath} is not a directory`)
+    if (rootLink.isSymbolicLink() || !rootLink.isDirectory()) {
+      return blockScan(`drive_unavailable: ${library.rootPath} is not a real directory`)
     }
-    const rootStat = await stat(root)
-    if (!rootStat.isDirectory()) {
-      return blockScan(`drive_unavailable: ${library.rootPath} is not accessible`)
+    const realBase = await realpath(config.mediaRoot)
+    const realRoot = await realpath(root)
+    const relFromBase = path.relative(realBase, realRoot).replace(/\\/g, '/')
+    if (
+      relFromBase.startsWith('..') ||
+      path.isAbsolute(relFromBase) ||
+      isBlockedSystemRelativePath(relFromBase)
+    ) {
+      return blockScan(
+        `drive_unavailable: ${library.rootPath} resolves outside allowed media directories`,
+      )
     }
     rootEntries = await readdir(root, { withFileTypes: true })
   } catch (error) {
@@ -340,7 +343,7 @@ export async function scanLibrary(
         })
         updateScanProgress(db, libraryId, summary.files)
         if (options.fence) {
-          saveJobCheckpoint(
+          const saved = saveJobCheckpoint(
             db,
             options.fence.jobId,
             {
@@ -358,6 +361,9 @@ export async function scanLibrary(
               phase: activeScanId === runScanId ? 'index' : 'verify',
             },
           )
+          if (!saved) {
+            throw new ScanInterruptedError('lease_lost', 'lost job lease while saving checkpoint')
+          }
         }
       }
     }).immediate()
@@ -370,7 +376,9 @@ export async function scanLibrary(
   const checkInterrupted = (): void => {
     if (!options.signal?.aborted) return
     const reason =
-      options.signal.reason === 'paused' || options.signal.reason === 'cancelled'
+      options.signal.reason === 'paused' ||
+      options.signal.reason === 'cancelled' ||
+      options.signal.reason === 'lease_lost'
         ? options.signal.reason
         : 'shutdown'
     throw new ScanInterruptedError(reason)
@@ -635,9 +643,25 @@ export async function scanLibrary(
       if (SKIP_DIRECTORIES.has(entry.name)) continue
       if (shouldSkipCrossMountChild(rel, entry.name)) continue
       const childRel = rel === '' ? entry.name : `${rel}/${entry.name}`
+      if (isBlockedSystemRelativePath(childRel)) continue
       const childAbs = path.join(abs, entry.name)
       await walkTree(childAbs, childRel, folderId, depth + 1, activeScanId, checkpointCursorDir)
     }
+  }
+
+  const runResumedVerificationPass = async (): Promise<string> => {
+    const verifyScanId = `verify-${Date.now()}-${newId(6)}`
+    currentStage = 'verify'
+    summary.files = 0
+    unchanged = 0
+    updateScanRun(db, runRecordId, {
+      phase: 'verify',
+      status: 'running',
+      updatedAt: Date.now(),
+    })
+    await walkTree(root, '', null, 0, verifyScanId, null)
+    flushBatch(lastSeenDirRel, lastSeenRelPath, verifyScanId, false)
+    return verifyScanId
   }
 
   try {
@@ -654,21 +678,7 @@ export async function scanLibrary(
     )
     flushBatch(lastSeenDirRel, lastSeenRelPath, runScanId, true)
 
-    let authoritativeScanId = runScanId
-    if (resumedFromCheckpoint) {
-      // Complete verification pass catches files added, renamed, or removed behind the checkpoint cursor.
-      authoritativeScanId = `verify-${Date.now()}-${newId(6)}`
-      currentStage = 'verify'
-      summary.files = 0
-      unchanged = 0
-      updateScanRun(db, runRecordId, {
-        phase: 'verify',
-        status: 'running',
-        updatedAt: Date.now(),
-      })
-      await walkTree(root, '', null, 0, authoritativeScanId, null)
-      flushBatch(lastSeenDirRel, lastSeenRelPath, authoritativeScanId, false)
-    }
+    const authoritativeScanId = resumedFromCheckpoint ? await runResumedVerificationPass() : runScanId
 
     checkInterrupted()
     if (readErrors > 0) {
@@ -696,27 +706,28 @@ export async function scanLibrary(
     }
 
     updateScanRun(db, runRecordId, { phase: 'finalize', status: 'running', updatedAt: Date.now() })
-    summary.removed = softDeleteMissing(db, libraryId, authoritativeScanId, Date.now())
-    deleteStaleFolders(db, libraryId, authoritativeScanId)
-    recomputeFolderCounts(db, libraryId)
-    reconcileContributions(db)
-    reconcileVoteEvents(db)
-    clearScanCheckpoint(db, libraryId)
-
     const completedAt = Date.now()
-    finishScan(db, libraryId, completedAt, summary.files)
-    updateScanRun(db, runRecordId, {
-      phase: 'completed',
-      status: 'completed',
-      filesSeen: summary.files,
-      filesAdded: summary.added,
-      filesUpdated: summary.updated,
-      filesSkipped: summary.skipped,
-      filesRemoved: summary.removed,
-      readErrors,
-      completedAt,
-      updatedAt: completedAt,
-    })
+    db.transaction(() => {
+      summary.removed = softDeleteMissing(db, libraryId, authoritativeScanId, completedAt)
+      deleteStaleFolders(db, libraryId, authoritativeScanId)
+      recomputeFolderCounts(db, libraryId)
+      reconcileContributions(db)
+      reconcileVoteEvents(db)
+      clearScanCheckpoint(db, libraryId)
+      finishScan(db, libraryId, completedAt, summary.files)
+      updateScanRun(db, runRecordId, {
+        phase: 'completed',
+        status: 'completed',
+        filesSeen: summary.files,
+        filesAdded: summary.added,
+        filesUpdated: summary.updated,
+        filesSkipped: summary.skipped,
+        filesRemoved: summary.removed,
+        readErrors,
+        completedAt,
+        updatedAt: completedAt,
+      })
+    }).immediate()
 
     console.info(
       JSON.stringify({
@@ -733,24 +744,40 @@ export async function scanLibrary(
     const t = Date.now()
     if (error instanceof ScanInterruptedError) {
       if (
-        error.reason !== 'cancelled' &&
+        (error.reason === 'paused' || error.reason === 'shutdown') &&
         currentStage === 'index' &&
         (touchBuffer.length > 0 || mutationBuffer.length > 0)
       ) {
         flushBatch(lastSeenDirRel, lastSeenRelPath, runScanId, true)
       }
-      const status = error.reason === 'cancelled' ? 'cancelled' : 'paused'
-      updateScanRun(db, runRecordId, {
-        phase: status,
-        status,
-        filesSeen: summary.files,
-        filesAdded: summary.added,
-        filesUpdated: summary.updated,
-        filesSkipped: summary.skipped,
-        readErrors,
-        errorMessage: error.message,
-        updatedAt: t,
-      })
+      if (error.reason === 'lease_lost') {
+        updateScanRun(db, runRecordId, {
+          phase: 'failed',
+          status: 'failed',
+          filesSeen: summary.files,
+          filesAdded: summary.added,
+          filesUpdated: summary.updated,
+          filesSkipped: summary.skipped,
+          readErrors,
+          errorMessage: error.message.slice(0, 500),
+          completedAt: t,
+          updatedAt: t,
+        })
+      } else {
+        const status = error.reason === 'cancelled' ? 'cancelled' : 'paused'
+        updateScanRun(db, runRecordId, {
+          phase: status,
+          status,
+          filesSeen: summary.files,
+          filesAdded: summary.added,
+          filesUpdated: summary.updated,
+          filesSkipped: summary.skipped,
+          readErrors,
+          errorMessage: error.message,
+          ...(error.reason === 'cancelled' ? { completedAt: t } : {}),
+          updatedAt: t,
+        })
+      }
     } else {
       updateScanRun(db, runRecordId, {
         phase: 'failed',
