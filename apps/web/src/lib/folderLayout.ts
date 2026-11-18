@@ -39,7 +39,6 @@ export interface FolderMasonryLayout {
   allNodes: PlacedFolderNode[]
 }
 
-export const CARD_CAPTION_HEIGHT = 36
 export const FOLDER_HEADER_HEIGHT = 28
 
 const CARD_BORDER_HEIGHT = 2
@@ -80,7 +79,7 @@ function packFolderColumns(
     const folder = folders[i]!
     const ratio = clampedCoverAspectRatio(folder.coverWidth, folder.coverHeight)
     const imageHeight = Math.max(MIN_IMAGE_HEIGHT, Math.round(colWidth / ratio))
-    const height = imageHeight + CARD_CAPTION_HEIGHT + CARD_BORDER_HEIGHT
+    const height = imageHeight + CARD_BORDER_HEIGHT
 
     let targetCol = 0
     for (let col = 1; col < columns; col += 1) {

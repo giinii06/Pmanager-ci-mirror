@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Eye, Folder as FolderIcon, Info, Percent, ThumbsUp } from 'lucide-react'
 import { POSTER_SCHEME, type FolderDTO } from '@mediavault/shared'
 import { cn } from '../lib/cn'
-import { CARD_CAPTION_HEIGHT, clampedCoverAspectRatio } from '../lib/folderLayout'
+import { clampedCoverAspectRatio } from '../lib/folderLayout'
 import { formatCount, formatRate } from '../lib/format'
 import { Thumb } from './Thumb'
 
@@ -106,16 +106,6 @@ export function FolderCard({
               </div>
             </dl>
           </div>
-        </div>
-
-        <div
-          className="flex items-center justify-between gap-2 px-3"
-          style={{ height: CARD_CAPTION_HEIGHT }}
-        >
-          <p className="min-w-0 truncate text-[12.5px] font-medium text-ink">{folder.name}</p>
-          <span className="shrink-0 text-[11px] tabular-nums text-faint">
-            {formatCount(photoCount)}
-          </span>
         </div>
       </Link>
 
