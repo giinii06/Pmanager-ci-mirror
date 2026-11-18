@@ -1,5 +1,7 @@
+import { EventEmitter } from 'node:events'
+import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
-import chokidar, { type FSWatcher } from 'chokidar'
+import chokidar from 'chokidar'
 import { enqueueJob, listLibraries, type Db } from '@mediavault/database'
 import { isTempDownloadFile, resolveInside } from '@mediavault/media'
 import { PRIORITY, classifyFile } from '@mediavault/shared'
@@ -19,13 +21,9 @@ const BLOCKED_WATCH_DIRS = new Set([
 ])
 const WATCH_REFRESH_MS = 15_000
 
-function collectLibraryRoots(db: Db, mediaRoot: string): string[] {
-  const roots: string[] = []
-  for (const lib of listLibraries(db)) {
-    const abs = resolveInside(mediaRoot, lib.rootPath)
-    if (abs) roots.push(abs)
-  }
-  return roots
+export interface MediaWatcher {
+  once(event: 'ready', listener: () => void): unknown
+  close(): Promise<void>
 }
 
 function findOwningLibrary(
@@ -47,17 +45,260 @@ function findOwningLibrary(
   return best
 }
 
+function collectLibraryRoots(db: Db, mediaRoot: string): string[] {
+  const roots: string[] = []
+  for (const lib of listLibraries(db)) {
+    const abs = resolveInside(mediaRoot, lib.rootPath)
+    if (abs) roots.push(abs)
+  }
+  return roots
+}
+
+function shouldSkipName(name: string): boolean {
+  return name.startsWith('.') || BLOCKED_WATCH_DIRS.has(name.toLowerCase())
+}
+
+function isCrossMountSkip(dirAbs: string, mediaRoot: string, rootsSet: Set<string>): boolean {
+  if (!rootsSet.has(mediaRoot)) return false
+  const drivesMount = path.join(mediaRoot, 'drives')
+  const extraMount = path.join(mediaRoot, 'extra')
+  return (
+    dirAbs === drivesMount ||
+    dirAbs.startsWith(`${drivesMount}${path.sep}`) ||
+    dirAbs === extraMount ||
+    dirAbs.startsWith(`${extraMount}${path.sep}`)
+  )
+}
+
+function createDirectoryMtimePoller(
+  db: Db,
+  config: WorkerConfig,
+  handleFile: (absPath: string) => void,
+  cleanupTimers: () => void,
+): MediaWatcher {
+  const emitter = new EventEmitter()
+  const stableMs = config.archiveStableMs ?? 1_500
+  const pollMs = Math.min(2_500, Math.max(150, stableMs * 2))
+  const dirState = new Map<string, { mtimeMs: number; files: Set<string> }>()
+  const dirsWithTemp = new Set<string>()
+  const pendingFiles = new Map<
+    string,
+    { size: number; mtimeMs: number; stableSince: number }
+  >()
+  let stopped = false
+  let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+  const indexTree = async (
+    rootDir: string,
+    rootsSet: Set<string>,
+    notifyNewFiles: boolean,
+  ): Promise<void> => {
+    const queue = [rootDir]
+    while (queue.length > 0 && !stopped) {
+      const dir = queue.pop()!
+      if (isCrossMountSkip(dir, config.mediaRoot, rootsSet)) continue
+      try {
+        const [dirInfo, entries] = await Promise.all([
+          stat(dir),
+          readdir(dir, { withFileTypes: true }),
+        ])
+        if (!dirInfo.isDirectory()) continue
+        const files = new Set<string>()
+        let hasTemp = false
+        for (const entry of entries) {
+          if (entry.isSymbolicLink() || shouldSkipName(entry.name)) continue
+          const childAbs = path.join(dir, entry.name)
+          if (entry.isDirectory()) {
+            queue.push(childAbs)
+            continue
+          }
+          if (!entry.isFile()) continue
+          if (isTempDownloadFile(entry.name)) {
+            hasTemp = true
+            continue
+          }
+          files.add(entry.name)
+          if (notifyNewFiles && (ARCHIVE_FILE_RE.test(entry.name) || classifyFile(entry.name))) {
+            if (!pendingFiles.has(childAbs)) {
+              const info = await stat(childAbs).catch(() => null)
+              if (info?.isFile()) {
+                const now = Date.now()
+                pendingFiles.set(childAbs, {
+                  size: info.size,
+                  mtimeMs: info.mtimeMs,
+                  stableSince: now,
+                })
+              }
+            }
+          }
+        }
+        dirState.set(dir, { mtimeMs: dirInfo.mtimeMs, files })
+        if (hasTemp) dirsWithTemp.add(dir)
+        else dirsWithTemp.delete(dir)
+      } catch {
+        dirState.delete(dir)
+        dirsWithTemp.delete(dir)
+      }
+    }
+  }
+
+  const pollOnce = async (): Promise<void> => {
+    const roots = collectLibraryRoots(db, config.mediaRoot)
+    const rootsSet = new Set(roots)
+
+    for (const root of roots) {
+      if (stopped) return
+      if (!dirState.has(root)) {
+        await indexTree(root, rootsSet, true)
+      }
+    }
+
+    const dirs = Array.from(dirState.keys())
+    let cursor = 0
+    const concurrency = Math.min(16, Math.max(1, dirs.length))
+    await Promise.all(
+      Array.from({ length: concurrency }, async () => {
+        while (!stopped && cursor < dirs.length) {
+          const dir = dirs[cursor]!
+          cursor += 1
+          const prev = dirState.get(dir)
+          if (!prev) continue
+          if (
+            !roots.some(
+              (r) => dir === r || dir.startsWith(`${r}${path.sep}`),
+            )
+          ) {
+            dirState.delete(dir)
+            dirsWithTemp.delete(dir)
+            continue
+          }
+          try {
+            const info = await stat(dir)
+            if (!info.isDirectory()) {
+              dirState.delete(dir)
+              continue
+            }
+            if (info.mtimeMs === prev.mtimeMs && !dirsWithTemp.has(dir)) continue
+
+            const entries = await readdir(dir, { withFileTypes: true })
+            const nextFiles = new Set<string>()
+            let hasTemp = false
+            for (const entry of entries) {
+              if (entry.isSymbolicLink() || shouldSkipName(entry.name)) continue
+              const childAbs = path.join(dir, entry.name)
+              if (entry.isDirectory()) {
+                if (!dirState.has(childAbs)) {
+                  await indexTree(childAbs, rootsSet, true)
+                }
+                continue
+              }
+              if (!entry.isFile()) continue
+              if (isTempDownloadFile(entry.name)) {
+                hasTemp = true
+                continue
+              }
+              nextFiles.add(entry.name)
+              if (!prev.files.has(entry.name)) {
+                if (ARCHIVE_FILE_RE.test(entry.name) || classifyFile(entry.name)) {
+                  if (!pendingFiles.has(childAbs)) {
+                    const fileInfo = await stat(childAbs).catch(() => null)
+                    if (fileInfo?.isFile()) {
+                      pendingFiles.set(childAbs, {
+                        size: fileInfo.size,
+                        mtimeMs: fileInfo.mtimeMs,
+                        stableSince: Date.now(),
+                      })
+                    }
+                  }
+                }
+              }
+            }
+            dirState.set(dir, { mtimeMs: info.mtimeMs, files: nextFiles })
+            if (hasTemp) dirsWithTemp.add(dir)
+            else dirsWithTemp.delete(dir)
+          } catch {
+            dirState.delete(dir)
+            dirsWithTemp.delete(dir)
+          }
+        }
+      }),
+    )
+
+    const now = Date.now()
+    for (const [absPath, tracked] of pendingFiles) {
+      if (stopped) return
+      const info = await stat(absPath).catch(() => null)
+      if (!info?.isFile()) {
+        pendingFiles.delete(absPath)
+        continue
+      }
+      if (info.size !== tracked.size || info.mtimeMs !== tracked.mtimeMs) {
+        pendingFiles.set(absPath, {
+          size: info.size,
+          mtimeMs: info.mtimeMs,
+          stableSince: now,
+        })
+        continue
+      }
+      if (now - tracked.stableSince >= stableMs) {
+        pendingFiles.delete(absPath)
+        handleFile(absPath)
+      }
+    }
+  }
+
+  const scheduleNext = () => {
+    if (stopped) return
+    pollTimer = setTimeout(() => {
+      void pollOnce().finally(scheduleNext)
+    }, pollMs)
+    pollTimer.unref?.()
+  }
+
+  void (async () => {
+    const roots = collectLibraryRoots(db, config.mediaRoot)
+    const rootsSet = new Set(roots)
+    for (const root of roots) {
+      await indexTree(root, rootsSet, false)
+    }
+    if (!stopped) {
+      emitter.emit('ready')
+      scheduleNext()
+    }
+  })()
+
+  return {
+    once(event, listener) {
+      emitter.once(event, listener)
+      return emitter
+    },
+    async close() {
+      stopped = true
+      if (pollTimer !== null) clearTimeout(pollTimer)
+      pollTimer = null
+      cleanupTimers()
+    },
+  }
+}
+
 /**
- * Watches `config.mediaRoot` for newly completed `.rar` archives and media files,
- * debouncing burst writes and skipping hidden or in-progress browser downloads.
+ * Watches registered library roots for newly completed `.rar` archives and media
+ * files, debouncing burst writes and skipping hidden or temp browser downloads.
  */
-export function startMediaWatcher(db: Db, config: WorkerConfig): FSWatcher {
+export function startMediaWatcher(db: Db, config: WorkerConfig): MediaWatcher {
   const archiveTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const scanTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
+  const cleanupTimers = () => {
+    for (const timer of archiveTimers.values()) clearTimeout(timer)
+    for (const timer of scanTimers.values()) clearTimeout(timer)
+    archiveTimers.clear()
+    scanTimers.clear()
+  }
+
   const handleFile = (absPath: string) => {
     const name = path.basename(absPath)
-    if (name.startsWith('.') || isTempDownloadFile(name)) return
+    if (shouldSkipName(name) || isTempDownloadFile(name)) return
     const match = findOwningLibrary(db, config.mediaRoot, absPath)
     if (!match) return
 
@@ -106,6 +347,10 @@ export function startMediaWatcher(db: Db, config: WorkerConfig): FSWatcher {
     }
   }
 
+  if (config.watchPolling) {
+    return createDirectoryMtimePoller(db, config, handleFile, cleanupTimers)
+  }
+
   const watchedRoots = new Set(collectLibraryRoots(db, config.mediaRoot))
   const drivesMount = path.join(config.mediaRoot, 'drives')
   const extraMount = path.join(config.mediaRoot, 'extra')
@@ -113,15 +358,10 @@ export function startMediaWatcher(db: Db, config: WorkerConfig): FSWatcher {
   const watcher = chokidar.watch(Array.from(watchedRoots), {
     ignoreInitial: true,
     followSymlinks: false,
-    usePolling: config.watchPolling ?? false,
-    interval: 2_000,
-    binaryInterval: 3_000,
+    usePolling: false,
     ignored: (filePath: string) => {
       const base = path.basename(filePath)
-      const lower = base.toLowerCase()
-      if (base.startsWith('.') || isTempDownloadFile(base) || BLOCKED_WATCH_DIRS.has(lower)) {
-        return true
-      }
+      if (shouldSkipName(base) || isTempDownloadFile(base)) return true
       if (
         watchedRoots.has(config.mediaRoot) &&
         (filePath === drivesMount ||
@@ -165,10 +405,7 @@ export function startMediaWatcher(db: Db, config: WorkerConfig): FSWatcher {
   const origClose = watcher.close.bind(watcher)
   watcher.close = async () => {
     clearInterval(syncRootsTimer)
-    for (const timer of archiveTimers.values()) clearTimeout(timer)
-    for (const timer of scanTimers.values()) clearTimeout(timer)
-    archiveTimers.clear()
-    scanTimers.clear()
+    cleanupTimers()
     await origClose()
   }
 

@@ -215,6 +215,17 @@ export async function runWorkerRecovery(
   const cutoffMs = now - staleAgeMs
   const dbIntegrity = getSqliteRuntimeInfo(db).integrity
   const recoveredJobs = recoverExpiredJobs(db, now)
+  db.query<null, [number, number]>(
+    `UPDATE scan_runs SET
+       phase = 'interrupted',
+       status = 'interrupted',
+       completed_at = COALESCE(completed_at, ?),
+       updated_at = ?
+     WHERE status = 'running'
+       AND library_id NOT IN (
+         SELECT library_id FROM jobs WHERE kind = 'scan_library' AND state = 'running' AND library_id IS NOT NULL
+       )`,
+  ).run(now, now)
   const repairedScans = repairInterruptedLibraryScans(db, now)
   const cleanedTemp =
     (await cleanStaleTempFiles(config.cacheDir, cutoffMs)) +
