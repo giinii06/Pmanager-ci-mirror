@@ -68,3 +68,15 @@
 - ASR/scene compose render with example env files and test tokens: exit `0`; 21 drive mounts and 7 extra-root mounts across api, worker, nginx, asr-worker and scene-worker.
 - `git check-ignore`: `.env.scene` and `.env.asr.bak-langid` match `.env.*`; `.env.example` and `.env.asr.example` remain unignored.
 - Not verified yet: live host restart with the new compose files. That check follows the commit and is recorded below when it runs.
+
+### PR 01 Live Host Verification (`media-server`, 2026-11-19)
+
+- Backed up the host `.env` to `~/Pmanager-backups/pre-pr01-20261119-202606.env` before editing.
+- Set `MEDIA_ROOT=/mnt/e` on the host. Before this change `/media` was bound to `./sample-media`; the only library is `extra/d`, so no registered asset depended on the sample folder.
+- Host full compose render with all 5 env files and 11 compose files: exit `0`, 8 `create_host_path: false` entries.
+- Rebuilt and recreated `api`, `worker`, `nginx`: `UP_EXIT=0`. `api` reached `healthy`.
+- Container preflight: `5 paths, 0 failed, 1 warnings`; `/media` `352.6 GiB`, `/media/extra` `352.6 GiB`, `/media/drives/c` `84.3 GiB`, `/media/drives/d` `1402.6 GiB`, `/media/drives/e` `352.6 GiB`. The warning is expected because `/media`, `/media/extra`, and `/media/drives/e` all resolve to the E drive.
+- `/health/ready`: HTTP `200`.
+- Live mounts: `/mnt/e -> /media`, `/mnt/e -> /media/extra`, `/mnt/c -> /media/drives/c`, `/mnt/d -> /media/drives/d`, `/mnt/e -> /media/drives/e`.
+- DB after restart: schema `v15`, `12,851` active assets, `115` folders, `63` tags, `1` library. The latest three scans each saw `12,851`, `files_added: 0`, `files_removed: 0`, `read_errors: 0`.
+- Baseline at PR 00 was `12,756` assets and `113` folders. The increase of 95 assets and 2 folders happened before the latest scans and is not a deletion. The exact scan that added them was not captured; later scans are stable at `12,851`.

@@ -71,3 +71,4 @@
 - Added `scripts/preflight.ts` with 11 tests. It checks existence, directory type, read access, device identity, free space, optional non-empty and marker requirements, and duplicate device warnings. It exits `1` on a failed required path.
 - Added `Test-MvPreflight` to the Windows supervisor and start script, and added `compose.drives.yaml` to the shared compose arguments. The API image now copies `scripts/` so preflight runs inside the container view.
 - `package.json` typecheck now includes the root `tsconfig.json` that covers `scripts/**/*.ts`.
+- Deployed to `media-server`: backed up the host `.env`, set `MEDIA_ROOT=/mnt/e`, rebuilt `api`, `worker`, and `nginx`. Container preflight passed (5 paths, 0 failed), `/health/ready` returned `200`, and the live library stayed stable at `12,851` assets with `0` removed and `0` read errors across the latest three scans.
