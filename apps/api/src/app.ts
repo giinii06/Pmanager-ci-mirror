@@ -8,6 +8,7 @@ import { registerFsRoutes } from './routes/fs'
 import { registerIndexRoutes } from './routes/index-run'
 import { registerLibraryRoutes } from './routes/libraries'
 import { registerMediaRoutes } from './routes/media'
+import { registerPlaybackRoutes } from './routes/playback'
 import { registerSceneRoutes } from './routes/scenes'
 import { registerSystemRoutes } from './routes/system'
 import { registerTagRoutes } from './routes/tags'
@@ -125,6 +126,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerIndexRoutes(app, ctx)
   registerLibraryRoutes(app, ctx)
   registerAssetRoutes(app, ctx)
+  registerPlaybackRoutes(app, ctx)
   registerFileOperationRoutes(app, ctx)
   registerTagRoutes(app, ctx)
   registerMediaRoutes(app, ctx)

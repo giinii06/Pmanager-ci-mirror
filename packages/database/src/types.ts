@@ -275,7 +275,37 @@ export interface PlaybackRecord {
   assetId: string
   positionMs: number
   durationMs: number
+  fileVersion: number | null
+  progressVersion: number
+  lastSessionId: string | null
+  lastSeq: number
   updatedAt: number
+}
+
+export interface PlaySessionRecord {
+  id: string
+  userId: string
+  assetId: string
+  fileVersion: number
+  clientSessionKey: string
+  startedAt: number
+  endedAt: number | null
+  viewRecordedAt: number | null
+  lastSeq: number
+}
+
+export type PlayEventType = 'watch_time' | 'progress' | 'view'
+
+export interface PlayEventRecord {
+  eventId: string
+  sessionId: string
+  seq: number
+  type: PlayEventType
+  deltaMs: number | null
+  positionMs: number | null
+  durationMs: number | null
+  clientTimestamp: number | null
+  recordedAt: number
 }
 
 export interface AsrJobRecord {

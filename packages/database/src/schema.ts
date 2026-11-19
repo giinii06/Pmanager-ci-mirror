@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 19
+export const SCHEMA_VERSION = 20
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -704,6 +704,52 @@ CREATE TABLE IF NOT EXISTS auth_events (
 CREATE INDEX IF NOT EXISTS idx_auth_events_created ON auth_events(created_at);
 `
 
+// A play session is one playback attempt. Events carry a client-generated id so
+// a lost response can be retried without counting the same watch time twice.
+// `last_seq` is a high-water mark that only advances on the next contiguous
+// sequence, so an overtaken event is refused instead of silently dropped.
+export const V20_PLAY_SESSIONS_SQL = `
+CREATE TABLE IF NOT EXISTS play_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  client_session_key TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  view_recorded_at INTEGER,
+  last_seq INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(user_id, client_session_key)
+);
+CREATE INDEX IF NOT EXISTS idx_play_sessions_user
+  ON play_sessions(user_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_play_sessions_started ON play_sessions(started_at);
+
+CREATE TABLE IF NOT EXISTS play_events (
+  event_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES play_sessions(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  event_type TEXT NOT NULL CHECK (event_type IN ('watch_time','progress','view')),
+  delta_ms INTEGER,
+  position_ms INTEGER,
+  duration_ms INTEGER,
+  client_timestamp INTEGER,
+  recorded_at INTEGER NOT NULL,
+  UNIQUE(session_id, seq)
+);
+
+ALTER TABLE playback_progress ADD COLUMN file_version INTEGER;
+ALTER TABLE playback_progress ADD COLUMN progress_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE playback_progress ADD COLUMN last_session_id TEXT;
+ALTER TABLE playback_progress ADD COLUMN last_seq INTEGER NOT NULL DEFAULT 0;
+
+-- Rows written before this migration have no recorded version. The last saved
+-- position was for the asset as it stood then, so the current version is the
+-- closest available answer; leaving it NULL would disable resume for everyone.
+UPDATE playback_progress
+SET file_version = (SELECT file_version FROM assets WHERE assets.id = playback_progress.asset_id);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -758,4 +804,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V17_FILE_MUTATIONS_SQL),
   (exec) => exec(V18_HLS_GENERATIONS_SQL),
   (exec) => exec(V19_AUTH_SESSIONS_SQL),
+  (exec) => exec(V20_PLAY_SESSIONS_SQL),
 ]

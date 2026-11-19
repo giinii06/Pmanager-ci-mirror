@@ -1,5 +1,6 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
 import type { FolderSort } from '@mediavault/shared'
+import { newId } from '@mediavault/shared'
 import { recordVoteEvent } from './contributions'
 import type { Db } from './db'
 import type { FolderRecord } from './types'
@@ -106,19 +107,27 @@ export function listAllFolders(db: Db, sort?: FolderSort): FolderRecord[] {
   return db.query<FolderRecord, []>(`${FOLDER_CTE} ORDER BY ${folderOrderSql(sort)}`).all()
 }
 
-export function voteFolder(db: Db, folderId: string, now = Date.now()): FolderRecord | null {
-  let updated = false
+export function voteFolder(
+  db: Db,
+  folderId: string,
+  now = Date.now(),
+  clientRequestId?: string | null,
+  actorId?: string | null,
+): FolderRecord | null {
+  let found = false
   db.transaction(() => {
     const row = db
-      .query<{ name: string }, Params>(
-        'UPDATE folders SET vote_count = vote_count + 1 WHERE id = ? RETURNING name',
-      )
+      .query<{ name: string }, Params>('SELECT name FROM folders WHERE id = ?')
       .get(folderId)
     if (!row) return
-    recordVoteEvent(db, 'folder', folderId, row.name, now)
-    updated = true
+    found = true
+    const eventId = clientRequestId
+      ? `client:folder:${actorId ?? 'anonymous'}:${folderId}:${clientRequestId}`
+      : newId()
+    if (!recordVoteEvent(db, 'folder', folderId, row.name, now, eventId)) return
+    db.query<null, Params>('UPDATE folders SET vote_count = vote_count + 1 WHERE id = ?').run(folderId)
   }).immediate()
-  if (!updated) return null
+  if (!found) return null
   return getFolder(db, folderId)
 }
 

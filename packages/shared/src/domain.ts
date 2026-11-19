@@ -625,7 +625,28 @@ export interface PlaybackProgressDTO {
   assetId: string
   positionMs: number
   durationMs: number
+  /** Null only for a row written before file versions were tracked. */
+  fileVersion: number | null
+  progressVersion: number
   updatedAt: string
+}
+
+export interface PlaySessionDTO {
+  sessionId: string
+  assetId: string
+  fileVersion: number
+  issuedAt: string
+}
+
+export type PlayEventType = 'watch_time' | 'progress' | 'view'
+
+export interface PlayEventResultDTO {
+  applied: boolean
+  duplicate: boolean
+  viewCount: number
+  watchTimeMs: number
+  progress: PlaybackProgressDTO | null
+  lastSeq: number
 }
 
 export interface AuthStatusDTO {

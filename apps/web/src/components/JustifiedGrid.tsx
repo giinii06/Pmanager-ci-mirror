@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { invalidateVoteCaches, patchAssetInCaches } from '../lib/cachePatch'
 import { buildGalleryEntries } from '../lib/justified'
 import { useElementWidth } from '../lib/hooks'
+import { randomToken } from '../lib/random'
 import { useUi } from '../store/ui'
 import { AssetTile } from './AssetTile'
 import { LoadingBlock } from './ui/Spinner'
@@ -44,7 +45,7 @@ export function JustifiedGrid({
   const toast = useUi((state) => state.toast)
 
   const vote = useMutation({
-    mutationFn: (id: string) => api.voteAsset(id),
+    mutationFn: (id: string) => api.voteAsset(id, randomToken()),
     onSuccess: (updated) => {
       patchAssetInCaches(queryClient, updated)
       invalidateVoteCaches(queryClient)
@@ -123,6 +124,7 @@ export function JustifiedGrid({
                             ? () => vote.mutate(placed.item.id)
                             : undefined
                         }
+                        voteDisabled={vote.isPending}
                       />
                     ))}
                   </div>

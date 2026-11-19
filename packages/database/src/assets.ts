@@ -1,5 +1,6 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
 import type { AssetKind, StatsDTO, VideoSort } from '@mediavault/shared'
+import { newId } from '@mediavault/shared'
 import { deleteAssetVoteEvents, recordVoteEvent } from './contributions'
 import type { Db } from './db'
 import { recomputeFolderCounts } from './folders'
@@ -294,21 +295,33 @@ export function addAssetWatchTime(db: Db, id: string, deltaMs: number): AssetRec
   return getAsset(db, id)
 }
 
-export function voteAsset(db: Db, id: string, now = Date.now()): AssetRecord | null {
-  let updated = false
+/**
+ * Every real click is its own vote. `clientRequestId` only makes a transport
+ * retry of the same click idempotent; two clicks with different ids count twice.
+ */
+export function voteAsset(
+  db: Db,
+  id: string,
+  now = Date.now(),
+  clientRequestId?: string | null,
+  actorId?: string | null,
+): AssetRecord | null {
+  let found = false
   db.transaction(() => {
     const row = db
       .query<{ filename: string }, Params>(
-        `UPDATE assets SET vote_count = vote_count + 1
-         WHERE id = ? AND deleted_at IS NULL
-         RETURNING filename`,
+        'SELECT filename FROM assets WHERE id = ? AND deleted_at IS NULL',
       )
       .get(id)
     if (!row) return
-    recordVoteEvent(db, 'asset', id, row.filename, now)
-    updated = true
+    found = true
+    const eventId = clientRequestId
+      ? `client:asset:${actorId ?? 'anonymous'}:${id}:${clientRequestId}`
+      : newId()
+    if (!recordVoteEvent(db, 'asset', id, row.filename, now, eventId)) return
+    db.query<null, Params>('UPDATE assets SET vote_count = vote_count + 1 WHERE id = ?').run(id)
   }).immediate()
-  if (!updated) return null
+  if (!found) return null
   return getAsset(db, id)
 }
 

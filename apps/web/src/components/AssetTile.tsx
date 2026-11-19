@@ -12,9 +12,18 @@ interface AssetTileProps {
   priority?: boolean
   onOpen: () => void
   onVote?: () => void
+  voteDisabled?: boolean
 }
 
-export function AssetTile({ asset, width, height, priority = false, onOpen, onVote }: AssetTileProps) {
+export function AssetTile({
+  asset,
+  width,
+  height,
+  priority = false,
+  onOpen,
+  onVote,
+  voteDisabled = false,
+}: AssetTileProps) {
   const duration = asset.kind === 'video' ? formatDuration(asset.durationMs) : ''
   const previewHost = useRef<HTMLDivElement>(null)
   const previewToken = useRef<symbol | null>(null)
@@ -88,12 +97,13 @@ export function AssetTile({ asset, width, height, priority = false, onOpen, onVo
       {asset.kind === 'video' && onVote ? (
         <button
           type="button"
+          disabled={voteDisabled}
           onClick={(event) => {
             event.stopPropagation()
             onVote()
           }}
           aria-label={`Vote (${formatCount(asset.voteCount)})`}
-          className="absolute right-2 top-2 z-[2] inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[11px] font-medium tabular-nums text-white/90 backdrop-blur-sm transition-colors hover:bg-accent hover:text-white"
+          className="absolute right-2 top-2 z-[2] inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[11px] font-medium tabular-nums text-white/90 backdrop-blur-sm transition-colors hover:bg-accent hover:text-white disabled:opacity-60"
         >
           <ThumbsUp size={11} />
           <span>{formatCount(asset.voteCount)}</span>

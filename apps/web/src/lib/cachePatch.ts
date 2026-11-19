@@ -28,15 +28,15 @@ export function patchAssetInCaches(queryClient: QueryClient, updated: AssetDTO):
   mapAssetsInCaches(queryClient, updated.id, () => updated)
 }
 
-export function patchAssetPlaybackStats(
+export function patchAssetCounters(
   queryClient: QueryClient,
-  stats: Pick<AssetDTO, 'id' | 'viewCount' | 'watchTimeMs' | 'rate'>,
+  id: string,
+  counters: { viewCount: number; watchTimeMs: number },
 ): void {
-  mapAssetsInCaches(queryClient, stats.id, (current) => ({
+  mapAssetsInCaches(queryClient, id, (current) => ({
     ...current,
-    viewCount: stats.viewCount,
-    watchTimeMs: stats.watchTimeMs,
-    rate: stats.rate,
+    viewCount: counters.viewCount,
+    watchTimeMs: counters.watchTimeMs,
   }))
 }
 

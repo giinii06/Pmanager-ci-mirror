@@ -220,11 +220,14 @@ export function recordVoteEvent(
   title: string,
   now: number,
   id: string = newId(),
-): void {
-  db.query<null, Params>(
-    `INSERT OR IGNORE INTO vote_events (id, target_type, target_id, title, day_key, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, targetType, targetId, title, formatLocalDayKey(now), now)
+): boolean {
+  const result = db
+    .query<null, Params>(
+      `INSERT OR IGNORE INTO vote_events (id, target_type, target_id, title, day_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(id, targetType, targetId, title, formatLocalDayKey(now), now)
+  return result.changes === 1
 }
 
 export function deleteAssetVoteEvents(db: Db, assetId: string): void {

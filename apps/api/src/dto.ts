@@ -247,6 +247,8 @@ export function toPlaybackDTO(progress: PlaybackRecord): PlaybackProgressDTO {
     assetId: progress.assetId,
     positionMs: progress.positionMs,
     durationMs: progress.durationMs,
+    fileVersion: progress.fileVersion,
+    progressVersion: progress.progressVersion,
     updatedAt: new Date(progress.updatedAt).toISOString(),
   }
 }

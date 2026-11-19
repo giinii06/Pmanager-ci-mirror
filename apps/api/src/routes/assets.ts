@@ -82,6 +82,15 @@ const progressBody = z.object({
   durationMs: z.number().finite().min(0).max(86_400_000),
 })
 
+const voteBody = z.object({
+  clientRequestId: z
+    .string()
+    .min(8)
+    .max(100)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional(),
+})
+
 const reviewBody = z.object({
   rating: z.number().int().min(1).max(5),
   body: z.string().trim().min(1).max(4_000),
@@ -204,7 +213,15 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
   app.post('/api/assets/:id/vote', async (request, reply) => {
     const params = parseInput(idParams, request.params, reply)
     if (!params) return
-    const updated = voteAsset(ctx.db, params.id)
+    const body = parseInput(voteBody, request.body ?? {}, reply)
+    if (!body) return
+    const updated = voteAsset(
+      ctx.db,
+      params.id,
+      Date.now(),
+      body.clientRequestId,
+      request.user!.id,
+    )
     if (!updated) {
       reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
       return
@@ -449,7 +466,15 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
       return
     }
     const position = Math.min(body.positionMs, body.durationMs)
-    putProgress(ctx.db, request.user!.id, params.id, Math.round(position), Math.round(body.durationMs), Date.now())
+    putProgress(
+      ctx.db,
+      request.user!.id,
+      params.id,
+      Math.round(position),
+      Math.round(body.durationMs),
+      Date.now(),
+      info.fileVersion,
+    )
     reply.code(204).send()
   })
 }

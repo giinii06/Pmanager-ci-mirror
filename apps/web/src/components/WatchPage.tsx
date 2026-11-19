@@ -28,6 +28,7 @@ import {
   formatRate,
   formatWatchTime,
 } from '../lib/format'
+import { randomToken } from '../lib/random'
 import { useUi } from '../store/ui'
 import { Dialog } from './ui/Dialog'
 import { Button } from './ui/Button'
@@ -103,7 +104,7 @@ export function WatchPage({
   })
 
   const vote = useMutation({
-    mutationFn: () => api.voteAsset(asset.id),
+    mutationFn: () => api.voteAsset(asset.id, randomToken()),
     onSuccess: (updated) => {
       patchAssetInCaches(queryClient, updated)
       invalidateVoteCaches(queryClient)

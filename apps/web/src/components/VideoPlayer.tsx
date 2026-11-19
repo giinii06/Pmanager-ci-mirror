@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
 import { Maximize, Minimize, Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import type { AssetDTO, HlsStatusDTO, SubtitleTrackDTO } from '@mediavault/shared'
 import { api, ApiError } from '../lib/api'
-import { patchAssetPlaybackStats } from '../lib/cachePatch'
+import { patchAssetCounters } from '../lib/cachePatch'
+import { PlaybackReporter } from '../lib/playback'
+import { ResumePosition } from '../lib/resume'
 import { cn } from '../lib/cn'
 import { formatDuration } from '../lib/format'
 import {
@@ -67,8 +69,13 @@ export function VideoPlayer({
   const [volume, setVolume] = useState(1)
   const [captionFontSize, setCaptionFontSize] = useState(16)
   const [captionScale, setCaptionScale] = useState(storedCaptionScale)
-  const startAt = useRef(startMs && startMs > 0 ? startMs / 1000 : 0)
-  const lastSave = useRef(0)
+  // The resume candidate only wins while nothing has moved the playhead. An
+  // explicit start (a search hit) is ready from the first render.
+  const [resume] = useState(() => new ResumePosition(startMs))
+  // A direct-to-HLS switch replaces the media source; the old playhead is
+  // carried over instead of re-reading a possibly older saved position.
+  const carryOver = useRef(0)
+  const reporterRef = useRef<PlaybackReporter | null>(null)
   const appFullscreen = containerFullscreen || pseudoFullscreen
 
   const changeCaptionScale = (value: number) => {
@@ -82,25 +89,50 @@ export function VideoPlayer({
     }
   }
 
-  useEffect(() => {
-    if (startMs && startMs > 0) startAt.current = startMs / 1000
-  }, [startMs, asset.id])
+  const applyResume = useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+    // `take` marks the candidate applied before the playhead moves, so the
+    // resulting `seeking` event is not mistaken for a user seek.
+    const positionMs = resume.take(video.duration * 1000)
+    if (positionMs !== null) video.currentTime = positionMs / 1000
+  }, [resume, videoRef])
 
   useEffect(() => {
-    if (startMs && startMs > 0) return
+    if (startMs && startMs > 0) {
+      resume.override(startMs)
+      applyResume()
+      return
+    }
+
     let cancelled = false
+    const assetId = asset.id
+    const fileVersion = asset.fileVersion
     api
-      .progress(asset.id)
+      .progress(assetId)
       .then((result) => {
         if (cancelled) return
+        // A user seek or an explicit start already owns the playhead.
+        if (resume.current !== 'pending') return
         const progress = result.progress
-        if (progress && progress.positionMs > 5000) startAt.current = progress.positionMs / 1000
+        if (!progress) {
+          resume.offer(0, false)
+          return
+        }
+        // A position saved for another file version describes different media.
+        const positionMs = resume.offer(
+          progress.positionMs,
+          progress.fileVersion === fileVersion,
+        )
+        if (positionMs !== null) applyResume()
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (!cancelled && resume.current === 'pending') resume.offer(0, false)
+      })
     return () => {
       cancelled = true
     }
-  }, [asset.id, startMs])
+  }, [applyResume, asset.fileVersion, asset.id, resume, startMs])
 
   useEffect(() => {
     if (!useHls) return
@@ -169,27 +201,46 @@ export function VideoPlayer({
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
+    let lastProgressSave = 0
 
-    const restore = () => {
-      if (startAt.current > 0 && Number.isFinite(video.duration)) {
-        if (startAt.current < video.duration - 8) video.currentTime = startAt.current
-        startAt.current = 0
+    const onLoadedMetadata = () => {
+      const positionMs = resume.take(video.duration * 1000)
+      if (positionMs !== null) {
+        video.currentTime = positionMs / 1000
+        return
+      }
+      // A candidate that is still ready means the duration was not usable yet.
+      if (resume.current === 'ready') return
+      // A replacement source (direct to HLS) resumes where the old one was.
+      if (carryOver.current > 0) {
+        const seconds = carryOver.current
+        carryOver.current = 0
+        if (Number.isFinite(video.duration) && seconds < video.duration - 1) {
+          video.currentTime = seconds
+        }
+        // The carried playhead outranks a saved record that has not arrived yet.
+        resume.userSeek()
       }
     }
 
-    const save = () => {
+    const saveProgress = () => {
       if (!Number.isFinite(video.duration) || video.duration <= 0) return
-      lastSave.current = Date.now()
-      api.saveProgress(asset.id, video.currentTime * 1000, video.duration * 1000).catch(() => undefined)
+      lastProgressSave = Date.now()
+      reporterRef.current?.progress(video.currentTime * 1000, video.duration * 1000)
     }
 
     const onTimeUpdate = () => {
-      if (Date.now() - lastSave.current < 5000) return
-      save()
+      if (Date.now() - lastProgressSave < 5000) return
+      saveProgress()
+    }
+
+    const onSeeking = () => {
+      resume.userSeek()
     }
 
     const onError = () => {
       if (!useHls) {
+        carryOver.current = Number.isFinite(video.currentTime) ? video.currentTime : 0
         setUseHls(true)
         setHlsState('preparing')
       } else {
@@ -197,18 +248,20 @@ export function VideoPlayer({
       }
     }
 
-    video.addEventListener('loadedmetadata', restore)
+    video.addEventListener('loadedmetadata', onLoadedMetadata)
     video.addEventListener('timeupdate', onTimeUpdate)
-    video.addEventListener('pause', save)
+    video.addEventListener('pause', saveProgress)
+    video.addEventListener('seeking', onSeeking)
     video.addEventListener('error', onError)
     return () => {
-      video.removeEventListener('loadedmetadata', restore)
+      video.removeEventListener('loadedmetadata', onLoadedMetadata)
       video.removeEventListener('timeupdate', onTimeUpdate)
-      video.removeEventListener('pause', save)
+      video.removeEventListener('pause', saveProgress)
+      video.removeEventListener('seeking', onSeeking)
       video.removeEventListener('error', onError)
-      save()
+      saveProgress()
     }
-  }, [asset.id, useHls])
+  }, [asset.id, resume, retryToken, useHls])
 
   useEffect(() => {
     const video = videoRef.current
@@ -257,7 +310,6 @@ export function VideoPlayer({
     const video = videoRef.current
     if (!video) return
 
-    let viewSent = false
     let activeSince: number | null = null
     let pendingMs = 0
 
@@ -269,45 +321,37 @@ export function VideoPlayer({
       if (delta > 0 && Number.isFinite(delta)) pendingMs += delta
     }
 
-    const flush = (keepalive: boolean) => {
-      commitElapsed()
-      const rawDelta = Math.round(pendingMs)
-      if (rawDelta < 250) {
-        if (!video.paused && !video.seeking && video.readyState >= 3) {
-          activeSince = performance.now()
-        }
-        return
-      }
-      const deltaMs = Math.min(rawDelta, 600_000)
-      pendingMs = Math.max(0, rawDelta - deltaMs)
-      api
-        .addWatchTime(asset.id, deltaMs, keepalive)
-        .then((updated) => patchAssetPlaybackStats(queryClient, updated))
-        .catch(() => {
-          pendingMs = Math.min(pendingMs + deltaMs, 600_000)
-        })
+    const resumeTicking = () => {
       if (!video.paused && !video.seeking && video.readyState >= 3) {
         activeSince = performance.now()
       }
     }
 
+    const flush = (keepalive: boolean) => {
+      commitElapsed()
+      const deltaMs = Math.round(pendingMs)
+      if (deltaMs >= 250) {
+        // The reporter owns the outbox; it coalesces this delta and retries
+        // with the same event id if the request fails.
+        pendingMs = 0
+        reporterRef.current?.watchTime(deltaMs)
+      }
+      if (keepalive) reporterRef.current?.flush(true)
+      resumeTicking()
+    }
+
     const onPlaying = () => {
       onPausedChange?.(false)
       if (activeSince === null) activeSince = performance.now()
-      if (!viewSent) {
-        viewSent = true
-        api
-          .incrementView(asset.id)
-          .then((updated) => patchAssetPlaybackStats(queryClient, updated))
-          .catch(() => {
-            viewSent = false
-          })
-      }
+      reporterRef.current?.view()
     }
 
     const onPauseOrEnd = () => {
       onPausedChange?.(true)
       flush(false)
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        reporterRef.current?.progress(video.currentTime * 1000, video.duration * 1000)
+      }
     }
 
     const onStopTicking = () => {
@@ -319,6 +363,11 @@ export function VideoPlayer({
     }
 
     const onPageHide = () => flush(true)
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush(true)
+      else resumeTicking()
+    }
 
     onPausedChange?.(video.paused)
     const timer = window.setInterval(() => {
@@ -335,6 +384,7 @@ export function VideoPlayer({
     video.addEventListener('seeking', onStopTicking)
     video.addEventListener('stalled', onStopTicking)
     window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('visibilitychange', onVisibility)
 
     return () => {
       window.clearInterval(timer)
@@ -346,9 +396,25 @@ export function VideoPlayer({
       video.removeEventListener('seeking', onStopTicking)
       video.removeEventListener('stalled', onStopTicking)
       window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('visibilitychange', onVisibility)
       flush(true)
     }
-  }, [asset.id, onPausedChange, queryClient, videoRef])
+  }, [asset.id, onPausedChange, retryToken, videoRef])
+
+  // Declared after the accounting effect so its cleanup (which flushes the last
+  // few seconds) runs before the reporter is disposed.
+  useEffect(() => {
+    const reporter = new PlaybackReporter({
+      assetId: asset.id,
+      fileVersion: asset.fileVersion,
+      onCounters: (counters) => patchAssetCounters(queryClient, asset.id, counters),
+    })
+    reporterRef.current = reporter
+    return () => {
+      reporter.dispose()
+      if (reporterRef.current === reporter) reporterRef.current = null
+    }
+  }, [asset.fileVersion, asset.id, queryClient])
 
   useEffect(() => {
     const element = trackRef.current

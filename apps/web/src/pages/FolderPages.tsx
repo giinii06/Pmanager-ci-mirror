@@ -16,6 +16,7 @@ import {
   type PlacedFolderCard,
 } from '../lib/folderLayout'
 import { formatCount } from '../lib/format'
+import { randomToken } from '../lib/random'
 import { useElementWidth, useMeasuredElement } from '../lib/hooks'
 import { useUi } from '../store/ui'
 import { Breadcrumbs } from '../components/Breadcrumbs'
@@ -104,7 +105,7 @@ export function FoldersPage() {
   })
 
   const vote = useMutation({
-    mutationFn: (folderId: string) => api.voteFolder(folderId),
+    mutationFn: (folderId: string) => api.voteFolder(folderId, randomToken()),
     onSuccess: (updated) => {
       queryClient.setQueriesData<FolderDTO[]>({ queryKey: ['folders'] }, (list) =>
         list?.map((f) => (f.id === updated.id ? updated : f)),
@@ -244,7 +245,7 @@ export function FolderPage() {
   const folders = useQuery({ queryKey: ['folders'], queryFn: () => api.folders() })
 
   const vote = useMutation({
-    mutationFn: (targetId: string) => api.voteFolder(targetId),
+    mutationFn: (targetId: string) => api.voteFolder(targetId, randomToken()),
     onSuccess: (updated) => {
       if (updated.id === folderId) {
         queryClient.setQueryData(

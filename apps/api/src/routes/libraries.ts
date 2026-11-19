@@ -46,6 +46,15 @@ const folderCoverBody = z.object({
   assetId: z.string().min(1).max(64),
 })
 
+const voteBody = z.object({
+  clientRequestId: z
+    .string()
+    .min(8)
+    .max(100)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional(),
+})
+
 function toPosix(value: string): string {
   return value.split(path.sep).join('/')
 }
@@ -267,7 +276,15 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
   app.post('/api/folders/:id/vote', async (request, reply) => {
     const params = parseInput(idParams, request.params, reply)
     if (!params) return
-    const folder = voteFolder(ctx.db, params.id)
+    const body = parseInput(voteBody, request.body ?? {}, reply)
+    if (!body) return
+    const folder = voteFolder(
+      ctx.db,
+      params.id,
+      Date.now(),
+      body.clientRequestId,
+      request.user!.id,
+    )
     if (!folder) {
       reply.code(404).send({ error: 'not_found', message: 'Folder not found.' })
       return

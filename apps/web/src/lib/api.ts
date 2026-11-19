@@ -16,6 +16,9 @@ import type {
   LibraryDTO,
   LibraryHealthDetailDTO,
   Page,
+  PlayEventResultDTO,
+  PlayEventType,
+  PlaySessionDTO,
   PlaybackProgressDTO,
   ReviewDTO,
   SemanticSearchDTO,
@@ -41,6 +44,7 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code?: string,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -59,13 +63,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     let message = `요청이 실패했습니다 (${response.status})`
+    let code: string | undefined
     try {
-      const body = (await response.json()) as { message?: string }
+      const body = (await response.json()) as { message?: string; error?: string }
       if (body?.message) message = body.message
+      if (body?.error) code = body.error
     } catch {
       // Keep the status message.
     }
-    throw new ApiError(response.status, message)
+    throw new ApiError(response.status, message, code)
   }
 
   if (response.status === 204) return undefined as T
@@ -130,7 +136,11 @@ export const api = {
     return request<FolderDTO[]>(`/api/folders${qs ? `?${qs}` : ''}`)
   },
   folder: (id: string) => request<FolderDetail>(`/api/folders/${id}`),
-  voteFolder: (id: string) => request<FolderDTO>(`/api/folders/${id}/vote`, { method: 'POST' }),
+  voteFolder: (id: string, clientRequestId?: string) =>
+    request<FolderDTO>(`/api/folders/${id}/vote`, {
+      method: 'POST',
+      body: clientRequestId ? JSON.stringify({ clientRequestId }) : undefined,
+    }),
   setFolderCover: (id: string, assetId: string) =>
     request<FolderDTO>(`/api/folders/${encodeURIComponent(id)}/cover`, {
       method: 'PUT',
@@ -141,13 +151,11 @@ export const api = {
   assetIds: (query: AssetQuery) => request<{ ids: string[] }>(`/api/assets/ids${queryString(query)}`),
   asset: (id: string) => request<AssetDTO>(`/api/assets/${id}`),
   incrementView: (id: string) => request<AssetDTO>(`/api/assets/${id}/view`, { method: 'POST' }),
-  addWatchTime: (id: string, deltaMs: number, keepalive = false) =>
-    request<AssetDTO>(`/api/assets/${id}/watch-time`, {
+  voteAsset: (id: string, clientRequestId?: string) =>
+    request<AssetDTO>(`/api/assets/${id}/vote`, {
       method: 'POST',
-      keepalive,
-      body: JSON.stringify({ deltaMs }),
+      body: clientRequestId ? JSON.stringify({ clientRequestId }) : undefined,
     }),
-  voteAsset: (id: string) => request<AssetDTO>(`/api/assets/${id}/vote`, { method: 'POST' }),
   captureThumbnail: (id: string, positionMs: number) =>
     request<{ asset: AssetDTO }>(`/api/assets/${id}/thumbnail`, {
       method: 'POST',
@@ -199,10 +207,28 @@ export const api = {
 
   progress: (id: string) =>
     request<{ progress: PlaybackProgressDTO | null }>(`/api/playback/${id}`),
-  saveProgress: (id: string, positionMs: number, durationMs: number) =>
-    request<void>(`/api/playback/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ positionMs, durationMs }),
+  startPlaySession: (assetId: string, fileVersion: number, clientSessionKey: string) =>
+    request<PlaySessionDTO>('/api/play-sessions', {
+      method: 'POST',
+      body: JSON.stringify({ assetId, fileVersion, clientSessionKey }),
+    }),
+  playEvent: (
+    sessionId: string,
+    event: {
+      eventId: string
+      seq: number
+      type: PlayEventType
+      deltaMs?: number
+      positionMs?: number
+      durationMs?: number
+      clientTimestamp?: number
+    },
+    keepalive = false,
+  ) =>
+    request<PlayEventResultDTO>(`/api/play-sessions/${encodeURIComponent(sessionId)}/events`, {
+      method: 'POST',
+      keepalive,
+      body: JSON.stringify(event),
     }),
 
   stats: () => request<StatsDTO>('/api/stats'),
