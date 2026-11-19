@@ -150,6 +150,36 @@ export const api = {
   assets: (query: AssetQuery) => request<Page<AssetDTO>>(`/api/assets${queryString(query)}`),
   assetIds: (query: AssetQuery) => request<{ ids: string[] }>(`/api/assets/ids${queryString(query)}`),
   asset: (id: string) => request<AssetDTO>(`/api/assets/${id}`),
+  neighbor: (
+    id: string,
+    query: AssetQuery,
+    direction: 'next' | 'prev',
+    signal?: AbortSignal,
+  ) => {
+    const qs = queryString(query)
+    return request<{ asset: AssetDTO } | undefined>(
+      `/api/assets/${encodeURIComponent(id)}/neighbor${qs || '?'}${qs ? '&' : ''}direction=${direction}`,
+      { signal },
+    ).then((result) => result?.asset ?? null)
+  },
+  randomAsset: (
+    body: {
+      libraryId?: string
+      folderId?: string
+      kind?: AssetQuery['kind']
+      tagId?: string
+      q?: string
+      currentAssetId?: string | null
+      recentIds?: string[]
+      seed?: number
+    },
+    signal?: AbortSignal,
+  ) =>
+    request<{ asset: AssetDTO } | undefined>('/api/assets/random', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      signal,
+    }).then((result) => result?.asset ?? null),
   incrementView: (id: string) => request<AssetDTO>(`/api/assets/${id}/view`, { method: 'POST' }),
   voteAsset: (id: string, clientRequestId?: string) =>
     request<AssetDTO>(`/api/assets/${id}/vote`, {

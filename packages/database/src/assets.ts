@@ -139,13 +139,12 @@ function buildWhere(
   return { sql: clauses.join(' AND '), params }
 }
 
-function buildOrder(sort: VideoSort, seed: number): { sql: string; params: Params } {
+function buildOrderExpression(sort: VideoSort, seed: number): { expr: string; params: Params } {
   const safeSeed = Math.abs(Math.trunc(seed)) % 2147483647
   switch (sort) {
     case 'rate':
       return {
-        sql: `ORDER BY
-          CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0 THEN 0 ELSE 1 END ASC,
+        expr: `CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0 THEN 0 ELSE 1 END ASC,
           CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0
             THEN CAST(a.watch_time_ms AS REAL) / a.view_count
             ELSE 0 END DESC,
@@ -158,30 +157,35 @@ function buildOrder(sort: VideoSort, seed: number): { sql: string; params: Param
       }
     case 'views':
       return {
-        sql: 'ORDER BY a.view_count DESC, a.watch_time_ms DESC, a.taken_at DESC, a.id DESC',
+        expr: 'a.view_count DESC, a.watch_time_ms DESC, a.taken_at DESC, a.id DESC',
         params: [],
       }
     case 'watch_time':
       return {
-        sql: 'ORDER BY a.watch_time_ms DESC, a.view_count DESC, a.taken_at DESC, a.id DESC',
+        expr: 'a.watch_time_ms DESC, a.view_count DESC, a.taken_at DESC, a.id DESC',
         params: [],
       }
     case 'votes':
       return {
-        sql: 'ORDER BY a.vote_count DESC, a.view_count DESC, a.taken_at DESC, a.id DESC',
+        expr: 'a.vote_count DESC, a.view_count DESC, a.taken_at DESC, a.id DESC',
         params: [],
       }
     case 'name':
       return {
-        sql: 'ORDER BY a.filename COLLATE NOCASE ASC, a.id ASC',
+        expr: 'a.filename COLLATE NOCASE ASC, a.id ASC',
         params: [],
       }
     case 'latest':
       return {
-        sql: 'ORDER BY a.taken_at DESC, a.id DESC',
+        expr: 'a.taken_at DESC, a.id DESC',
         params: [],
       }
   }
+}
+
+function buildOrder(sort: VideoSort, seed: number): { sql: string; params: Params } {
+  const order = buildOrderExpression(sort, seed)
+  return { sql: `ORDER BY ${order.expr}`, params: order.params }
 }
 
 export function listAssets(
@@ -226,6 +230,124 @@ export function listMatchingAssetIds(db: Db, filter: AssetFilter, limit = 10_000
     )
     .all(...where.params, ...order.params, limit)
     .map((row) => row.id)
+}
+
+export type AssetNeighborResult =
+  | { kind: 'ok'; record: AssetRecord | null }
+  | { kind: 'missing' }
+  | { kind: 'outside_filter' }
+
+/**
+ * Resolves the asset directly before or after `id` in the same order
+ * `listAssets` returns. The order and filter SQL are shared, so a sort change
+ * cannot make the viewer and the grid disagree; the final `id` tie-breaker in
+ * every order makes the rank unique.
+ */
+export function getAssetNeighbor(
+  db: Db,
+  id: string,
+  filter: AssetFilter,
+  direction: 'next' | 'prev',
+): AssetNeighborResult {
+  const where = buildWhere(filter, null)
+  const anchor = db
+    .query<{ id: string }, Params>(`SELECT a.id FROM assets a WHERE a.id = ? AND ${where.sql}`)
+    .get(id, ...where.params)
+  if (!anchor) {
+    const exists = db
+      .query<{ id: string }, Params>('SELECT id FROM assets WHERE id = ? AND deleted_at IS NULL')
+      .get(id)
+    return exists ? { kind: 'outside_filter' } : { kind: 'missing' }
+  }
+
+  const order = buildOrderExpression(resolveAssetSort(filter), filter.seed ?? 1)
+  const delta = direction === 'next' ? 1 : -1
+  const row = db
+    .query<{ id: string }, Params>(
+      `WITH filtered AS (
+         SELECT a.rowid AS rowid, a.* FROM assets a WHERE ${where.sql}
+       ),
+       ranked AS (
+         SELECT a.id, ROW_NUMBER() OVER (ORDER BY ${order.expr}) AS rn
+         FROM filtered a
+       ),
+       anchor AS (SELECT rn FROM ranked WHERE id = ?)
+       SELECT r.id
+       FROM ranked r, anchor
+       WHERE r.rn = anchor.rn + ?
+       LIMIT 1`,
+    )
+    .get(...where.params, ...order.params, id, delta)
+
+  return { kind: 'ok', record: row ? getAsset(db, row.id) : null }
+}
+
+function randomOffset(total: number): number {
+  if (total <= 1) return 0
+  const buffer = new Uint32Array(1)
+  if (total > 0xffff_ffff) {
+    crypto.getRandomValues(buffer)
+    return buffer[0]! % total
+  }
+  const limit = Math.floor(0x1_0000_0000 / total) * total
+  for (;;) {
+    crypto.getRandomValues(buffer)
+    const value = buffer[0]!
+    if (value < limit) return value % total
+  }
+}
+
+function seededOffset(total: number, seed: number): number {
+  let x = (seed >>> 0) ^ 0x9e3779b9
+  x = Math.imul(x ^ (x >>> 16), 0x21f0aaad)
+  x = Math.imul(x ^ (x >>> 15), 0x735a2d97)
+  x = (x ^ (x >>> 15)) >>> 0
+  return x % total
+}
+
+/**
+ * Picks one asset uniformly from the filter's membership. The current asset and
+ * the recent list are excluded while any other candidate exists, and the
+ * recent list is relaxed before the pick fails, so a small pool still navigates.
+ */
+export function pickRandomAsset(
+  db: Db,
+  filter: AssetFilter,
+  options: { currentAssetId?: string | null; recentIds?: readonly string[]; seed?: number } = {},
+): AssetRecord | null {
+  const where = buildWhere(filter, null)
+  const current = options.currentAssetId ?? null
+  const recent: string[] = []
+  for (const id of options.recentIds ?? []) {
+    if (id === current || recent.includes(id) || recent.length >= 32) continue
+    recent.push(id)
+  }
+
+  const pick = (exclude: string[]): AssetRecord | null => {
+    const clauses = [where.sql]
+    const params: Params = [...where.params]
+    if (exclude.length > 0) {
+      clauses.push(`a.id NOT IN (${exclude.map(() => '?').join(', ')})`)
+      params.push(...exclude)
+    }
+    const sql = clauses.join(' AND ')
+    return db.transaction((): AssetRecord | null => {
+      const total =
+        db.query<{ n: number }, Params>(`SELECT COUNT(*) AS n FROM assets a WHERE ${sql}`).get(...params)?.n ?? 0
+      if (total === 0) return null
+      const offset = options.seed === undefined ? randomOffset(total) : seededOffset(total, options.seed)
+      const row = db
+        .query<{ id: string }, Params>(
+          `SELECT a.id FROM assets a WHERE ${sql} ORDER BY a.id ASC LIMIT 1 OFFSET ?`,
+        )
+        .get(...params, offset)
+      return row ? getAsset(db, row.id) : null
+    })()
+  }
+
+  const picked = pick(current ? [current, ...recent] : recent)
+  if (picked || recent.length === 0) return picked
+  return pick(current ? [current] : [])
 }
 
 export function getAsset(db: Db, id: string): AssetRecord | null {

@@ -64,7 +64,15 @@ export function AssetGallery({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 })
-  }, [filters.libraryId, filters.folderId, filters.kind, filters.tagId, filters.sort, filters.q])
+  }, [
+    filters.libraryId,
+    filters.folderId,
+    filters.kind,
+    filters.tagId,
+    filters.sort,
+    filters.seed,
+    filters.q,
+  ])
 
   const heading = (
     <>

@@ -11,6 +11,7 @@ import {
   findTagByName,
   getAsset,
   getAssetFileInfo,
+  getAssetNeighbor,
   getLibrary,
   getLibraryHealth,
   getMutationAsset,
@@ -20,6 +21,7 @@ import {
   incrementAssetView,
   listAssets,
   listMatchingAssetIds,
+  pickRandomAsset,
   putProgress,
   relatedAssets,
   relatedByEmbedding,
@@ -58,6 +60,21 @@ const assetQuery = assetFilterQuery.extend({
 
 const idsQuery = assetFilterQuery.extend({
   limit: z.coerce.number().int().min(1).max(20_000).optional(),
+})
+
+const neighborQuery = assetFilterQuery.extend({
+  direction: z.enum(['next', 'prev']),
+})
+
+const randomBody = z.object({
+  libraryId: z.string().max(64).optional(),
+  folderId: z.string().max(64).optional(),
+  kind: z.enum(['image', 'video']).optional(),
+  tagId: z.string().max(64).optional(),
+  q: z.string().max(200).optional(),
+  currentAssetId: z.string().min(1).max(64).optional(),
+  recentIds: z.array(z.string().min(1).max(64)).max(50).optional(),
+  seed: z.number().int().min(0).max(2_147_483_647).optional(),
 })
 
 const watchTimeBody = z.object({
@@ -175,6 +192,27 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     reply.send({ ids })
   })
 
+  app.post('/api/assets/random', async (request, reply) => {
+    const body = parseInput(randomBody, request.body ?? {}, reply)
+    if (!body) return
+    const filter: AssetFilter = {}
+    if (body.libraryId) filter.libraryId = body.libraryId
+    if (body.folderId) filter.folderId = body.folderId
+    if (body.kind) filter.kind = body.kind
+    if (body.tagId) filter.tagId = body.tagId
+    if (body.q) filter.query = body.q
+    const asset = pickRandomAsset(ctx.db, filter, {
+      currentAssetId: body.currentAssetId ?? null,
+      recentIds: body.recentIds ?? [],
+      seed: body.seed,
+    })
+    if (!asset) {
+      reply.code(204).send()
+      return
+    }
+    reply.send({ asset: toAssetDTO(asset) })
+  })
+
   app.get('/api/assets/:id', async (request, reply) => {
     const params = parseInput(idParams, request.params, reply)
     if (!params) return
@@ -184,6 +222,29 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
       return
     }
     reply.send(toAssetDTO(asset))
+  })
+
+  app.get('/api/assets/:id/neighbor', async (request, reply) => {
+    const params = parseInput(idParams, request.params, reply)
+    if (!params) return
+    const query = parseInput(neighborQuery, request.query, reply)
+    if (!query) return
+    const result = getAssetNeighbor(ctx.db, params.id, toAssetFilter(query), query.direction)
+    if (result.kind === 'missing') {
+      reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
+      return
+    }
+    if (result.kind === 'outside_filter') {
+      reply
+        .code(409)
+        .send({ error: 'anchor_not_in_filter', message: 'The asset is not part of this filter.' })
+      return
+    }
+    if (!result.record) {
+      reply.code(204).send()
+      return
+    }
+    reply.send({ asset: toAssetDTO(result.record) })
   })
 
   app.post('/api/assets/:id/view', async (request, reply) => {

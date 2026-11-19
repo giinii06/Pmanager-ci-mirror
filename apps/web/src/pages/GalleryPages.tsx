@@ -79,7 +79,15 @@ export function VideosPage() {
     void api
       .asset(sharedId)
       .then((asset) => {
-        if (asset.kind === 'video') useViewer.getState().open([asset], 0)
+        if (asset.kind === 'video') {
+          useViewer.getState().open([asset], 0, {
+            filter: {
+              kind: 'video',
+              sort,
+              ...(sort === 'rate' ? { seed: sessionSeed.current } : {}),
+            },
+          })
+        }
       })
       .catch(() => {
         useUi.getState().toast('공유된 영상을 열 수 없습니다.', 'error')
