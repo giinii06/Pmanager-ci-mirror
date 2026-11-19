@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Aperture,
+  Copy,
   Film,
   Images,
   Loader2,
@@ -44,6 +45,7 @@ export function Sidebar() {
   const activeJobs = (jobs.data?.counts.queued ?? 0) + (jobs.data?.counts.running ?? 0)
   const inPhotos = location.pathname === '/' || location.pathname.startsWith('/folders')
   const inVideos = location.pathname.startsWith('/videos')
+  const inDuplicates = location.pathname.startsWith('/duplicates')
 
   return (
     <aside
@@ -193,6 +195,23 @@ export function Sidebar() {
             </NavLink>
           </div>
         </div>
+
+        <NavLink
+          to="/duplicates"
+          title="중복 검토"
+          className={() =>
+            cn(
+              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
+              collapsed && 'md:justify-center md:px-0',
+              inDuplicates
+                ? 'bg-accent/12 text-accent'
+                : 'text-muted hover:bg-raised/70 hover:text-ink',
+            )
+          }
+        >
+          <Copy size={16} className={inDuplicates ? 'text-accent' : 'text-faint'} />
+          <span className={cn('flex-1', collapsed && 'md:hidden')}>중복 검토</span>
+        </NavLink>
 
         <NavLink
           to="/settings"

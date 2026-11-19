@@ -251,7 +251,25 @@ export function workQueue(
               j.lease_expires_at AS leaseExpiresAt, j.last_error AS errorMessage,
               NULL AS errorCode
        FROM jobs j LEFT JOIN assets a ON a.id = j.asset_id
-       WHERE j.state IN ('queued','running')
+       WHERE j.state IN ('queued','running') AND j.kind <> 'maintenance'
+       ORDER BY CASE j.state WHEN 'running' THEN 0 ELSE 1 END, j.priority ASC, j.id ASC
+       LIMIT ?`,
+    )
+    .all(ITEM_LIMIT)
+
+  // Maintenance work shares the `jobs` table, so the media lane excludes it and
+  // this lane selects only it. Without the split a duplicate scan is counted twice.
+  const maintenance = db
+    .query<RawItem, Params>(
+      `SELECT j.id, j.kind, j.asset_id AS assetId, a.filename AS assetName,
+              j.state, j.phase AS stage,
+              NULL AS progress,
+              NULL AS onGpu,
+              j.started_at AS startedAt, j.updated_at AS updatedAt,
+              j.lease_expires_at AS leaseExpiresAt, j.last_error AS errorMessage,
+              NULL AS errorCode
+       FROM jobs j LEFT JOIN assets a ON a.id = j.asset_id
+       WHERE j.state IN ('queued','running') AND j.kind = 'maintenance'
        ORDER BY CASE j.state WHEN 'running' THEN 0 ELSE 1 END, j.priority ASC, j.id ASC
        LIMIT ?`,
     )
@@ -347,7 +365,15 @@ export function workQueue(
   const mediaCounts = counts(
     db
       .query<CountRow, []>(
-        "SELECT state, COUNT(*) AS n FROM jobs WHERE state IN ('queued','running') GROUP BY state",
+        "SELECT state, COUNT(*) AS n FROM jobs WHERE state IN ('queued','running') AND kind <> 'maintenance' GROUP BY state",
+      )
+      .all(),
+    ['running'],
+  )
+  const maintenanceCounts = counts(
+    db
+      .query<CountRow, []>(
+        "SELECT state, COUNT(*) AS n FROM jobs WHERE state IN ('queued','running') AND kind = 'maintenance' GROUP BY state",
       )
       .all(),
     ['running'],
@@ -409,7 +435,7 @@ export function workQueue(
     scene: sceneCounts,
     mutation: { running: mutationCounts.running, queued: 0 },
     backup: { running: 0, queued: 0 },
-    maintenance: { running: 0, queued: 0 },
+    maintenance: maintenanceCounts,
     bulk: { running: 0, queued: 0 },
   }
 
@@ -458,7 +484,7 @@ export function workQueue(
     scene: scene.map((raw) => toItem(raw, 'scene')),
     mutation: mutation.map((raw) => toItem(raw, 'mutation')),
     backup: [],
-    maintenance: [],
+    maintenance: maintenance.map((raw) => toItem(raw, 'maintenance')),
     bulk: [],
   }
 

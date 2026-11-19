@@ -202,6 +202,30 @@ describe('work queue', () => {
     expect(queue.pipelines[0]!.queued).toBe(60)
   })
 
+  test('a maintenance job is counted once, in its own lane', () => {
+    const db = seed()
+    queuedMedia(db, 'thumb-1', 1_000)
+    enqueueJob(
+      db,
+      {
+        dedupeKey: 'duplicates:all',
+        kind: 'maintenance',
+        priority: 4,
+        payload: { task: 'duplicates' },
+      },
+      1_000,
+    )
+
+    const queue = workQueue(db, 10_000, RESOURCE)
+    const media = queue.pipelines.find((lane) => lane.pipeline === 'media')!
+    const maintenance = queue.pipelines.find((lane) => lane.pipeline === 'maintenance')!
+
+    expect(media.queued).toBe(1)
+    expect(maintenance.queued).toBe(1)
+    expect(queue.queued.filter((item) => item.pipeline === 'maintenance')).toHaveLength(1)
+    expect(queue.queued.some((item) => item.pipeline === 'media' && item.kind === 'maintenance')).toBe(false)
+  })
+
   test('queued work is multiplied by the median of recent completions', () => {
     const db = seed()
     let now = 10_000

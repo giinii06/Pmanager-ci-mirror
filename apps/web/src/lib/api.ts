@@ -2,6 +2,8 @@ import type {
   ActivityStatsDTO,
   ArchiveJobDTO,
   AssetDTO,
+  DuplicateGroupDTO,
+  DuplicateGroupListDTO,
   AssetQuery,
   AuthStatusDTO,
   BackupRecordDTO,
@@ -287,6 +289,33 @@ export const api = {
   semanticSearch: (q: string, limit = 30) =>
     request<SemanticSearchDTO>(
       `/api/search/semantic?q=${encodeURIComponent(q)}&limit=${limit}`,
+    ),
+
+  duplicateGroups: (opts?: {
+    kind?: 'exact' | 'similar'
+    state?: 'open' | 'kept' | 'ignored' | 'all'
+    limit?: number
+    cursor?: string | null
+  }) => {
+    const params = new URLSearchParams()
+    if (opts?.kind) params.set('kind', opts.kind)
+    if (opts?.state) params.set('state', opts.state)
+    if (opts?.limit) params.set('limit', String(opts.limit))
+    if (opts?.cursor) params.set('cursor', opts.cursor)
+    const qs = params.toString()
+    return request<DuplicateGroupListDTO>(`/api/duplicates/groups${qs ? `?${qs}` : ''}`)
+  },
+  duplicateGroup: (id: string) =>
+    request<DuplicateGroupDTO>(`/api/duplicates/groups/${encodeURIComponent(id)}`),
+  scanDuplicates: (libraryId?: string) =>
+    request<{ jobId: number; dedupeKey: string; state: string }>('/api/duplicates/scans', {
+      method: 'POST',
+      body: JSON.stringify(libraryId ? { libraryId } : {}),
+    }),
+  decideDuplicateGroup: (id: string, action: 'keep' | 'ignore') =>
+    request<{ id: string; state: string }>(
+      `/api/duplicates/groups/${encodeURIComponent(id)}/decisions`,
+      { method: 'POST', body: JSON.stringify({ action }) },
     ),
   runIndex: () =>
     request<{
