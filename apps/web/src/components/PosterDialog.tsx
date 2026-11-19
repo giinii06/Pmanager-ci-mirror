@@ -12,14 +12,17 @@ import { Spinner } from './ui/Spinner'
 
 const STEP_MS = 10_000
 
+/** A frame at the exact end of the file does not exist; stop half a second short. */
+const END_MARGIN_MS = 500
+
 function clock(ms: number): string {
   return formatDuration(ms) || '0:00'
 }
 
-function durationOf(asset: AssetDTO, element: HTMLVideoElement | null): number {
+function durationOf(assetDurationMs: number | null, element: HTMLVideoElement | null): number {
   const fromElement = element && Number.isFinite(element.duration) ? element.duration * 1000 : 0
   if (fromElement > 0) return Math.round(fromElement)
-  return asset.durationMs && asset.durationMs > 0 ? asset.durationMs : 0
+  return assetDurationMs && assetDurationMs > 0 ? assetDurationMs : 0
 }
 
 export function PosterDialog({
@@ -38,21 +41,23 @@ export function PosterDialog({
   const [positionMs, setPositionMs] = useState(0)
   const [durationMs, setDurationMs] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const maxPosition = durationMs > 0 ? Math.max(0, durationMs - END_MARGIN_MS) : 0
 
   useEffect(() => {
     if (!open) return
     const element = videoRef.current
     element?.pause()
+    const total = durationOf(asset.durationMs, element)
     const current =
       element && Number.isFinite(element.currentTime) ? Math.round(element.currentTime * 1000) : 0
-    setPositionMs(Math.max(0, current))
-    setDurationMs(durationOf(asset, element))
+    setPositionMs(Math.max(0, Math.min(total > 0 ? total - END_MARGIN_MS : 0, current)))
+    setDurationMs(total)
     setError(null)
-  }, [open, asset, videoRef])
+  }, [open, asset.id, asset.durationMs, videoRef])
 
   const seek = (ms: number) => {
     const element = videoRef.current
-    const next = Math.max(0, Math.min(durationMs || ms, Math.round(ms)))
+    const next = durationMs > 0 ? Math.max(0, Math.min(maxPosition, Math.round(ms))) : 0
     setPositionMs(next)
     if (!element) return
     element.currentTime = next / 1000
@@ -86,7 +91,7 @@ export function PosterDialog({
           </Button>
           <Button
             variant="primary"
-            disabled={capture.isPending}
+            disabled={capture.isPending || durationMs <= 0}
             onClick={() => {
               setError(null)
               capture.mutate()
@@ -109,9 +114,9 @@ export function PosterDialog({
           <input
             type="range"
             min={0}
-            max={Math.max(durationMs, 1000)}
+            max={Math.max(maxPosition, 1)}
             step={100}
-            value={Math.min(positionMs, Math.max(durationMs, 1000))}
+            value={Math.min(positionMs, Math.max(maxPosition, 0))}
             disabled={capture.isPending || durationMs <= 0}
             onChange={(event) => seek(Number(event.target.value))}
             aria-label="포스터로 사용할 지점"
@@ -122,15 +127,23 @@ export function PosterDialog({
             <span>{clock(durationMs)}</span>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled={capture.isPending} onClick={() => seek(positionMs - STEP_MS)}>
+            <Button
+              size="sm"
+              disabled={capture.isPending || durationMs <= 0}
+              onClick={() => seek(positionMs - STEP_MS)}
+            >
               -10초
             </Button>
-            <Button size="sm" disabled={capture.isPending} onClick={() => seek(positionMs + STEP_MS)}>
+            <Button
+              size="sm"
+              disabled={capture.isPending || durationMs <= 0}
+              onClick={() => seek(positionMs + STEP_MS)}
+            >
               +10초
             </Button>
             <Button
               size="sm"
-              disabled={capture.isPending}
+              disabled={capture.isPending || durationMs <= 0}
               onClick={() => {
                 const element = videoRef.current
                 if (!element || !Number.isFinite(element.currentTime)) return

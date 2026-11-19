@@ -334,3 +334,11 @@ The Win11 host was unreachable (`ssh: connect to host 192.168.0.27 port 22: No r
 - `bun test`: **`600 pass, 0 fail`**, 69 files, `4027` expect calls. New tests: a refused capture leaves every size byte-identical and no `.tmp` behind (media), an expected-version bump refuses a changed file (database), and an unreadable video answers `422` with `posterVersion` still `1` (API).
 - `bun run typecheck`: exit `0`. `bun run --cwd apps/web build`: exit `0` with only the existing chunk-size warning.
 - Not verified live: the dialog has not been opened in a browser, and nothing from PR 11 is deployed.
+
+## Spec v1.0 PR 11 Poster Review Fixes (2026-11-20)
+
+- Independent review of `3a4db8f` found two UI defects and one cleanup leak. The staged temp file is now registered before the resize, so a failed `toFile` or empty-file check removes it instead of leaving it for the worker sweep.
+- `PosterDialog` stops the timeline half a second before the end. A frame at the exact end does not exist, and the extractor's fallback would silently publish frame 0 while the toast named the chosen timestamp. The seed position, the slider, `-10초`/`+10초` and the save button all clamp to `duration - 500 ms`; when the duration is unknown every control is disabled instead of letting the step buttons run unbounded.
+- The dialog effect now depends on `asset.id` and `asset.durationMs` rather than the asset object, so a cache patch or refetch no longer resets the chosen position or clears a visible error.
+- Residual, recorded in decision 65: a mid-rename I/O failure or two concurrent captures for one version can still mix poster sizes. No failure path bumps `poster_version`, and the dialog disables its own save while pending.
+- `bun test`: **`600 pass, 0 fail`**, 69 files. `bun run typecheck`: exit `0`. `bun run --cwd apps/web build`: exit `0`.

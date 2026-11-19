@@ -258,9 +258,9 @@ export async function extractCustomVideoPoster(
       if (size === undefined || !target) continue
       await ensureDir(path.dirname(target))
       const tmp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
+      staged.push({ tmp, target })
       await imagePipeline(frame, size).toFile(tmp)
       if (!(await fileExists(tmp))) throw new Error(`poster write produced empty file: ${tmp}`)
-      staged.push({ tmp, target })
     }
 
     if (options.canPublish && !options.canPublish()) throw new PosterPublishRefusedError()
