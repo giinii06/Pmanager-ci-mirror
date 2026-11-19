@@ -191,6 +191,7 @@ describe('playlist API', () => {
       ['POST', '/api/playlists/abc/items'],
       ['PATCH', '/api/playlists/abc/items/xyz'],
       ['DELETE', '/api/playlists/abc/items/xyz'],
+      ['POST', '/api/playlists/watch-later'],
       ['POST', '/api/playlists/watch-later/items'],
     ] as const) {
       const response = await harness.app.inject({
@@ -313,6 +314,28 @@ describe('playlist API', () => {
     })
     expect(removed.statusCode).toBe(204)
     expect((await readDetail(harness, playlist.id)).items.map((item) => item.assetId)).toEqual(['vid003', 'vid001'])
+  })
+
+  test('the watch later list can be opened before it has items', async () => {
+    const harness = await createHarness()
+    const first = await harness.app.inject({
+      method: 'POST',
+      url: '/api/playlists/watch-later',
+      headers: harness.headers,
+    })
+    expect(first.statusCode).toBe(200)
+    const firstBody = first.json() as { playlist: PlaylistDTO }
+    expect(firstBody.playlist).toMatchObject({ kind: 'watch_later', name: '나중에 보기', itemCount: 0 })
+
+    const second = await harness.app.inject({
+      method: 'POST',
+      url: '/api/playlists/watch-later',
+      headers: harness.headers,
+    })
+    expect((second.json() as { playlist: PlaylistDTO }).playlist.id).toBe(firstBody.playlist.id)
+
+    const list = await harness.app.inject({ method: 'GET', url: '/api/playlists', headers: harness.headers })
+    expect((list.json() as { playlists: PlaylistDTO[] }).playlists).toHaveLength(1)
   })
 
   test('watch later is created on first use and reused after', async () => {

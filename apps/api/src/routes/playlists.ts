@@ -106,6 +106,11 @@ export function registerPlaylistRoutes(app: FastifyInstance, ctx: AppContext): v
   })
 
   // Registered before `/:id` so the literal segment is unambiguous.
+  app.post('/api/playlists/watch-later', async (request, reply) => {
+    const playlist = ensureWatchLater(ctx.db, request.user!.id, Date.now())
+    reply.send({ playlist: toPlaylistDTO(playlist) })
+  })
+
   app.post('/api/playlists/watch-later/items', async (request, reply) => {
     const body = parseInput(itemBody, request.body ?? {}, reply)
     if (!body) return
