@@ -6,11 +6,15 @@
 - [x] **Wave 5:** Windows 11 single-owner boot-without-login service/watchdog/management scripts (`scripts/windows/`), macOS SSH public-key + `ssh media-server` alias, live host deploy & verification on `192.168.0.27` + commit.
 - [x] **Wave 6:** Documentation suite (`docs/{ARCHITECTURE,BENCHMARKS,RECOVERY,WINDOWS-OPERATIONS,MACOS-SSH,TEST-REPORT}.md`), `/no-comments` (`comment-sicko`) + independent `research` audits + fixes across `packages/*`, `apps/*`, `scripts/windows/*.ps1`, full regression test verification, `.agent-progress/` sync, and Wave 6 bundle deploy to `media-server`.
 
+## Operator Follow-ups
+
+- [ ] **Refresh the staged Windows supervisor scripts.** The `MediaVault-Supervisor` task runs `C:\ProgramData\MediaVault\bin\service-runner.ps1`, a staged copy created by an elevated install. That copy predates PR 01 and still lacks `compose.drives.yaml` in its compose arguments. The repo copy under `scripts/windows/` is correct; the staged copy cannot be overwritten without elevation. Run `install-service.ps1` from an elevated PowerShell to refresh it, otherwise a supervisor-triggered restart recreates `api` and `worker` without the drive mounts and takes the library `OFFLINE` until the next manual `up`.
+
 ## Spec v1.0 PR Sequence
 
 - [x] **PR 00 Baseline/Backup:** `docs/IMPLEMENTATION-BASELINE.md`, v15 backup verification, restore rehearsal, baseline test counts.
 - [x] **PR 01 Ignore/Compose:** `.env*` ignore rules, long-syntax binds with `create_host_path: false`, required drive roots, ASR/scene read-only mounts, preflight script and tests.
-- [x] **PR 02 Library Health:** `ONLINE/OFFLINE/DEGRADED/UNVERIFIED` health, scanner finalize guard, small-library deletion policy, health API/UI, zero-deletion regression tests.
+- [x] **PR 02 Library Health:** `ONLINE/OFFLINE/DEGRADED/UNVERIFIED` health, scanner finalize guard, small-library deletion policy, health API/UI, zero-deletion regression tests, live v16 migration.
 - [ ] **PR 03 Mutation Engine:** `v17` `file_mutations`, `mutation_events`, quarantine delete state machine, idempotent delete API, dedicated mutation worker, SIGKILL reconciliation tests.
 - [ ] **PR 04 Cache/HLS:** `v17` `hls_generations`, `hls_active`, immutable generation publishing and routes.
 - [ ] **PR 05 Auth:** `v18` Argon2id migration, server sessions, login rate limit, trusted proxy.
