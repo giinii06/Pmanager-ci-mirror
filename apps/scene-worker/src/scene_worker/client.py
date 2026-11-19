@@ -113,12 +113,39 @@ class WorkerClient:
             },
         )
 
-    def complete(self, job_id: str, owner: str, scenes: list[dict[str, Any]]) -> dict[str, Any]:
+    def checkpoint(
+        self,
+        job_id: str,
+        owner: str,
+        completed_units: int,
+        total_units: int,
+        manifest_path: str,
+        manifest_hash: str,
+    ) -> None:
+        self._post(
+            f"{SCENE}/jobs/{job_id}/checkpoint",
+            {
+                "owner": owner,
+                "stage": "extracting",
+                "completedUnits": completed_units,
+                "totalUnits": total_units,
+                "manifestPath": manifest_path,
+                "manifestHash": manifest_hash,
+            },
+        )
+
+    def complete(
+        self,
+        job_id: str,
+        owner: str,
+        scenes: list[dict[str, Any]],
+        coverage: dict[str, int] | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"owner": owner, "scenes": scenes}
+        if coverage is not None:
+            body["coverage"] = coverage
         try:
-            return self._post(
-                f"{SCENE}/jobs/{job_id}/complete",
-                {"owner": owner, "scenes": scenes},
-            )
+            return self._post(f"{SCENE}/jobs/{job_id}/complete", body)
         except ApiError as error:
             if error.status in (400, 422):
                 raise JobFailure(error.detail or "The API refused the scene vectors.") from error

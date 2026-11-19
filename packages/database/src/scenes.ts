@@ -23,8 +23,9 @@ const JOB_COLUMNS = `
   lease_expires_at AS leaseExpiresAt, run_after AS runAfter, model_id AS modelId,
   model_revision AS modelRevision, model_sha256 AS modelSha256,
   pipeline_version AS pipelineVersion, dimensions, window_ms AS windowMs,
-  overlap_ms AS overlapMs, error_message AS errorMessage, started_at AS startedAt,
-  created_at AS createdAt, updated_at AS updatedAt
+  overlap_ms AS overlapMs, analyzed_windows AS analyzedWindows,
+  total_windows AS totalWindows, error_message AS errorMessage,
+  started_at AS startedAt, created_at AS createdAt, updated_at AS updatedAt
 `
 
 const SCENE_COLUMNS = `
@@ -52,6 +53,8 @@ export interface CompleteSceneJobInput {
   jobId: string
   owner: string
   scenes: SceneVectorInput[]
+  /** Sampled windows against an uncapped plan, stored with the completed job. */
+  coverage?: { analyzed: number; total: number }
 }
 
 const STALE_ROW = `(
@@ -81,6 +84,8 @@ const UPSERT_SETS = [
   resetWhenStale('dimensions', 'excluded.dimensions'),
   resetWhenStale('window_ms', 'excluded.window_ms'),
   resetWhenStale('overlap_ms', 'excluded.overlap_ms'),
+  resetWhenStale('analyzed_windows', 'NULL'),
+  resetWhenStale('total_windows', 'NULL'),
   resetWhenStale('error_message', 'NULL'),
   resetWhenStale('started_at', 'NULL'),
   resetWhenStale('updated_at', 'excluded.updated_at'),
@@ -115,7 +120,8 @@ export function createSceneJob(db: Db, input: CreateSceneJobInput, now: number):
          state = 'queued', stage = 'queued', progress = 0, attempts = 0,
          lease_owner = NULL, lease_expires_at = NULL, run_after = 0,
          model_id = ?, model_revision = ?, model_sha256 = ?, pipeline_version = ?,
-         dimensions = ?, window_ms = ?, overlap_ms = ?, error_message = NULL,
+         dimensions = ?, window_ms = ?, overlap_ms = ?,
+         analyzed_windows = NULL, total_windows = NULL, error_message = NULL,
          started_at = NULL, updated_at = ?
        WHERE id = ?`,
     ).run(
@@ -336,9 +342,16 @@ export function completeSceneJob(db: Db, input: CompleteSceneJobInput, now: numb
     db.query<null, Params>(
       `UPDATE scene_jobs SET
          state = 'completed', stage = 'completed', progress = 100,
+         analyzed_windows = ?, total_windows = ?,
          lease_owner = NULL, lease_expires_at = NULL, error_message = NULL, updated_at = ?
        WHERE id = ?`,
-    ).run(now, job.id)
+    ).run(
+      input.coverage?.analyzed ?? null,
+      input.coverage?.total ?? null,
+      now,
+      job.id,
+    )
+    db.query<null, Params>("DELETE FROM stage_checkpoints WHERE job_id = ?").run(job.id)
   })()
 
   return true
@@ -504,6 +517,26 @@ export function searchScenes(
     }),
   )
   return ranked.slice(0, limit)
+}
+
+/** The sampled-window coverage recorded when a job completed, if any. */
+export function getSceneCoverage(
+  db: Db,
+  assetId: string,
+  fileVersion: number,
+  options: { modelSha256: string; pipelineVersion: string },
+): { analyzed: number; total: number } | null {
+  const row = db
+    .query<{ analyzed: number | null; total: number | null }, Params>(
+      `SELECT analyzed_windows AS analyzed, total_windows AS total FROM scene_jobs
+       WHERE asset_id = ? AND file_version = ? AND model_sha256 = ? AND pipeline_version = ?
+         AND state = 'completed'
+         AND analyzed_windows IS NOT NULL AND total_windows IS NOT NULL
+       ORDER BY updated_at DESC LIMIT 1`,
+    )
+    .get(assetId, fileVersion, options.modelSha256, options.pipelineVersion)
+  if (!row || row.analyzed === null || row.total === null) return null
+  return { analyzed: row.analyzed, total: row.total }
 }
 
 export function countScenesForAsset(db: Db, assetId: string): number {

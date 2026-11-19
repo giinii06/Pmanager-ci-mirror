@@ -10,6 +10,8 @@ import {
   createLibrary,
   createSceneJob,
   createUser,
+  getSceneJob,
+  getStageCheckpoint,
   insertAsset,
   openDatabase,
   upsertFolder,
@@ -607,6 +609,211 @@ describe('worker scene lane', () => {
 
     expect(again.statusCode).toBe(409)
     expect((again.json() as { error: string }).error).toBe('lease_lost')
+  })
+
+  test('a checkpoint is stored and offered to the next claim', async () => {
+    const h = await harness()
+    const jobId = await queued(h)
+    const first = await h.app.inject({
+      method: 'POST',
+      url: '/worker/scene/claim',
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: { owner: 'scene-worker' },
+    })
+    expect((first.json() as { checkpoint: unknown }).checkpoint).toBeNull()
+
+    const manifestPath = '/cache/scene-checkpoints/job1/manifest.json'
+    const manifestHash = 'a'.repeat(64)
+    const saved = await h.app.inject({
+      method: 'POST',
+      url: `/worker/scene/jobs/${jobId}/checkpoint`,
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: {
+        owner: 'scene-worker',
+        stage: 'extracting',
+        completedUnits: 5,
+        totalUnits: 6,
+        manifestPath,
+        manifestHash,
+      },
+    })
+    expect(saved.statusCode).toBe(200)
+    expect(saved.json()).toEqual({ checkpoint: { completedUnits: 5, totalUnits: 6 } })
+    expect(getStageCheckpoint(h.db, jobId, 'extracting')?.manifestHash).toBe(manifestHash)
+
+    // Hand the job back untouched, like a worker that stopped mid-stage.
+    h.db
+      .query(
+        "UPDATE scene_jobs SET state = 'queued', lease_owner = NULL, lease_expires_at = NULL WHERE id = ?",
+      )
+      .run(jobId)
+
+    const second = await h.app.inject({
+      method: 'POST',
+      url: '/worker/scene/claim',
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: { owner: 'scene-worker' },
+    })
+    const body = second.json() as { checkpoint: unknown }
+    expect(body.checkpoint).toEqual({
+      stage: 'extracting',
+      completedUnits: 5,
+      totalUnits: 6,
+      manifestPath,
+      manifestHash,
+    })
+  })
+
+  test('a checkpoint from another owner is a lost lease', async () => {
+    const h = await harness()
+    const jobId = await queued(h)
+    await h.app.inject({
+      method: 'POST',
+      url: '/worker/scene/claim',
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: { owner: 'scene-worker' },
+    })
+
+    const response = await h.app.inject({
+      method: 'POST',
+      url: `/worker/scene/jobs/${jobId}/checkpoint`,
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: {
+        owner: 'other-worker',
+        stage: 'extracting',
+        completedUnits: 1,
+        totalUnits: 6,
+        manifestPath: '/cache/scene-checkpoints/job1/manifest.json',
+        manifestHash: 'b'.repeat(64),
+      },
+    })
+
+    expect(response.statusCode).toBe(409)
+  })
+
+  test('more completed units than the plan is refused', async () => {
+    const h = await harness()
+    const jobId = await queued(h)
+    await h.app.inject({
+      method: 'POST',
+      url: '/worker/scene/claim',
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: { owner: 'scene-worker' },
+    })
+
+    const response = await h.app.inject({
+      method: 'POST',
+      url: `/worker/scene/jobs/${jobId}/checkpoint`,
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: {
+        owner: 'scene-worker',
+        stage: 'extracting',
+        completedUnits: 7,
+        totalUnits: 6,
+        manifestPath: '/cache/scene-checkpoints/job1/manifest.json',
+        manifestHash: 'c'.repeat(64),
+      },
+    })
+
+    expect(response.statusCode).toBe(422)
+    expect((response.json() as { error: string }).error).toBe('invalid_checkpoint')
+  })
+
+  test('a checkpoint from another model is dropped instead of reused', async () => {
+    const h = await harness()
+    const jobId = await queued(h)
+    await h.app.inject({
+      method: 'POST',
+      url: '/worker/scene/claim',
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: { owner: 'scene-worker' },
+    })
+    await h.app.inject({
+      method: 'POST',
+      url: `/worker/scene/jobs/${jobId}/checkpoint`,
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: {
+        owner: 'scene-worker',
+        stage: 'extracting',
+        completedUnits: 5,
+        totalUnits: 6,
+        manifestPath: '/cache/scene-checkpoints/job1/manifest.json',
+        manifestHash: 'd'.repeat(64),
+      },
+    })
+
+    h.db
+      .query(
+        "UPDATE scene_jobs SET state = 'queued', lease_owner = NULL, lease_expires_at = NULL, model_sha256 = 'another-sha' WHERE id = ?",
+      )
+      .run(jobId)
+    const claim = await h.app.inject({
+      method: 'POST',
+      url: '/worker/scene/claim',
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: { owner: 'scene-worker' },
+    })
+
+    expect((claim.json() as { checkpoint: unknown }).checkpoint).toBeNull()
+    expect(getStageCheckpoint(h.db, jobId, 'extracting')).toBeNull()
+  })
+
+  test('completion stores the coverage and clears the checkpoint', async () => {
+    const h = await harness()
+    const jobId = await queued(h)
+    await h.app.inject({
+      method: 'POST',
+      url: '/worker/scene/claim',
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: { owner: 'scene-worker' },
+    })
+    await h.app.inject({
+      method: 'POST',
+      url: `/worker/scene/jobs/${jobId}/checkpoint`,
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: {
+        owner: 'scene-worker',
+        stage: 'extracting',
+        completedUnits: 5,
+        totalUnits: 6,
+        manifestPath: '/cache/scene-checkpoints/job1/manifest.json',
+        manifestHash: 'e'.repeat(64),
+      },
+    })
+
+    const complete = await h.app.inject({
+      method: 'POST',
+      url: `/worker/scene/jobs/${jobId}/complete`,
+      headers: { 'x-worker-token': SCENE_TOKEN },
+      payload: {
+        owner: 'scene-worker',
+        coverage: { analyzed: 5, total: 6 },
+        scenes: [
+          {
+            seq: 0,
+            startMs: 0,
+            endMs: 10_000,
+            thumbnailPath: null,
+            visual: encode([1, 0, 0, 0]),
+            audio: encode([0, 1, 0, 0]),
+            av: encode([0, 0, 1, 0]),
+          },
+        ],
+      },
+    })
+    expect(complete.statusCode).toBe(200)
+
+    const job = getSceneJob(h.db, jobId)
+    expect(job?.analyzedWindows).toBe(5)
+    expect(job?.totalWindows).toBe(6)
+    expect(getStageCheckpoint(h.db, jobId, 'extracting')).toBeNull()
+
+    const list = await h.app.inject({
+      method: 'GET',
+      url: '/api/assets/asset2/scenes',
+      headers: auth(h),
+    })
+    expect((list.json() as { coverage: unknown }).coverage).toEqual({ analyzed: 5, total: 6 })
   })
 })
 

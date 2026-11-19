@@ -145,7 +145,7 @@ describe('schema v20 playback sessions', () => {
     expect(db.query<{ user_version: number }, []>('PRAGMA user_version').get()!.user_version).toBe(
       SCHEMA_VERSION,
     )
-    expect(SCHEMA_VERSION).toBe(20)
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(20)
     const progress = getProgress(db, 'u1', 'asset0001')
     expect(progress).toMatchObject({
       positionMs: 30_000,

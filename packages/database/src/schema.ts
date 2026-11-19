@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 20
+export const SCHEMA_VERSION = 21
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -750,6 +750,32 @@ UPDATE playback_progress
 SET file_version = (SELECT file_version FROM assets WHERE assets.id = playback_progress.asset_id);
 `
 
+// One row per (job, stage) says how many durable units exist and which manifest
+// describes them. The artifact itself lives on the worker's cache volume, so a
+// restart can compare the two instead of trusting either one alone.
+export const V21_STAGE_CHECKPOINTS_SQL = `
+CREATE TABLE IF NOT EXISTS stage_checkpoints (
+  job_id TEXT NOT NULL,
+  pipeline TEXT NOT NULL,
+  asset_id TEXT NOT NULL,
+  file_version INTEGER NOT NULL,
+  model_fingerprint TEXT NOT NULL,
+  pipeline_version TEXT NOT NULL,
+  stage_name TEXT NOT NULL,
+  completed_units INTEGER NOT NULL,
+  total_units INTEGER NOT NULL,
+  artifact_manifest TEXT NOT NULL,
+  manifest_hash TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (job_id, stage_name)
+);
+CREATE INDEX IF NOT EXISTS idx_stage_checkpoints_asset
+  ON stage_checkpoints(asset_id, file_version);
+
+ALTER TABLE scene_jobs ADD COLUMN analyzed_windows INTEGER;
+ALTER TABLE scene_jobs ADD COLUMN total_windows INTEGER;
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -805,4 +831,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V18_HLS_GENERATIONS_SQL),
   (exec) => exec(V19_AUTH_SESSIONS_SQL),
   (exec) => exec(V20_PLAY_SESSIONS_SQL),
+  (exec) => exec(V21_STAGE_CHECKPOINTS_SQL),
 ]

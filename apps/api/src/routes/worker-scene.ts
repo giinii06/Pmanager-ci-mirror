@@ -5,13 +5,17 @@ import { z } from 'zod'
 import {
   claimSceneJob,
   completeSceneJob,
+  deleteStageCheckpoints,
   failSceneJob,
   getAssetFileInfo,
   getLibrary,
   getSceneJob,
+  getStageCheckpoint,
   heartbeatSceneJob,
   recoverExpiredSceneJobs,
   updateSceneProgress,
+  upsertStageCheckpoint,
+  type Db,
   type SceneVectorInput,
 } from '@mediavault/database'
 import type { AppContext } from '../context'
@@ -44,6 +48,15 @@ const progressBody = z.object({
 
 const completeBody = z.object({
   owner,
+  coverage: z
+    .object({
+      analyzed: z.number().int().min(0).max(100_000),
+      total: z.number().int().min(1).max(100_000),
+    })
+    .refine((value) => value.analyzed <= value.total, {
+      message: 'analyzed cannot exceed total',
+    })
+    .optional(),
   scenes: z
     .array(
       z.object({
@@ -58,6 +71,15 @@ const completeBody = z.object({
     )
     .min(1)
     .max(5_000),
+})
+
+const checkpointBody = z.object({
+  owner,
+  stage: z.literal('extracting'),
+  completedUnits: z.number().int().min(0).max(100_000),
+  totalUnits: z.number().int().min(1).max(100_000),
+  manifestPath: z.string().min(1).max(512),
+  manifestHash: z.string().regex(/^[0-9a-f]{64}$/),
 })
 
 const failBody = z.object({ owner, message: z.string().min(1).max(2_000) })
@@ -88,6 +110,44 @@ function decodeVector(encoded: string, dimensions: number): Float32Array | null 
   }
   if (Math.abs(Math.sqrt(sum) - 1) > 1e-3) return null
   return vector
+}
+
+/** Identifies the weights and preprocessing that produced a checkpoint. */
+function sceneFingerprint(job: {
+  modelId: string
+  modelRevision: string
+  modelSha256: string
+}): string {
+  return `${job.modelId}@${job.modelRevision}#${job.modelSha256}`
+}
+
+/**
+ * A checkpoint is only usable for the same model and pipeline. A mismatch
+ * deletes it, because reusing windows from another model would publish vectors
+ * the index cannot compare.
+ */
+function liveCheckpoint(
+  db: Db,
+  job: {
+    id: string
+    pipelineVersion: string
+    modelId: string
+    modelRevision: string
+    modelSha256: string
+  },
+) {
+  const checkpoint = getStageCheckpoint(db, job.id, 'extracting')
+  if (!checkpoint) return null
+  if (
+    checkpoint.modelFingerprint !== sceneFingerprint(job) ||
+    checkpoint.pipelineVersion !== job.pipelineVersion ||
+    checkpoint.completedUnits <= 0 ||
+    checkpoint.completedUnits > checkpoint.totalUnits
+  ) {
+    deleteStageCheckpoints(db, job.id)
+    return null
+  }
+  return checkpoint
 }
 
 export function registerWorkerSceneRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -124,6 +184,7 @@ export function registerWorkerSceneRoutes(app: FastifyInstance, ctx: AppContext)
         return
       }
 
+      const checkpoint = liveCheckpoint(ctx.db, job)
       reply.send({
         job: toSceneJobDTO(job),
         media: {
@@ -139,6 +200,15 @@ export function registerWorkerSceneRoutes(app: FastifyInstance, ctx: AppContext)
           dimensions: job.dimensions,
         },
         window: { windowMs: job.windowMs, overlapMs: job.overlapMs },
+        checkpoint: checkpoint
+          ? {
+              stage: checkpoint.stageName,
+              completedUnits: checkpoint.completedUnits,
+              totalUnits: checkpoint.totalUnits,
+              manifestPath: checkpoint.artifactManifest,
+              manifestHash: checkpoint.manifestHash,
+            }
+          : null,
       })
     })
 
@@ -175,6 +245,57 @@ export function registerWorkerSceneRoutes(app: FastifyInstance, ctx: AppContext)
       reply.code(204).send()
     })
 
+    scope.post(`${WORKER_PREFIX}/jobs/:id/checkpoint`, async (request, reply) => {
+      const params = parseInput(idParams, request.params, reply)
+      if (!params) return
+      const body = parseInput(checkpointBody, request.body ?? {}, reply)
+      if (!body) return
+
+      const now = Date.now()
+      const job = getSceneJob(ctx.db, params.id)
+      if (
+        !job ||
+        job.leaseOwner !== body.owner ||
+        job.leaseExpiresAt === null ||
+        job.leaseExpiresAt <= now ||
+        !['extracting', 'embedding', 'writing'].includes(job.state)
+      ) {
+        reply.code(409).send(leaseLost())
+        return
+      }
+      if (body.completedUnits > body.totalUnits) {
+        reply.code(422).send({
+          error: 'invalid_checkpoint',
+          message: 'completedUnits cannot exceed totalUnits.',
+        })
+        return
+      }
+
+      const checkpoint = upsertStageCheckpoint(
+        ctx.db,
+        {
+          jobId: job.id,
+          pipeline: 'scene',
+          assetId: job.assetId,
+          fileVersion: job.fileVersion,
+          modelFingerprint: sceneFingerprint(job),
+          pipelineVersion: job.pipelineVersion,
+          stageName: body.stage,
+          completedUnits: body.completedUnits,
+          totalUnits: body.totalUnits,
+          artifactManifest: body.manifestPath,
+          manifestHash: body.manifestHash,
+        },
+        now,
+      )
+      reply.send({
+        checkpoint: {
+          completedUnits: checkpoint.completedUnits,
+          totalUnits: checkpoint.totalUnits,
+        },
+      })
+    })
+
     scope.post(
       `${WORKER_PREFIX}/jobs/:id/complete`,
       { bodyLimit: COMPLETE_BODY_LIMIT },
@@ -205,7 +326,11 @@ export function registerWorkerSceneRoutes(app: FastifyInstance, ctx: AppContext)
           scenes.push({ ...item, visual, audio, av })
         }
 
-        const stored = completeSceneJob(ctx.db, { jobId: job.id, owner: body.owner, scenes }, Date.now())
+        const stored = completeSceneJob(
+          ctx.db,
+          { jobId: job.id, owner: body.owner, scenes, coverage: body.coverage },
+          Date.now(),
+        )
         if (!stored) {
           reply.code(409).send(leaseLost())
           return

@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .client import LeaseLost, WorkerClient
+from .client import ApiError, FatalError, LeaseLost, WorkerClient
 from .config import Config
 from .processes import terminate_group
 
@@ -20,12 +20,21 @@ log = logging.getLogger(__name__)
 
 GPU_RETRY_SECONDS = 5.0
 CODE_PATTERN = re.compile(r"\[([A-Z][A-Z_]{2,})\]")
+CHECKPOINT_PATTERN = re.compile(r"^CHECKPOINT (\d+) (\d+) ([0-9a-f]{64})$")
 
 
 def error_prefix(tail: str) -> str:
     """Lifts a `[CODE]` the stage already logged so the API can store it."""
     match = CODE_PATTERN.search(tail)
     return f"[{match.group(1)}] " if match else ""
+
+
+def parse_checkpoint(line: str) -> tuple[int, int, str] | None:
+    """The stage's durable-progress line: completed, total and log digest."""
+    match = CHECKPOINT_PATTERN.match(line)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2)), match.group(3)
 
 
 def resolve_media_path(media_root: str, stored: str) -> str:
@@ -168,17 +177,21 @@ class Pipeline:
         claim_path.write_text(
             json.dumps(
                 {
+                    "jobId": job["id"],
                     "assetId": job["assetId"],
                     "fileVersion": job["fileVersion"],
                     "mediaPath": resolve_media_path(self.config.media_root, media["path"]),
                     "durationMs": media["durationMs"],
                     "modelDir": self.config.model_dir,
                     "modelId": model["id"],
+                    "modelSha256": model["sha256"],
+                    "pipelineVersion": model["pipelineVersion"],
                     "dimensions": model["dimensions"],
                     "windowMs": window["windowMs"],
                     "overlapMs": window["overlapMs"],
                     "maxWindows": self.config.max_windows,
                     "cacheDir": self.config.cache_dir,
+                    "checkpointDir": self.config.checkpoint_dir,
                 }
             ),
             encoding="utf-8",
@@ -220,6 +233,11 @@ class Pipeline:
                     assert process.stdout is not None
                     for line in process.stdout:
                         line = line.strip()
+                        if line.startswith("CHECKPOINT "):
+                            parsed = parse_checkpoint(line)
+                            if parsed is not None:
+                                self._checkpoint(job_id, *parsed)
+                            continue
                         if not line.startswith("PROGRESS "):
                             continue
                         try:
@@ -251,7 +269,11 @@ class Pipeline:
             payload = json.loads(result_path.read_text(encoding="utf-8"))
             if heartbeat.lost.is_set():
                 raise LeaseLost("lease lost before the results were sent")
-            self.client.complete(job_id, self.owner, payload["scenes"])
+            self.client.complete(
+                job_id, self.owner, payload["scenes"], payload.get("coverage")
+            )
+            # The API now owns the windows; the durable prefix is done with.
+            _remove_tree(self._checkpoint_root(job_id))
         finally:
             if watchdog is not None:
                 watchdog.cancel()
@@ -260,6 +282,23 @@ class Pipeline:
             _remove_tree(workdir)
             heartbeat.drop_gpu()
             self._release_gpu()
+
+    def _checkpoint_root(self, job_id: str) -> Path:
+        return Path(self.config.checkpoint_dir) / job_id
+
+    def _checkpoint(self, job_id: str, completed: int, total: int, digest: str) -> None:
+        """Points the API at the manifest the stage just made durable."""
+        manifest = str(self._checkpoint_root(job_id) / "manifest.json")
+        try:
+            self.client.checkpoint(job_id, self.owner, completed, total, manifest, digest)
+        except LeaseLost:
+            raise
+        except ApiError as error:
+            # The windows are already on disk; a refused row only costs the
+            # next claim its hint, so the stage keeps running.
+            log.warning("checkpoint for %s was refused: %s", job_id, error)
+        except FatalError:
+            raise
 
     def _temp_root(self) -> str:
         Path(self.config.temp_dir).mkdir(parents=True, exist_ok=True)

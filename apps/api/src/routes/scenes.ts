@@ -5,6 +5,7 @@ import {
   getAssetFileInfo,
   getCurrentScenes,
   getScene,
+  getSceneCoverage,
   searchAssetNames,
   searchDialogue,
   searchScenes,
@@ -81,7 +82,13 @@ export function registerSceneRoutes(app: FastifyInstance, ctx: AppContext): void
       endMs: scene.endMs,
       thumbnailUrl: scene.thumbnailPath ? `/api/scenes/${scene.id}/thumbnail` : null,
     }))
-    reply.send({ scenes: payload })
+    reply.send({
+      scenes: payload,
+      coverage: getSceneCoverage(ctx.db, info.id, info.fileVersion, {
+        modelSha256: ctx.config.scene.modelSha256,
+        pipelineVersion: ctx.config.scene.pipelineVersion,
+      }),
+    })
   })
 
   app.post('/api/assets/:id/scenes', async (request, reply) => {

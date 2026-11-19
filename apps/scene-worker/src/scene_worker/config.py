@@ -23,6 +23,7 @@ class Config:
     gpu_wait_seconds: float
     max_windows: int
     stage_timeout_seconds: float = 3600.0
+    checkpoint_dir: str = ""
 
 
 def _int(source: dict[str, str], name: str, fallback: int) -> int:
@@ -52,6 +53,7 @@ def load_config(env: dict[str, str] | None = None) -> Config:
     if len(token) < 16:
         raise SystemExit("SCENE_WORKER_TOKEN must be at least 16 characters.")
 
+    cache_dir = source.get("SCENE_CACHE_DIR", "/cache")
     return Config(
         api_base_url=source.get("API_BASE_URL", "http://127.0.0.1:8787").rstrip("/"),
         worker_token=token,
@@ -63,10 +65,12 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         model_sha256=source.get("SCENE_MODEL_SHA256", ""),
         dimensions=_int(source, "SCENE_DIMENSIONS", 1024),
         temp_dir=source.get("SCENE_TEMP_DIR", "/scene-tmp"),
-        cache_dir=source.get("SCENE_CACHE_DIR", "/cache"),
+        cache_dir=cache_dir,
         lease_ms=_int(source, "SCENE_LEASE_MS", 120_000),
         poll_seconds=_float(source, "SCENE_POLL_SECONDS", 2.0),
         gpu_wait_seconds=_float(source, "SCENE_GPU_WAIT_SECONDS", 900.0),
         max_windows=_int(source, "SCENE_MAX_WINDOWS", 120),
         stage_timeout_seconds=_float(source, "SCENE_STAGE_TIMEOUT_SECONDS", 3600.0),
+        checkpoint_dir=source.get("SCENE_CHECKPOINT_DIR", "").strip()
+        or f"{cache_dir.rstrip('/')}/scene-checkpoints",
     )

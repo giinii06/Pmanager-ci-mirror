@@ -500,9 +500,28 @@ export interface SceneJobRecord {
   dimensions: number
   windowMs: number
   overlapMs: number
+  /** Windows this run actually analyses, and a full pass would analyse. */
+  analyzedWindows: number | null
+  totalWindows: number | null
   errorMessage: string | null
   startedAt: number | null
   createdAt: number
+  updatedAt: number
+}
+
+export interface StageCheckpointRecord {
+  jobId: string
+  pipeline: string
+  assetId: string
+  fileVersion: number
+  modelFingerprint: string
+  pipelineVersion: string
+  stageName: string
+  completedUnits: number
+  totalUnits: number
+  /** Path of the manifest on the worker volume, relative to the checkpoint root. */
+  artifactManifest: string
+  manifestHash: string
   updatedAt: number
 }
 
