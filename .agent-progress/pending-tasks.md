@@ -22,7 +22,7 @@
 - [x] **PR 03 Mutation Engine:** `v17` `file_mutations`, `mutation_events`, quarantine delete state machine, idempotent delete API, dedicated mutation worker, SIGKILL reconciliation tests. Deployed as `55e7549`; live schema `v17`, engine off, `12,851` assets intact.
 - [x] **PR 04 Cache/HLS:** `v18` `hls_generations`, `hls_active`, immutable generation publishing and routes. Deployed as `deb605c`; live schema `v18`, flag off, `12,851` assets intact, legacy playlist still served.
 - [x] **PR 05 Auth:** `v19` Argon2id migration, server sessions, login rate limit, trusted proxy. Deployed as `be9071f`; live schema `v19`, old HMAC cookies rejected, sessions revocable.
-- [ ] **PR 06 Playback:** `v20` play sessions and idempotent play events, resume race fix.
+- [x] **PR 06 Playback:** `v20` `play_sessions`/`play_events`, per-session contiguous `seq`, idempotent session create, fenced legacy progress, resume state machine, idempotent votes. Deployed as `845d81a`; live schema `v20`, counters unchanged.
 - [ ] **PR 07 Viewer/Search UI:** server neighbor cursor, random endpoint, list virtualization.
 - [ ] **PR 08 Job Engine:** unified scene queue, GPU ETA, checkpoints, error codes, timeouts.
 - [ ] **PR 09 Search:** SQLite profiling, FTS5 fallback, optional FAISS index.
