@@ -597,3 +597,13 @@ export interface HlsActiveRecord {
   requestSeq: number
   updatedAt: number
 }
+
+export interface UserSessionRecord {
+  id: string
+  userId: string
+  userAgent: string | null
+  createdAt: number
+  lastSeenAt: number
+  expiresAt: number
+  revokedAt: number | null
+}

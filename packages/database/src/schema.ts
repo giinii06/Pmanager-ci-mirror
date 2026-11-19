@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 18
+export const SCHEMA_VERSION = 19
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -660,6 +660,50 @@ BEGIN
 END;
 `
 
+// A session is an opaque random token. Only a keyed digest is stored, so a
+// database copy cannot be replayed as a cookie. Expiry is absolute; `last_seen`
+// is display metadata and never extends it.
+export const V19_AUTH_SESSIONS_SQL = `
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_digest TEXT NOT NULL UNIQUE,
+  user_agent TEXT,
+  created_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  revoked_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user
+  ON user_sessions(user_id, revoked_at);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_expiry ON user_sessions(expires_at);
+
+-- One row per admitted login attempt, written before the password hash runs so
+-- concurrent requests cannot exceed the limit by all passing the same check.
+CREATE TABLE IF NOT EXISTS auth_login_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL,
+  ip TEXT NOT NULL,
+  outcome TEXT NOT NULL CHECK (outcome IN ('pending','success','failure')),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_login_attempts_ip
+  ON auth_login_attempts(ip, created_at);
+CREATE INDEX IF NOT EXISTS idx_auth_login_attempts_user
+  ON auth_login_attempts(username, created_at);
+
+CREATE TABLE IF NOT EXISTS auth_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  user_id TEXT,
+  username TEXT,
+  ip TEXT,
+  detail TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_events_created ON auth_events(created_at);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -713,4 +757,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   },
   (exec) => exec(V17_FILE_MUTATIONS_SQL),
   (exec) => exec(V18_HLS_GENERATIONS_SQL),
+  (exec) => exec(V19_AUTH_SESSIONS_SQL),
 ]

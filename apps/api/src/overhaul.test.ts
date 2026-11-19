@@ -13,7 +13,7 @@ import {
   type Db,
 } from '@mediavault/database'
 import { buildApp } from './app'
-import { SESSION_COOKIE, createSessionToken } from './auth'
+import { SESSION_COOKIE, createSession } from './auth'
 import type { ApiConfig } from './config'
 import type { AppContext } from './context'
 import { Semaphore } from './semaphore'
@@ -176,6 +176,8 @@ async function createTestHarness() {
     scanIntervalMs: 60_000,
     fileMutationEnabled: true,
     hlsGenerationsEnabled: false,
+    trustProxy: [],
+    publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: false,
@@ -222,7 +224,7 @@ async function createTestHarness() {
 
   const ctx: AppContext = { db, config, thumbnails: new Semaphore(1), previews: new Semaphore(1) }
   const app = await buildApp(ctx)
-  const cookie = `${SESSION_COOKIE}=${createSessionToken('user1', SECRET)}`
+  const cookie = `${SESSION_COOKIE}=${createSession(db, 'user1', SECRET).token}`
   return { app, db, mediaRoot, cacheDir, videoPath, headers: { cookie } }
 }
 

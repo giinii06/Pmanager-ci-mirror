@@ -70,6 +70,10 @@ export interface ApiConfig {
   fileMutationEnabled: boolean
   /** Enables immutable HLS generations. Off by default; the legacy playlist path stays. */
   hlsGenerationsEnabled: boolean
+  /** Peers whose forwarded headers are believed. The API is only reachable through nginx. */
+  trustProxy: string[]
+  /** Exact origins allowed to send state-changing requests; empty compares against the request host. */
+  publicOrigins: string[]
   gpu: GpuConfig
   asr: AsrConfig
   translation: TranslationConfig
@@ -93,8 +97,25 @@ async function resolveSecret(dataDir: string, fromEnv: string | undefined): Prom
   return secret
 }
 
-function resolveScanInterval(env: Record<string, string | undefined>): number {
-  const minutes = Number(env.SCAN_INTERVAL_MINUTES)
+function resolveList(raw: string | undefined, fallback: string[]): string[] {
+  const values = (raw ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value !== '')
+  return values.length > 0 ? values : fallback
+}
+
+function resolveOrigins(raw: string | undefined): string[] {
+  return resolveList(raw, []).map((value) => {
+    try {
+      return new URL(value).origin
+    } catch {
+      throw new Error(`PUBLIC_ORIGINS has an invalid entry: ${value}`)
+    }
+  })
+}
+
+function resolveScanInterval(env: Record<string, string | undefined>): number {  const minutes = Number(env.SCAN_INTERVAL_MINUTES)
   const value = Number.isFinite(minutes) && minutes >= 1 ? minutes : 15
   return value * 60_000
 }
@@ -221,6 +242,8 @@ export async function loadConfig(
     scanIntervalMs: resolveScanInterval(env),
     fileMutationEnabled: env.FILE_MUTATION_ENGINE_ENABLED === '1',
     hlsGenerationsEnabled: env.HLS_GENERATIONS_ENABLED === '1',
+    trustProxy: resolveList(env.TRUSTED_PROXIES, ['127.0.0.1', '::1', '172.16.0.0/12']),
+    publicOrigins: resolveOrigins(env.PUBLIC_ORIGINS),
     gpu: { resourceId: env.GPU_RESOURCE?.trim() || 'gpu:0' },
     asr,
     translation,

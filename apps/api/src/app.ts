@@ -1,6 +1,5 @@
-import Fastify, { type FastifyError, type FastifyInstance } from 'fastify'
-import { findUserById } from '@mediavault/database'
-import { SESSION_COOKIE, parseCookies, verifySessionToken } from './auth'
+import Fastify, { type FastifyError, type FastifyInstance, type FastifyRequest } from 'fastify'
+import { SESSION_COOKIE, parseCookies, resolveSession } from './auth'
 import type { AppContext } from './context'
 import { registerAssetRoutes } from './routes/assets'
 import { registerFileOperationRoutes } from './routes/file-operations'
@@ -29,29 +28,83 @@ const PUBLIC_ROUTES = new Set([
   '/api/auth/status',
   '/api/auth/setup',
   '/api/auth/login',
+  // Always allowed so an expired session still clears its cookie.
+  '/api/auth/logout',
 ])
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+/**
+ * A browser on another origin always sends `Origin` (or `Sec-Fetch-Site`) on a
+ * state-changing request, so a mismatch is a cross-site attempt. Requests with
+ * neither header do not come from a browser and carry no ambient cookie.
+ */
+function isCrossOrigin(request: FastifyRequest, allowedOrigins: string[]): boolean {
+  const origin = request.headers.origin
+  const site = request.headers['sec-fetch-site']
+  if (origin !== undefined) {
+    if (origin === 'null') return true
+    let parsed: URL
+    try {
+      parsed = new URL(origin)
+    } catch {
+      return true
+    }
+    if (allowedOrigins.length > 0) return !allowedOrigins.includes(parsed.origin)
+    // Compare canonical origins: `new URL` drops a default port, so the raw
+    // Host header must be normalized the same way.
+    let expected: string
+    try {
+      expected = new URL(`${request.protocol}://${request.host}`).origin
+    } catch {
+      return true
+    }
+    return parsed.origin !== expected
+  }
+  if (typeof site === 'string') return site !== 'same-origin' && site !== 'none'
+  return false
+}
 
 export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: process.env.LOG_LEVEL ?? 'info' },
-    trustProxy: true,
+    trustProxy: ctx.config.trustProxy,
     bodyLimit: 1024 * 1024,
   })
 
   app.decorateRequest('user', null)
+  app.decorateRequest('sessionId', null)
+
+  app.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('X-Content-Type-Options', 'nosniff')
+    reply.header('X-Frame-Options', 'SAMEORIGIN')
+    reply.header('Referrer-Policy', 'same-origin')
+    if (ctx.config.secureCookies) {
+      reply.header('Strict-Transport-Security', 'max-age=31536000')
+    }
+    return payload
+  })
 
   app.addHook('onRequest', async (request, reply) => {
     const pathname = request.url.split('?')[0] ?? ''
-    if (!pathname.startsWith('/api/') || PUBLIC_ROUTES.has(pathname)) return
+    if (!pathname.startsWith('/api/')) return
+
+    if (!SAFE_METHODS.has(request.method) && isCrossOrigin(request, ctx.config.publicOrigins)) {
+      reply
+        .code(403)
+        .send({ error: 'cross_origin_request', message: 'Cross-origin requests are not allowed.' })
+      return reply
+    }
+    if (PUBLIC_ROUTES.has(pathname)) return
 
     const token = parseCookies(request.headers.cookie)[SESSION_COOKIE]
-    const userId = token ? verifySessionToken(token, ctx.config.authSecret) : null
-    const user = userId ? findUserById(ctx.db, userId) : null
-    if (!user) {
+    const resolved = token ? resolveSession(ctx.db, token, ctx.config.authSecret) : null
+    if (!resolved) {
       reply.code(401).send({ error: 'unauthorized', message: 'Sign in to continue.' })
       return reply
     }
-    request.user = user
+    request.user = resolved.user
+    request.sessionId = resolved.sessionId
   })
 
   app.setErrorHandler((error: FastifyError, request, reply) => {

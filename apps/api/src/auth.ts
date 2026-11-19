@@ -1,12 +1,36 @@
 import { createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
+import {
+  deleteStaleSessions,
+  findSessionByDigest,
+  findUserById,
+  insertSession,
+  revokeSession,
+  touchSession,
+  type Db,
+  type UserRecord,
+} from '@mediavault/database'
+import { newId } from '@mediavault/shared'
 
 const KEY_LENGTH = 64
-const SCRYPT_N = 16384
-const SCRYPT_R = 8
-const SCRYPT_P = 1
+const SALT_LENGTH = 16
+const SCRYPT_PROFILE = { N: 16384, r: 8, p: 1 } as const
 
 export const SESSION_COOKIE = 'mv_session'
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
+export const SESSION_TOUCH_MS = 5 * 60_000
+
+// 32 random bytes, base64url: cookie-safe without percent-encoding.
+const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/
+const SESSION_ID = /^[a-z0-9]{6,32}$/
+const COOKIE_NAME = /^[A-Za-z0-9_.-]{1,64}$/
+const MAX_COOKIE_HEADER = 8192
+const MAX_COOKIE_VALUE = 512
+
+/**
+ * Argon2id at OWASP's documented starting point. Logins are rare, and 64 MiB
+ * keeps a single verification well under 150 ms on this host.
+ */
+const PASSWORD_HASH = { algorithm: 'argon2id', memoryCost: 65536, timeCost: 2 } as const
 
 function derive(
   password: string,
@@ -23,108 +47,180 @@ function derive(
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16)
-  const key = await derive(password, salt, KEY_LENGTH, {
-    N: SCRYPT_N,
-    r: SCRYPT_R,
-    p: SCRYPT_P,
-  })
-  return [
-    'scrypt',
-    SCRYPT_N,
-    SCRYPT_R,
-    SCRYPT_P,
-    salt.toString('base64url'),
-    key.toString('base64url'),
-  ].join('$')
+  return Bun.password.hash(password, PASSWORD_HASH)
 }
 
-export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+export interface PasswordCheck {
+  ok: boolean
+  /** A legacy hash verified; rewrite it with the current algorithm. */
+  needsRehash: boolean
+}
+
+/**
+ * Verifies both hash formats. A stored hash that does not match the documented
+ * profile is a failed login, not an exception: a corrupted row must not turn
+ * into a 500, and a huge N/r/p must not become a memory bomb.
+ */
+export async function verifyPassword(password: string, stored: string): Promise<PasswordCheck> {
+  if (stored.startsWith('$argon2')) {
+    try {
+      return { ok: await Bun.password.verify(password, stored), needsRehash: false }
+    } catch {
+      return { ok: false, needsRehash: false }
+    }
+  }
   const parts = stored.split('$')
-  if (parts.length !== 6 || parts[0] !== 'scrypt') return false
+  if (parts.length !== 6 || parts[0] !== 'scrypt') return { ok: false, needsRehash: false }
+
   const n = Number(parts[1])
   const r = Number(parts[2])
   const p = Number(parts[3])
-  const salt = Buffer.from(parts[4] ?? '', 'base64url')
-  const expected = Buffer.from(parts[5] ?? '', 'base64url')
-  if (!Number.isFinite(n) || !Number.isFinite(r) || !Number.isFinite(p)) return false
-  if (salt.length === 0 || expected.length === 0) return false
-
-  const key = await derive(password, salt, expected.length, { N: n, r, p })
-  return key.length === expected.length && timingSafeEqual(key, expected)
+  if (n !== SCRYPT_PROFILE.N || r !== SCRYPT_PROFILE.r || p !== SCRYPT_PROFILE.p) {
+    return { ok: false, needsRehash: false }
+  }
+  let salt: Buffer
+  let expected: Buffer
+  try {
+    salt = Buffer.from(parts[4] ?? '', 'base64url')
+    expected = Buffer.from(parts[5] ?? '', 'base64url')
+  } catch {
+    return { ok: false, needsRehash: false }
+  }
+  if (salt.length !== SALT_LENGTH || expected.length !== KEY_LENGTH) {
+    return { ok: false, needsRehash: false }
+  }
+  try {
+    const key = await derive(password, salt, expected.length, SCRYPT_PROFILE)
+    return { ok: timingSafeEqual(key, expected), needsRehash: true }
+  } catch {
+    return { ok: false, needsRehash: false }
+  }
 }
 
-export function createSessionToken(
+/**
+ * Unknown usernames must spend the same work as a real check. The dummy hash is
+ * built once per process and never matches a submitted password.
+ */
+let dummyHash: Promise<string> | null = null
+export async function spendPasswordCheck(password: string): Promise<void> {
+  dummyHash ??= hashPassword(randomBytes(16).toString('hex'))
+  await verifyPassword(password, await dummyHash)
+}
+
+export function sessionDigest(token: string, secret: string): string {
+  return createHmac('sha256', secret).update(token).digest('hex')
+}
+
+export interface IssuedSession {
+  token: string
+  id: string
+  expiresAt: number
+}
+
+let lastSessionPrune = 0
+
+export function createSession(
+  db: Db,
   userId: string,
   secret: string,
-  ttlMs = SESSION_TTL_MS,
-  now = Date.now(),
-): string {
-  const payload = Buffer.from(JSON.stringify({ u: userId, e: now + ttlMs })).toString('base64url')
-  const signature = createHmac('sha256', secret).update(payload).digest('base64url')
-  return `${payload}.${signature}`
+  options: { userAgent?: string | null; now?: number; ttlMs?: number } = {},
+): IssuedSession {
+  const now = options.now ?? Date.now()
+  const ttlMs = options.ttlMs ?? SESSION_TTL_MS
+  const token = randomBytes(32).toString('base64url')
+  const id = newId()
+  const userAgent = options.userAgent?.replace(/[\u0000-\u001f]/g, '').slice(0, 256) || null
+
+  insertSession(db, {
+    id,
+    userId,
+    tokenDigest: sessionDigest(token, secret),
+    userAgent,
+    createdAt: now,
+    expiresAt: now + ttlMs,
+  })
+
+  if (now - lastSessionPrune > 60 * 60_000) {
+    lastSessionPrune = now
+    deleteStaleSessions(db, now - 7 * 24 * 60 * 60_000)
+  }
+  return { token, id, expiresAt: now + ttlMs }
 }
 
-export function verifySessionToken(
-  token: string,
+export interface ResolvedSession {
+  user: UserRecord
+  sessionId: string
+}
+
+/**
+ * The token is opaque; the indexed digest lookup decides validity. `last_seen`
+ * advances at most once per five minutes and never extends the expiry.
+ */
+export function resolveSession(
+  db: Db,
+  token: string | undefined,
   secret: string,
   now = Date.now(),
-): string | null {
-  const dot = token.lastIndexOf('.')
-  if (dot <= 0) return null
-  const payload = token.slice(0, dot)
-  const signature = token.slice(dot + 1)
-  const expected = createHmac('sha256', secret).update(payload).digest('base64url')
-  const given = Buffer.from(signature)
-  const wanted = Buffer.from(expected)
-  if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) return null
-
+): ResolvedSession | null {
+  if (!token || !SESSION_TOKEN.test(token)) return null
+  const session = findSessionByDigest(db, sessionDigest(token, secret), now)
+  if (!session) return null
+  const user = findUserById(db, session.userId)
+  if (!user) return null
   try {
-    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
-      u?: unknown
-      e?: unknown
-    }
-    if (typeof data.u !== 'string' || typeof data.e !== 'number') return null
-    if (data.e < now) return null
-    return data.u
+    touchSession(db, session.id, now, SESSION_TOUCH_MS)
   } catch {
-    return null
+    // Activity metadata is not worth failing an authorized request over.
   }
+  return { user, sessionId: session.id }
 }
 
-export function parseCookies(header: string | undefined): Record<string, string> {
-  const cookies: Record<string, string> = {}
-  if (!header) return cookies
-  for (const part of header.split(';')) {
-    const eq = part.indexOf('=')
-    if (eq < 0) continue
-    const name = part.slice(0, eq).trim()
-    const value = part.slice(eq + 1).trim()
-    if (name) cookies[name] = decodeURIComponent(value)
-  }
-  return cookies
+export function revokeSessionById(
+  db: Db,
+  sessionId: string,
+  now = Date.now(),
+  userId?: string,
+): boolean {
+  if (!SESSION_ID.test(sessionId)) return false
+  return revokeSession(db, sessionId, now, userId)
 }
 
-export function sessionCookie(token: string, secure: boolean): string {
-  const flags = [
-    `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Strict',
-    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
-  ]
-  if (secure) flags.push('Secure')
-  return flags.join('; ')
+/** `HttpOnly` keeps the token away from scripts; `Strict` keeps it off cross-site requests. */
+export function sessionCookie(token: string, secure: boolean, ttlMs = SESSION_TTL_MS): string {
+  return cookieHeader(token, secure, Math.floor(ttlMs / 1000))
 }
 
 export function clearSessionCookie(secure: boolean): string {
-  const flags = [
-    `${SESSION_COOKIE}=`,
+  return cookieHeader('', secure, 0)
+}
+
+function cookieHeader(value: string, secure: boolean, maxAgeSeconds: number): string {
+  const parts = [
+    `${SESSION_COOKIE}=${value}`,
     'Path=/',
     'HttpOnly',
     'SameSite=Strict',
-    'Max-Age=0',
+    `Max-Age=${maxAgeSeconds}`,
   ]
-  if (secure) flags.push('Secure')
-  return flags.join('; ')
+  if (secure) parts.push('Secure')
+  return parts.join('; ')
+}
+
+/**
+ * A malformed cookie header must never throw. The only cookie the server reads
+ * is a base64url token, so no percent-decoding is applied to it.
+ */
+export function parseCookies(header: string | undefined): Record<string, string> {
+  const cookies: Record<string, string> = {}
+  if (!header || header.length > MAX_COOKIE_HEADER) return cookies
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq <= 0) continue
+    const name = part.slice(0, eq).trim()
+    if (!COOKIE_NAME.test(name) || name in cookies) continue
+    const value = part.slice(eq + 1).trim()
+    if (value.length > MAX_COOKIE_VALUE) continue
+    cookies[name] = value
+  }
+  return cookies
 }

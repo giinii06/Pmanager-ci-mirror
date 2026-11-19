@@ -11,6 +11,8 @@ services:
       MEDIA_ACCEL: nginx
       AUTH_SECRET: ${AUTH_SECRET:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
       SCAN_INTERVAL_MINUTES: ${SCAN_INTERVAL_MINUTES:-15}
       GPU_RESOURCE: ${GPU_RESOURCE:-gpu:0}
       # Test seam for a full cursor walk. Leave unset in normal operation.

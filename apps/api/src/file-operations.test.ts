@@ -15,7 +15,7 @@ import {
 } from '@mediavault/database'
 import type { FileOperationDTO } from '@mediavault/shared'
 import { buildApp } from './app'
-import { SESSION_COOKIE, createSessionToken } from './auth'
+import { SESSION_COOKIE, createSession } from './auth'
 import type { ApiConfig } from './config'
 import type { AppContext } from './context'
 import { Semaphore } from './semaphore'
@@ -92,6 +92,8 @@ async function createHarness(options: { enabled: boolean; online?: boolean } = {
     scanIntervalMs: 60_000,
     fileMutationEnabled: options.enabled,
     hlsGenerationsEnabled: false,
+    trustProxy: [],
+    publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: false,
@@ -143,7 +145,7 @@ async function createHarness(options: { enabled: boolean; online?: boolean } = {
     previews: new Semaphore(2),
   }
   const app = await buildApp(ctx)
-  const token = createSessionToken('u1', SECRET, 3_600_000)
+  const token = createSession(db, 'u1', SECRET, { ttlMs: 3_600_000 }).token
   const headers = { cookie: `${SESSION_COOKIE}=${token}` }
   return { app, db, file, headers }
 }

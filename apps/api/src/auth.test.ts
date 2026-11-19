@@ -30,6 +30,8 @@ function apiConfig(dir: string): ApiConfig {
     scanIntervalMs: 15 * 60_000,
     fileMutationEnabled: false,
     hlsGenerationsEnabled: false,
+    trustProxy: [],
+    publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: false,

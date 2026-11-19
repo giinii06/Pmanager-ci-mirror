@@ -19,7 +19,7 @@ import {
 } from '@mediavault/database'
 import type { NewAsset } from '@mediavault/database'
 import { buildApp } from './app'
-import { SESSION_COOKIE, createSessionToken } from './auth'
+import { SESSION_COOKIE, createSession } from './auth'
 import type { ApiConfig } from './config'
 import type { AppContext } from './context'
 import { Semaphore } from './semaphore'
@@ -149,6 +149,8 @@ async function harness(language = 'ja'): Promise<Harness> {
     scanIntervalMs: 15 * 60_000,
     fileMutationEnabled: false,
     hlsGenerationsEnabled: false,
+    trustProxy: [],
+    publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: true,
@@ -200,7 +202,7 @@ async function harness(language = 'ja'): Promise<Harness> {
     previews: new Semaphore(1),
   }
   const app = await buildApp(ctx)
-  const token = createSessionToken('user1', SECRET)
+  const token = createSession(db, 'user1', SECRET).token
   return { db, app, cookie: `${SESSION_COOKIE}=${token}`, asrDir, trDir }
 }
 
