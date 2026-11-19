@@ -20,10 +20,12 @@ export async function enqueueArchivesInDir(
   priority: Priority,
   now = Date.now(),
   entries?: Dirent[],
+  onDeferred?: (retryInMs: number) => void,
 ): Promise<number> {
+  const options = { onDeferred }
   const sets = entries
-    ? await discoverArchiveSetsFromEntries(dir, entries)
-    : await discoverArchiveSetsInDir(dir)
+    ? await discoverArchiveSetsFromEntries(dir, entries, options)
+    : await discoverArchiveSetsInDir(dir, options)
   let queued = 0
   db.transaction(() => {
     for (const set of sets) {

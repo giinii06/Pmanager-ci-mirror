@@ -1,6 +1,6 @@
 import type { Dirent } from 'node:fs'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readdir, rename, rm, stat, unlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, open, readdir, rename, rm, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { createExtractorFromFile, UnrarError } from 'node-unrar-js'
@@ -15,10 +15,34 @@ export const ARCHIVE_PASSWORDS = ['', 'misskon.com', 'mrcong.com'] as const
 const TEMP_DOWNLOAD_SUFFIXES = ['.crdownload', '.part', '.tmp', '.download', '.!ut', '.partial']
 const JUNK_ENTRY_NAMES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini'])
 
+// Full-size volumes plus one short remainder is the shape of a finished set, so it needs
+// only a short settle window. Any other shape may still be growing.
+const FINAL_VOLUME_SETTLE_MS = 10_000
+const PENDING_VOLUME_SETTLE_MS = 120_000
+
+const RAR4_SIGNATURE = [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00]
+const RAR5_SIGNATURE = [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00]
+const RAR4_MAIN_HEAD_TYPE = 0x73
+const RAR5_HEAD_TYPE_MAIN = 1
+const RAR5_HEAD_TYPE_ENCRYPTED = 4
+const RAR_HEADER_VOLUME_FLAG = 0x0001
+
 export interface DiscoveredArchiveSet {
   primaryPath: string
   volumes: string[]
   signature: string
+}
+
+export interface ArchiveDiscoveryOptions {
+  now?: number
+  finalSettleMs?: number
+  pendingSettleMs?: number
+  onDeferred?: (retryInMs: number) => void
+}
+
+interface VolumeInfo {
+  size: number
+  mtimeMs: number
 }
 
 export interface ProcessArchiveOptions {
@@ -52,24 +76,128 @@ function hasBlockingTempFile(filenames: string[], baseStem: string): boolean {
   })
 }
 
-async function computeSignature(volumes: string[]): Promise<string | null> {
+async function inspectVolumes(
+  volumes: string[],
+): Promise<{ signature: string; infos: VolumeInfo[] } | null> {
   const parts: string[] = []
+  const infos: VolumeInfo[] = []
   for (const volume of volumes) {
     try {
       const info = await stat(volume)
       if (!info.isFile()) return null
       parts.push(`${path.basename(volume)}:${info.size}:${Math.round(info.mtimeMs)}`)
+      infos.push({ size: info.size, mtimeMs: info.mtimeMs })
     } catch {
       return null
     }
   }
-  return parts.join('|')
+  return { signature: parts.join('|'), infos }
+}
+
+async function computeSignature(volumes: string[]): Promise<string | null> {
+  const inspected = await inspectVolumes(volumes)
+  return inspected ? inspected.signature : null
+}
+
+function volumeSetReadiness(
+  infos: VolumeInfo[],
+  now: number,
+  finalSettleMs: number,
+  pendingSettleMs: number,
+): { ready: boolean; retryInMs: number } {
+  const first = infos[0]
+  const last = infos[infos.length - 1]
+  const looksFinal =
+    infos.length > 1 &&
+    first !== undefined &&
+    last !== undefined &&
+    last.size < first.size &&
+    infos.slice(0, -1).every((info) => info.size === first.size)
+  const settleMs = looksFinal ? finalSettleMs : pendingSettleMs
+  const readyAt = Math.max(...infos.map((info) => info.mtimeMs)) + settleMs
+  return { ready: now >= readyAt, retryInMs: Math.max(0, readyAt - now) }
+}
+
+function startsWithBytes(buf: Buffer, signature: number[]): boolean {
+  if (buf.length < signature.length) return false
+  return signature.every((byte, index) => buf[index] === byte)
+}
+
+function readVint(buf: Buffer, offset: number): { value: number; next: number } | null {
+  let value = 0
+  let shift = 0
+  let pos = offset
+  while (pos < buf.length) {
+    const byte = buf[pos]!
+    value += (byte & 0x7f) * 2 ** shift
+    pos += 1
+    if ((byte & 0x80) === 0) return { value, next: pos }
+    shift += 7
+    if (shift > 63) return null
+  }
+  return null
+}
+
+function readRar5VolumeFlag(buf: Buffer): boolean | null {
+  let pos = RAR5_SIGNATURE.length + 4
+  const headSize = readVint(buf, pos)
+  if (!headSize) return null
+  pos = headSize.next
+  const headType = readVint(buf, pos)
+  if (!headType) return null
+  pos = headType.next
+  const headFlags = readVint(buf, pos)
+  if (!headFlags) return null
+  pos = headFlags.next
+  if (headFlags.value & 0x0001) {
+    const extraAreaSize = readVint(buf, pos)
+    if (!extraAreaSize) return null
+    pos = extraAreaSize.next
+  }
+  if (headFlags.value & 0x0002) {
+    const dataSize = readVint(buf, pos)
+    if (!dataSize) return null
+    pos = dataSize.next
+  }
+  if (headType.value === RAR5_HEAD_TYPE_ENCRYPTED) return null
+  if (headType.value !== RAR5_HEAD_TYPE_MAIN) return null
+  const archiveFlags = readVint(buf, pos)
+  if (!archiveFlags) return null
+  return (archiveFlags.value & RAR_HEADER_VOLUME_FLAG) !== 0
+}
+
+async function readRarVolumeFlag(filePath: string): Promise<boolean | null> {
+  let handle: Awaited<ReturnType<typeof open>>
+  try {
+    handle = await open(filePath, 'r')
+  } catch {
+    return null
+  }
+  try {
+    const buf = Buffer.alloc(64)
+    const { bytesRead } = await handle.read(buf, 0, buf.length, 0)
+    const head = buf.subarray(0, bytesRead)
+    if (startsWithBytes(head, RAR4_SIGNATURE)) {
+      if (head.length < 12 || head[9] !== RAR4_MAIN_HEAD_TYPE) return null
+      return (head.readUInt16LE(10) & RAR_HEADER_VOLUME_FLAG) !== 0
+    }
+    if (startsWithBytes(head, RAR5_SIGNATURE)) return readRar5VolumeFlag(head)
+    return null
+  } catch {
+    return null
+  } finally {
+    await handle.close()
+  }
 }
 
 export async function discoverArchiveSetsFromEntries(
   dir: string,
   entries: Dirent[],
+  options: ArchiveDiscoveryOptions = {},
 ): Promise<DiscoveredArchiveSet[]> {
+  const now = options.now ?? Date.now()
+  const finalSettleMs = options.finalSettleMs ?? FINAL_VOLUME_SETTLE_MS
+  const pendingSettleMs = options.pendingSettleMs ?? PENDING_VOLUME_SETTLE_MS
   const filenames = entries.filter((e) => e.isFile() && !e.name.startsWith('.')).map((e) => e.name)
   const hasCandidate = filenames.some((name) => /\.(rar|r\d{2,})$/i.test(name))
   if (!hasCandidate) return []
@@ -105,6 +233,10 @@ export async function discoverArchiveSetsFromEntries(
   }
 
   const sets: DiscoveredArchiveSet[] = []
+  let minRetryMs: number | null = null
+  const defer = (retryInMs: number) => {
+    minRetryMs = minRetryMs === null ? retryInMs : Math.min(minRetryMs, retryInMs)
+  }
 
   for (const [, parts] of partGroups) {
     parts.sort((a, b) => a.part - b.part)
@@ -115,8 +247,14 @@ export async function discoverArchiveSetsFromEntries(
     const stem = path.basename(first.abs).replace(/\.part0*\d+\.rar$/i, '')
     if (hasBlockingTempFile(filenames, stem)) continue
     const volumes = parts.map((p) => p.abs)
-    const signature = await computeSignature(volumes)
-    if (signature) sets.push({ primaryPath: first.abs, volumes, signature })
+    const inspected = await inspectVolumes(volumes)
+    if (!inspected) continue
+    const readiness = volumeSetReadiness(inspected.infos, now, finalSettleMs, pendingSettleMs)
+    if (!readiness.ready) {
+      defer(readiness.retryInMs)
+      continue
+    }
+    sets.push({ primaryPath: first.abs, volumes, signature: inspected.signature })
   }
 
   for (const plain of plainRars) {
@@ -124,16 +262,32 @@ export async function discoverArchiveSetsFromEntries(
     const key = path.join(dir, plain.stem.toLowerCase())
     const sides = (legacySides.get(key) ?? []).sort((a, b) => a.index - b.index).map((s) => s.abs)
     const volumes = [plain.abs, ...sides]
-    const signature = await computeSignature(volumes)
-    if (signature) sets.push({ primaryPath: plain.abs, volumes, signature })
+    const inspected = await inspectVolumes(volumes)
+    if (!inspected) continue
+    const isVolumeSet = sides.length > 0 || (await readRarVolumeFlag(plain.abs)) === true
+    if (!isVolumeSet) {
+      sets.push({ primaryPath: plain.abs, volumes, signature: inspected.signature })
+      continue
+    }
+    const readiness = volumeSetReadiness(inspected.infos, now, finalSettleMs, pendingSettleMs)
+    if (!readiness.ready) {
+      defer(readiness.retryInMs)
+      continue
+    }
+    sets.push({ primaryPath: plain.abs, volumes, signature: inspected.signature })
   }
+
+  if (minRetryMs !== null) options.onDeferred?.(minRetryMs)
 
   return sets.sort((a, b) => a.primaryPath.localeCompare(b.primaryPath))
 }
 
-export async function discoverArchiveSetsInDir(dir: string): Promise<DiscoveredArchiveSet[]> {
+export async function discoverArchiveSetsInDir(
+  dir: string,
+  options: ArchiveDiscoveryOptions = {},
+): Promise<DiscoveredArchiveSet[]> {
   const entries = await readdir(dir, { withFileTypes: true })
-  return discoverArchiveSetsFromEntries(dir, entries)
+  return discoverArchiveSetsFromEntries(dir, entries, options)
 }
 
 export async function waitForArchiveStability(

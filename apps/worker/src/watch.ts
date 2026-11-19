@@ -311,6 +311,21 @@ export function startMediaWatcher(db: Db, config: WorkerConfig): MediaWatcher {
     scanTimers.clear()
   }
 
+  const scheduleArchiveCheck = (libraryId: string, libRoot: string, dir: string, delayMs: number) => {
+    const key = `${libraryId}:${dir}`
+    const prev = archiveTimers.get(key)
+    if (prev) clearTimeout(prev)
+    archiveTimers.set(key, setTimeout(() => {
+      archiveTimers.delete(key)
+      void enqueueArchivesInDir(
+        db, libraryId, libRoot, dir, PRIORITY.visible, Date.now(), undefined,
+        (retryInMs) => scheduleArchiveCheck(libraryId, libRoot, dir, Math.max(retryInMs, 1_000)),
+      ).catch((error) => {
+        console.warn(`[watch] archive discovery failed in ${dir}: ${(error as Error).message}`)
+      })
+    }, delayMs))
+  }
+
   const handleFile = (absPath: string) => {
     const name = path.basename(absPath)
     if (shouldSkipName(name) || isTempDownloadFile(name)) return
@@ -318,25 +333,7 @@ export function startMediaWatcher(db: Db, config: WorkerConfig): MediaWatcher {
     if (!match) return
 
     if (ARCHIVE_FILE_RE.test(name)) {
-      const dir = path.dirname(absPath)
-      const key = `${match.libraryId}:${dir}`
-      const prev = archiveTimers.get(key)
-      if (prev) clearTimeout(prev)
-      archiveTimers.set(
-        key,
-        setTimeout(() => {
-          archiveTimers.delete(key)
-          void enqueueArchivesInDir(
-            db,
-            match.libraryId,
-            match.libRoot,
-            dir,
-            PRIORITY.visible,
-          ).catch((error) => {
-            console.warn(`[watch] archive discovery failed in ${dir}: ${(error as Error).message}`)
-          })
-        }, 500),
-      )
+      scheduleArchiveCheck(match.libraryId, match.libRoot, path.dirname(absPath), 500)
       return
     }
 

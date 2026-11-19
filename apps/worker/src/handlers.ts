@@ -1,5 +1,6 @@
 import path from 'node:path'
 import {
+  getArchiveJob,
   getAssetFileInfo,
   getJob,
   getLibrary,
@@ -86,6 +87,7 @@ async function runArchiveJob(
   if (!job.payload) throw new Error('process_archive job missing payload')
   throwIfAborted(signal)
   const payload = JSON.parse(job.payload) as ArchiveJobPayload
+  if (getArchiveJob(db, payload.archiveJobId)?.state === 'completed') return
   const { primaryPath, volumes } = safeResolveVolumes(db, config, payload)
 
   let completedArchive = false
