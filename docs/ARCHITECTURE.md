@@ -1,4 +1,4 @@
-# MediaVault 시스템 아키텍처 (Schema v20)
+# MediaVault 시스템 아키텍처 (Schema v21)
 
 MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engine)에서 상시 운영되며, macOS를 비롯한 LAN 브라우저에서 접속하는 셀프 호스팅 사진·동영상 라이브러리 서버입니다.
 
@@ -28,7 +28,7 @@ MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engin
 - `vote_events`: 폴더 및 동영상 Vote 활동을 기여(`contribution_events`)와 분리 추적.
 - `recovery_logs`, `backup_logs`: 크래시 복구 및 `VACUUM INTO` 무결성 검증 백업 이력.
 
-이후 PR 02–06이 `v16`–`v20`을 추가했다: `library_health`와 `scan_runs` 확장(`v16`), `file_mutations`/`mutation_events`(`v17`), `hls_generations`/`hls_active`(`v18`), `user_sessions`/`auth_login_attempts`/`auth_events`(`v19`), `play_sessions`/`play_events`와 `playback_progress` 확장(`v20`). PR 07과 PR 08은 스키마를 바꾸지 않았다.
+이후 PR 02–06이 `v16`–`v20`을 추가했다: `library_health`와 `scan_runs` 확장(`v16`), `file_mutations`/`mutation_events`(`v17`), `hls_generations`/`hls_active`(`v18`), `user_sessions`/`auth_login_attempts`/`auth_events`(`v19`), `play_sessions`/`play_events`와 `playback_progress` 확장(`v20`). PR 07과 PR 08은 스키마를 바꾸지 않았고, PR 08b가 `stage_checkpoints`와 `scene_jobs.analyzed_windows`/`total_windows`(`v21`)를 추가했다.
 
 ## 3. 호스트 드라이브 노출 구조
 
@@ -48,3 +48,10 @@ MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engin
 - `SOURCE_OFFLINE`과 `DISK_FULL`은 재시도 횟수를 소모하지 않고 즉시 `failed`로 주차됩니다. `recovery.ts`는 라이브러리가 `ONLINE`이 된 뒤 `[SOURCE_OFFLINE]` 행을 최대 100개까지 재큐합니다(활성 중복 키가 있으면 건너뜀).
 - Node ffmpeg는 자체 프로세스 그룹에서 실행되며 벽시계 상한과 진행 정지 감시를 가집니다. 취소·타임아웃 시 그룹 전체에 SIGKILL을 보내고, stderr는 8KB 꼬리만 보관합니다.
 - Python 장면 워커는 모든 외부 프로세스를 `run_checked`로 실행합니다. 자체 세션 그룹에 TERM → 10초 → KILL 순서로 종료하고, 단계 전체에도 `SCENE_STAGE_TIMEOUT_SECONDS`(기본 3600초) 상한이 있습니다.
+
+## 6. 단계 체크포인트와 재개
+
+- 장면 단계는 끝난 윈도우를 `SCENE_CHECKPOINT_DIR/<jobId>/windows.jsonl`에 한 줄씩 append하고 fsync합니다. 썸네일도 로그보다 먼저 fsync하며, 5개마다(그리고 마지막 윈도우에서) `manifest.json`을 임시 파일 → fsync → `os.replace` → 디렉터리 fsync 순서로 교체합니다. 그 뒤에야 부모가 API에 `POST /worker/scene/jobs/:id/checkpoint`를 보냅니다.
+- `stage_checkpoints` 행은 job/stage 단위 포인터일 뿐입니다. 재개할 때는 로그를 먼저 읽고, 매니페스트의 `meta`(asset, fileVersion, 모델 SHA, 파이프라인 버전, 차원, 윈도우 계획)가 현재 계획과 같을 때만 prefix를 재사용합니다. 중간에 잘린 줄, seq 불연속, 사라진 썸네일을 만나면 그 지점에서 prefix를 자르고 이후 윈도우만 다시 처리합니다.
+- 로그가 매니페스트보다 앞서면 로그가 이깁니다(매니페스트 재작성). 매니페스트가 없거나 meta가 다르면 로그를 폐기하고 처음부터 처리합니다. API는 모델 fingerprint나 pipelineVersion이 다른 행을 발견하면 삭제하고 `checkpoint: null`을 반환합니다.
+- 완료 시 `completeSceneJob`이 `analyzed_windows`/`total_windows`를 기록하고 체크포인트 행을 지웁니다. 워커도 완료 응답을 받은 뒤 디렉터리를 정리합니다. `GET /api/assets/:id/scenes`는 이 값으로 샘플링 커버리지(`N/M 구간`)를 돌려주며, PR 08b 이전에 완료된 작업은 `null`입니다.
