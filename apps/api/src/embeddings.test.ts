@@ -175,6 +175,7 @@ async function harness(options: { transcripts?: boolean } = {}): Promise<Harness
       dimensions: 4,
       windowMs: 10_000,
       overlapMs: 2_000,
+      maxWindows: 120,
       queryUrl: 'http://127.0.0.1:1',
     },
   }

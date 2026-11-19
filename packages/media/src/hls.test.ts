@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
   HlsAbortedError,
+  ProcessTimeoutError,
   generateHlsGeneration,
   hlsProfileHash,
   isNvencUnavailable,
+  runFfmpeg,
 } from './hls'
 
 const fixture = path.join(import.meta.dir, 'hls.fixture.ts')
@@ -146,5 +148,49 @@ describe('immutable HLS generation encode', () => {
     expect(isNvencUnavailable('Cannot load libnvidia-encode.so.1')).toBe(true)
     expect(isNvencUnavailable('No capable devices found')).toBe(true)
     expect(isNvencUnavailable('Invalid data found when processing input')).toBe(false)
+  })
+})
+
+describe('bounded ffmpeg execution', () => {
+  test('a stuck encoder is killed at the wall clock', async () => {
+    setMode('slow')
+    const { cacheDir, source } = workspace()
+    const outDir = path.join(cacheDir, 'encode')
+    mkdirSync(outDir, { recursive: true })
+    const started = Date.now()
+
+    const failure = await runFfmpeg(
+      source,
+      outDir,
+      { hwaccel: null, width: 1280, durationMs: 10_000 },
+      'libx264',
+      { progress: false, timeoutMs: 400, stallTimeoutMs: 0 },
+    ).catch((error) => error)
+
+    expect(failure).toBeInstanceOf(ProcessTimeoutError)
+    expect(Date.now() - started).toBeLessThan(5_000)
+    clearMode()
+  })
+
+  test('an abort stops the encoder without waiting for the budget', async () => {
+    setMode('slow')
+    const { cacheDir, source } = workspace()
+    const outDir = path.join(cacheDir, 'encode')
+    mkdirSync(outDir, { recursive: true })
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 100)
+    const started = Date.now()
+
+    const failure = await runFfmpeg(
+      source,
+      outDir,
+      { hwaccel: null, width: 1280, durationMs: 10_000, signal: controller.signal },
+      'libx264',
+      { progress: false, timeoutMs: 60_000, stallTimeoutMs: 0 },
+    ).catch((error) => error)
+
+    expect(failure).toBeInstanceOf(HlsAbortedError)
+    expect(Date.now() - started).toBeLessThan(5_000)
+    clearMode()
   })
 })

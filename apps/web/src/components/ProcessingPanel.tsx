@@ -4,6 +4,7 @@ import type {
   AsrStage,
   EmbeddingStage,
   JobDTO,
+  SceneStage,
   TranslationStage,
   WorkItemDTO,
   WorkPipelineDTO,
@@ -16,6 +17,8 @@ import { useUi } from '../store/ui'
 import {
   ASR_STAGE_LABEL,
   EMBEDDING_STAGE_LABEL,
+  MUTATION_STAGE_LABEL,
+  SCENE_STAGE_LABEL,
   TRANSLATION_STAGE_LABEL,
   kindLabel,
   pipelineLabel,
@@ -33,6 +36,12 @@ function stageLabel(item: WorkItemDTO): string {
   if (item.pipeline === 'embedding' && item.stage) {
     return EMBEDDING_STAGE_LABEL[item.stage as EmbeddingStage] ?? kindLabel[item.kind]
   }
+  if (item.pipeline === 'scene' && item.stage) {
+    return SCENE_STAGE_LABEL[item.stage as SceneStage] ?? kindLabel[item.kind]
+  }
+  if (item.pipeline === 'mutation' && item.stage) {
+    return MUTATION_STAGE_LABEL[item.stage] ?? kindLabel[item.kind]
+  }
   return kindLabel[item.kind]
 }
 
@@ -45,11 +54,18 @@ function itemEta(item: WorkItemDTO): string | null {
   return `약 ${formatEta(item.etaSeconds)} 남음`
 }
 
+/** Scene sampling is not chaptering: say how many windows of the file are read. */
+function coverageLabel(item: WorkItemDTO): string | null {
+  if (!item.coverage) return null
+  return `${formatCount(item.coverage.analyzed)}/${formatCount(item.coverage.total)} 구간`
+}
+
 /** The API only claims a number when it has completion history behind it. */
 function laneEta(lane: WorkPipelineDTO): { text: string; known: boolean } | null {
   if (lane.basis === 'history' && lane.etaSeconds !== null && lane.etaSeconds > 0) {
     return { text: `약 ${formatEta(lane.etaSeconds)}`, known: true }
   }
+  if (lane.basis === 'insufficient_data') return { text: '기록 부족', known: false }
   if (lane.running > 0) return { text: '계산 중', known: false }
   if (lane.queued > 0 || lane.stalled > 0) return { text: '미정', known: false }
   return null
@@ -65,24 +81,25 @@ function overallEta(queue: WorkQueueDTO): { text: string; known: boolean } {
     : { text: '남은 시간 미정', known: false }
 }
 
-function GpuBadge({ onGpu }: { onGpu: boolean | null }) {
+function GpuBadge({ onGpu, waiting }: { onGpu: boolean | null; waiting: boolean }) {
   if (onGpu === null) return null
   return (
     <span
       className={cn(
         'inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10.5px]',
-        onGpu ? 'border-line-strong text-muted' : 'border-line text-faint',
+        waiting ? 'border-line text-faint' : 'border-line-strong text-muted',
       )}
     >
       <Cpu size={10} />
-      {onGpu ? 'GPU 사용 중' : 'GPU 대기 중'}
+      {waiting ? 'GPU 대기 중' : 'GPU 사용 중'}
     </span>
   )
 }
 
 function RunningHero({ item }: { item: WorkItemDTO }) {
-  const waiting = item.onGpu === false
+  const waiting = item.waitingGpu
   const eta = itemEta(item)
+  const coverage = coverageLabel(item)
 
   return (
     <div className="px-4 py-4">
@@ -100,6 +117,12 @@ function RunningHero({ item }: { item: WorkItemDTO }) {
             <span>{pipelineLabel[item.pipeline]}</span>
             <span className="text-faint">·</span>
             <span>{stageLabel(item)}</span>
+            {coverage ? (
+              <>
+                <span className="text-faint">·</span>
+                <span>{coverage}</span>
+              </>
+            ) : null}
             {item.startedAt ? (
               <>
                 <span className="text-faint">·</span>
@@ -109,7 +132,7 @@ function RunningHero({ item }: { item: WorkItemDTO }) {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <GpuBadge onGpu={item.onGpu} />
+          <GpuBadge onGpu={item.onGpu} waiting={item.waitingGpu} />
           {item.progress !== null ? (
             <span className="text-[15px] font-semibold tabular-nums text-ink">
               {item.progress}%
@@ -132,8 +155,9 @@ function RunningHero({ item }: { item: WorkItemDTO }) {
 }
 
 function RunningRow({ item }: { item: WorkItemDTO }) {
-  const waiting = item.onGpu === false
+  const waiting = item.waitingGpu
   const eta = itemEta(item)
+  const coverage = coverageLabel(item)
 
   return (
     <div className="px-4 py-2.5">
@@ -147,7 +171,8 @@ function RunningRow({ item }: { item: WorkItemDTO }) {
           {assetLabel(item)}
         </span>
         <span className="shrink-0 text-[11px] text-muted">{stageLabel(item)}</span>
-        <GpuBadge onGpu={item.onGpu} />
+        {coverage ? <span className="shrink-0 text-[11px] text-faint">{coverage}</span> : null}
+        <GpuBadge onGpu={item.onGpu} waiting={item.waitingGpu} />
         {item.progress !== null ? (
           <span className="shrink-0 text-[12px] tabular-nums text-ink">{item.progress}%</span>
         ) : null}
@@ -179,6 +204,7 @@ function StalledRow({ item }: { item: WorkItemDTO }) {
 function LaneCounts({ lane }: { lane: WorkPipelineDTO }) {
   const parts: { text: string; danger?: boolean }[] = []
   if (lane.running > 0) parts.push({ text: `처리 중 ${formatCount(lane.running)}` })
+  if (lane.waitingGpu > 0) parts.push({ text: `GPU 대기 ${formatCount(lane.waitingGpu)}` })
   if (lane.queued > 0) parts.push({ text: `대기 ${formatCount(lane.queued)}` })
   if (lane.stalled > 0) parts.push({ text: `응답 없음 ${formatCount(lane.stalled)}`, danger: true })
 
@@ -231,6 +257,14 @@ function FailureStrip({ failures }: { failures: WorkItemDTO[] }) {
             className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11.5px]"
           >
             <span className="shrink-0 text-ink">「{assetLabel(item)}」</span>
+            {item.errorCode ? (
+              <span
+                className="shrink-0 rounded border border-line px-1 font-mono text-[10px] text-faint"
+                title={item.errorCode}
+              >
+                {item.errorCode}
+              </span>
+            ) : null}
             <span
               className="min-w-0 flex-1 truncate text-muted"
               title={item.errorMessage ?? undefined}

@@ -1,6 +1,7 @@
 import type {
   AsrStage,
   EmbeddingStage,
+  SceneStage,
   TranslationStage,
   WorkKind,
   WorkPipeline,
@@ -32,11 +33,31 @@ export const EMBEDDING_STAGE_LABEL: Record<EmbeddingStage, string> = {
   completed: '완료',
 }
 
+export const SCENE_STAGE_LABEL: Record<SceneStage, string> = {
+  queued: '대기 중',
+  extracting: '구간 추출 중',
+  embedding: '장면 분석 중',
+  writing: '장면 저장 중',
+  completed: '완료',
+}
+
+export const MUTATION_STAGE_LABEL: Record<string, string> = {
+  delete: '삭제',
+  move: '이동',
+  copy: '복사',
+  extract: '압축 해제',
+}
+
 export const pipelineLabel: Record<WorkPipeline, string> = {
   media: '미디어',
   asr: '음성 인식',
   translation: '번역',
   embedding: '임베딩',
+  scene: '장면 분석',
+  mutation: '파일 작업',
+  backup: '백업',
+  maintenance: '유지보수',
+  bulk: '일괄 작업',
 }
 
 export const kindLabel: Record<WorkKind, string> = {
@@ -48,4 +69,9 @@ export const kindLabel: Record<WorkKind, string> = {
   asr: '음성 인식',
   translation: '번역',
   embedding: '임베딩',
+  scene: '장면 분석',
+  mutation: '파일 작업',
+  backup: '백업',
+  maintenance: '유지보수',
+  bulk: '일괄 작업',
 }

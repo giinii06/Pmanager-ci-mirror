@@ -408,9 +408,12 @@ function toWorkItemDTO(item: WorkItemRecord): WorkItemDTO {
     stage: item.stage,
     progress: item.progress,
     onGpu: item.onGpu,
+    waitingGpu: item.waitingGpu,
+    coverage: item.coverage,
     startedAt: iso(item.startedAt),
     updatedAt: iso(item.updatedAt),
     etaSeconds: item.etaSeconds,
+    errorCode: item.errorCode,
     errorMessage: item.errorMessage,
   }
 }

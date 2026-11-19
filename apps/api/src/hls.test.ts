@@ -140,6 +140,7 @@ async function createHarness(options: { enabled: boolean; online?: boolean } = {
       dimensions: 3,
       windowMs: 4000,
       overlapMs: 0,
+      maxWindows: 120,
       queryUrl: 'http://127.0.0.1:9999',
     },
   }

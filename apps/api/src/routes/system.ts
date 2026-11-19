@@ -418,6 +418,10 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.post('/api/jobs/:id/cancel', (req, reply) => jobAction(req, reply, 'cancel'))
 
   app.get('/api/queue', async (_request, reply) => {
-    reply.send(toWorkQueueDTO(workQueue(ctx.db, Date.now(), ctx.config.gpu.resourceId)))
+    reply.send(
+      toWorkQueueDTO(workQueue(ctx.db, Date.now(), ctx.config.gpu.resourceId, {
+        maxSceneWindows: ctx.config.scene.maxWindows,
+      })),
+    )
   })
 }

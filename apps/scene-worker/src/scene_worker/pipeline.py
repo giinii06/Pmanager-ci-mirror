@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -13,10 +14,18 @@ from typing import Any, Callable
 
 from .client import LeaseLost, WorkerClient
 from .config import Config
+from .processes import terminate_group
 
 log = logging.getLogger(__name__)
 
 GPU_RETRY_SECONDS = 5.0
+CODE_PATTERN = re.compile(r"\[([A-Z][A-Z_]{2,})\]")
+
+
+def error_prefix(tail: str) -> str:
+    """Lifts a `[CODE]` the stage already logged so the API can store it."""
+    match = CODE_PATTERN.search(tail)
+    return f"[{match.group(1)}] " if match else ""
 
 
 def resolve_media_path(media_root: str, stored: str) -> str:
@@ -176,6 +185,7 @@ class Pipeline:
         )
 
         process: subprocess.Popen[str] | None = None
+        watchdog: threading.Timer | None = None
         log_path = workdir / "stage.log"
         try:
             with log_path.open("w", encoding="utf-8") as log_stream:
@@ -193,8 +203,18 @@ class Pipeline:
                     stderr=log_stream,
                     text=True,
                     bufsize=1,
+                    start_new_session=True,
                 )
-                heartbeat.attach(process)
+                timed_out = threading.Event()
+
+                def on_timeout() -> None:
+                    timed_out.set()
+                    terminate_group(process)
+
+                watchdog = threading.Timer(self.config.stage_timeout_seconds, on_timeout)
+                watchdog.daemon = True
+                watchdog.start()
+                heartbeat.attach(lambda: terminate_group(process))
                 last_report = 0.0
                 try:
                     assert process.stdout is not None
@@ -214,11 +234,18 @@ class Pipeline:
                     code = process.wait()
                 finally:
                     heartbeat.detach()
+                    watchdog.cancel()
 
                 if heartbeat.lost.is_set():
                     raise LeaseLost("lease lost while the stage was running")
+                if timed_out.is_set():
+                    raise RuntimeError(
+                        f"[PROCESS_TIMEOUT] scene stage exceeded "
+                        f"{int(self.config.stage_timeout_seconds)}s"
+                    )
                 if code != 0:
-                    raise RuntimeError(f"scene stage failed: {_tail(log_path)}")
+                    tail = _tail(log_path)
+                    raise RuntimeError(f"{error_prefix(tail)}scene stage failed: {tail}")
 
             self._report(job_id, "writing", "writing", 95)
             payload = json.loads(result_path.read_text(encoding="utf-8"))
@@ -226,13 +253,10 @@ class Pipeline:
                 raise LeaseLost("lease lost before the results were sent")
             self.client.complete(job_id, self.owner, payload["scenes"])
         finally:
-            if process is not None and process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=30)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=30)
+            if watchdog is not None:
+                watchdog.cancel()
+            if process is not None:
+                terminate_group(process)
             _remove_tree(workdir)
             heartbeat.drop_gpu()
             self._release_gpu()

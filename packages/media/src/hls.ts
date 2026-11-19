@@ -1,12 +1,8 @@
-import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { lstat, mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import { ensureDir, hlsDir, hlsPlaylistPath, resolveInside } from './paths'
 import { fileExists } from './thumbnails'
-
-const run = promisify(execFile)
 
 /** A deployment may pin a specific ffmpeg build. */
 function ffmpegBin(): string {
@@ -116,6 +112,16 @@ export class HlsAbortedError extends Error {
   }
 }
 
+export class ProcessTimeoutError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ProcessTimeoutError'
+  }
+}
+
+const STDERR_TAIL_BYTES = 8 * 1024
+const STALL_TIMEOUT_MS = 5 * 60_000
+
 class NvencUnavailableError extends Error {
   constructor() {
     super('nvenc is not available')
@@ -218,21 +224,58 @@ interface EncodeOutcome {
   encoder: 'nvenc' | 'libx264'
 }
 
-async function runFfmpeg(
+interface FfmpegRunOptions {
+  /** Parse `-progress pipe:1` output and report percentages. */
+  progress: boolean
+  /** Wall-clock cap; a stuck encoder must not hold the card forever. */
+  timeoutMs: number
+  /** Kill after this long without a progress line; 0 disables the watchdog. */
+  stallTimeoutMs: number
+}
+
+/** Exported so the bounded-process test can drive the wall clock directly. */
+export async function runFfmpeg(
   src: string,
   dir: string,
-  options: HlsGenerationOptions,
+  options: HlsOptions & { onProgress?: (percent: number) => void },
   encoder: 'nvenc' | 'libx264',
+  runOptions: FfmpegRunOptions,
 ): Promise<EncodeOutcome> {
   if (options.signal?.aborted) throw new HlsAbortedError()
-  const proc = Bun.spawn([ffmpegBin(), ...ffmpegArgs(src, dir, options, encoder, true)], {
+  const proc = Bun.spawn([ffmpegBin(), ...ffmpegArgs(src, dir, options, encoder, runOptions.progress)], {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const abort = () => proc.kill(9)
-  options.signal?.addEventListener('abort', abort, { once: true })
 
-  const stderrText = new Response(proc.stderr).text()
+  let timedOut = false
+  const kill = () => proc.kill(9)
+  options.signal?.addEventListener('abort', kill, { once: true })
+  const wallTimer = setTimeout(() => {
+    timedOut = true
+    kill()
+  }, runOptions.timeoutMs)
+  let lastProgressAt = Date.now()
+  const stallTimer =
+    runOptions.stallTimeoutMs > 0
+      ? setInterval(() => {
+          if (Date.now() - lastProgressAt > runOptions.stallTimeoutMs) {
+            timedOut = true
+            kill()
+          }
+        }, 15_000)
+      : null
+
+  let stderrTail = ''
+  const stderrPump = (async () => {
+    const reader = proc.stderr.getReader()
+    const decoder = new TextDecoder()
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      stderrTail = (stderrTail + decoder.decode(value, { stream: true })).slice(-STDERR_TAIL_BYTES)
+    }
+  })()
+
   const durationUs = options.durationMs && options.durationMs > 0 ? options.durationMs * 1000 : null
   let buffer = ''
   let lastPercent = -1
@@ -243,12 +286,14 @@ async function runFfmpeg(
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
+      if (!runOptions.progress) continue
       buffer += decoder.decode(value, { stream: true })
       let newline = buffer.indexOf('\n')
       while (newline >= 0) {
         const line = buffer.slice(0, newline).trim()
         buffer = buffer.slice(newline + 1)
         if (line.startsWith('out_time_us=') && durationUs !== null) {
+          lastProgressAt = Date.now()
           const us = Number.parseInt(line.slice('out_time_us='.length), 10)
           if (Number.isFinite(us) && us >= 0) {
             const percent = Math.min(99, Math.floor((us / durationUs) * 100))
@@ -262,15 +307,22 @@ async function runFfmpeg(
       }
     }
   } finally {
-    options.signal?.removeEventListener('abort', abort)
+    options.signal?.removeEventListener('abort', kill)
+    clearTimeout(wallTimer)
+    if (stallTimer) clearInterval(stallTimer)
   }
 
   const code = await proc.exited
-  const stderr = await stderrText
+  await stderrPump
   if (options.signal?.aborted) throw new HlsAbortedError()
+  if (timedOut) {
+    throw new ProcessTimeoutError(`ffmpeg exceeded its ${Math.round(runOptions.timeoutMs / 1000)}s budget`)
+  }
   if (code !== 0) {
-    const error = new Error(`ffmpeg exited with ${code}: ${stderr.trim().split('\n').slice(-3).join(' | ')}`)
-    ;(error as { stderr?: string }).stderr = stderr
+    const error = new Error(
+      `ffmpeg exited with ${code}: ${stderrTail.trim().split('\n').slice(-3).join(' | ')}`,
+    )
+    ;(error as { stderr?: string }).stderr = stderrTail
     throw error
   }
   return { encoder }
@@ -285,7 +337,11 @@ async function encodeAttempt(
   await rm(dir, { recursive: true, force: true })
   await mkdir(dir, { recursive: true })
   try {
-    return await runFfmpeg(src, dir, options, encoder)
+    return await runFfmpeg(src, dir, options, encoder, {
+      progress: true,
+      timeoutMs: Math.max(10 * 60_000, (options.durationMs ?? 0) * 4),
+      stallTimeoutMs: STALL_TIMEOUT_MS,
+    })
   } catch (error) {
     const aborted = abortError(options.signal)
     if (aborted) throw aborted
@@ -386,9 +442,10 @@ export async function generateHls(
   await ensureDir(tmpDir)
 
   const encode = async (encoder: 'libx264' | 'nvenc') => {
-    await run(ffmpegBin(), ffmpegArgs(src, tmpDir, options, encoder, false), {
-      maxBuffer: 16 * 1024 * 1024,
-      signal: options.signal,
+    await runFfmpeg(src, tmpDir, options, encoder, {
+      progress: false,
+      timeoutMs: Math.max(10 * 60_000, (options.durationMs ?? 0) * 4),
+      stallTimeoutMs: 0,
     })
   }
 

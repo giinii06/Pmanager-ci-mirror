@@ -206,12 +206,87 @@ export interface JobSummaryDTO {
 }
 
 /** Media jobs run beside the GPU queue; ASR, translation and embedding share one card. */
-export type WorkPipeline = 'media' | 'asr' | 'translation' | 'embedding'
+export type WorkPipeline =
+  | 'media'
+  | 'asr'
+  | 'translation'
+  | 'embedding'
+  | 'scene'
+  | 'backup'
+  | 'maintenance'
+  | 'mutation'
+  | 'bulk'
 
-export type WorkKind = JobKind | 'asr' | 'translation' | 'embedding'
+export type WorkKind =
+  | JobKind
+  | 'asr'
+  | 'translation'
+  | 'embedding'
+  | 'scene'
+  | 'backup'
+  | 'maintenance'
+  | 'mutation'
+  | 'bulk'
 
 /** Null means the number is not known yet, never zero. */
-export type EtaBasis = 'history' | null
+export type EtaBasis = 'history' | 'insufficient_data' | null
+
+/**
+ * Stable failure classes shared by the worker, the API and the panel. The code
+ * is stored as a `[CODE] ` prefix in the existing error columns, so an older row
+ * without a prefix keeps its message and reports no code.
+ */
+export const JOB_ERROR_CODES = [
+  'SOURCE_OFFLINE',
+  'SOURCE_NOT_FOUND_CONFIRMED',
+  'SOURCE_CHANGED',
+  'FILE_CORRUPT',
+  'PERMISSION_DENIED',
+  'DISK_FULL',
+  'GPU_OOM',
+  'GPU_LEASE_LOST',
+  'MODEL_MISSING',
+  'MODEL_SHA_MISMATCH',
+  'PROCESS_TIMEOUT',
+  'PROTOCOL_MISMATCH',
+  'USER_CANCELLED',
+  'INTERNAL',
+] as const
+
+export type JobErrorCode = (typeof JOB_ERROR_CODES)[number]
+
+const JOB_ERROR_PREFIX = /^\[([A-Z_]+)\]\s*/
+
+export function formatJobError(code: JobErrorCode, message: string): string {
+  return `[${code}] ${message}`
+}
+
+export function parseJobError(text: string | null | undefined): {
+  code: JobErrorCode | null
+  message: string | null
+} {
+  if (!text) return { code: null, message: null }
+  const match = JOB_ERROR_PREFIX.exec(text)
+  if (!match) return { code: null, message: text }
+  const code = match[1] as JobErrorCode
+  if (!JOB_ERROR_CODES.includes(code)) return { code: null, message: text }
+  return { code, message: text.slice(match[0].length) }
+}
+
+/** These failures wait for the environment instead of burning retry attempts. */
+export function isEnvironmentJobError(code: JobErrorCode | null): boolean {
+  return code === 'SOURCE_OFFLINE' || code === 'DISK_FULL'
+}
+
+/** How much of a file the scene index actually analyses. */
+export interface SceneCoverage {
+  /** Windows this job plans to analyse. */
+  analyzed: number
+  /** Windows a full pass without `SCENE_MAX_WINDOWS` would analyse. */
+  total: number
+  /** True when the cap turned a full pass into a sample. */
+  sampled: boolean
+}
 
 export interface WorkItemDTO {
   id: string
@@ -225,9 +300,14 @@ export interface WorkItemDTO {
   progress: number | null
   /** Null for media jobs. False means the job is waiting for the card. */
   onGpu: boolean | null
+  /** True while a running GPU job has not taken the card yet. */
+  waitingGpu: boolean
+  /** Scene sampling against a full-coverage plan; null for every other lane. */
+  coverage: SceneCoverage | null
   startedAt: string | null
   updatedAt: string | null
   etaSeconds: number | null
+  errorCode: string | null
   errorMessage: string | null
 }
 
@@ -237,6 +317,9 @@ export interface WorkPipelineDTO {
   running: number
   queued: number
   stalled: number
+  /** Active GPU rows that hold the card, and those still waiting for it. */
+  runningGpu: number
+  waitingGpu: number
   etaSeconds: number | null
   basis: EtaBasis
 }

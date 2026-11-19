@@ -50,6 +50,8 @@ export interface SceneConfig {
   dimensions: number
   windowMs: number
   overlapMs: number
+  /** Mirrors the worker's `SCENE_MAX_WINDOWS`, so coverage reads the same plan. */
+  maxWindows: number
   /** The CPU text tower that turns a search box into the three query vectors. */
   queryUrl: string
 }
@@ -198,6 +200,7 @@ function resolveScene(env: Record<string, string | undefined>): SceneConfig {
   const dimensions = Number(env.SCENE_DIMENSIONS)
   const windowSeconds = Number(env.SCENE_WINDOW_SECONDS)
   const overlapSeconds = Number(env.SCENE_OVERLAP_SECONDS)
+  const maxWindows = Number(env.SCENE_MAX_WINDOWS)
   return {
     enabled,
     workerToken: token,
@@ -208,6 +211,7 @@ function resolveScene(env: Record<string, string | undefined>): SceneConfig {
     dimensions: Number.isInteger(dimensions) && dimensions > 0 ? dimensions : 1024,
     windowMs: (Number.isFinite(windowSeconds) && windowSeconds > 0 ? windowSeconds : 10) * 1000,
     overlapMs: (Number.isFinite(overlapSeconds) && overlapSeconds >= 0 ? overlapSeconds : 2) * 1000,
+    maxWindows: Number.isInteger(maxWindows) && maxWindows > 0 ? maxWindows : 120,
     queryUrl: (env.SCENE_QUERY_URL?.trim() || 'http://scene-query:8091').replace(/\/$/, ''),
   }
 }

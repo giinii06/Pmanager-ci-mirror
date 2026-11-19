@@ -1,11 +1,26 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
-import type { JobKind, JobState, Priority } from '@mediavault/shared'
+import {
+  formatJobError,
+  isEnvironmentJobError,
+  type JobErrorCode,
+  type JobKind,
+  type JobState,
+  type Priority,
+} from '@mediavault/shared'
 import type { Db } from './db'
 import type { JobRecord } from './types'
 
 type Params = SQLQueryBindings[]
 
 export const DEFAULT_JOB_LEASE_MS = 120_000
+
+/**
+ * A queued job gains one priority level every two minutes, so a backlog job
+ * reaches `now` after eight minutes and cannot be starved by a stream of
+ * user-visible work. The raw priority still breaks ties, so fresh work stays
+ * ahead of a job that aged to the same effective level.
+ */
+const AGING_MS_PER_LEVEL = 120_000
 
 const JOB_SELECT = `
   id, kind, state, priority, asset_id AS assetId, library_id AS libraryId, payload,
@@ -113,12 +128,15 @@ export function claimNextJob(
          WHERE id = (
            SELECT id FROM jobs
            WHERE state = 'queued' AND run_after <= ?
-           ORDER BY priority ASC, id ASC
+           ORDER BY
+             MAX(0, priority - CAST((? - created_at) / ${AGING_MS_PER_LEVEL} AS INTEGER)) ASC,
+             priority ASC,
+             id ASC
            LIMIT 1
          )
          RETURNING ${JOB_SELECT}`,
       )
-      .get(workerId, leaseExpiresAt, now, now, now) ?? null
+      .get(workerId, leaseExpiresAt, now, now, now, now) ?? null
   )
 }
 
@@ -252,6 +270,7 @@ export function failJob(
   message: string,
   now: number,
   fence?: LeaseFence,
+  code?: JobErrorCode,
 ): boolean {
   let mutated = false
   db.transaction(() => {
@@ -264,7 +283,11 @@ export function failJob(
     const guard = fence
       ? assertFencedRunning(fence)
       : { clause: "WHERE id = ? AND state = 'running'", params: [] as SQLQueryBindings[] }
-    const exhausted = job.attempts >= job.maxAttempts
+    // A missing source or a full disk is the environment's problem; retrying the
+    // same job cannot fix it, so the row waits as a failure until recovery
+    // requeues it (SOURCE_OFFLINE) or an operator acts (DISK_FULL).
+    const exhausted = isEnvironmentJobError(code ?? null) || job.attempts >= job.maxAttempts
+    const stored = code ? formatJobError(code, message) : message
     const backoff = exhausted ? 0 : Math.min(30_000, 1_000 * job.attempts * job.attempts)
     mutated =
       db
@@ -287,7 +310,7 @@ export function failJob(
                  updated_at = ?
                ${guard.clause}`,
         )
-        .run(message, ...(exhausted ? [now, now] : [now + backoff, now]), id, ...guard.params)
+        .run(stored, ...(exhausted ? [now, now] : [now + backoff, now]), id, ...guard.params)
         .changes === 1
   }).immediate()
   return mutated
@@ -478,6 +501,56 @@ export function recoverExpiredJobs(db: Db, now: number): number {
     recovered = cancelled.length + paused + requeued
   }).immediate()
   return recovered
+}
+
+/**
+ * A source that was offline parks its jobs as failures instead of retrying.
+ * Once the library is healthy again the same jobs are requeued with a fresh
+ * attempt budget. A job whose dedupe key already has an active row stays put,
+ * because requeueing it would collide with the unique active index.
+ */
+export function requeueSourceOfflineJobs(db: Db, now: number): number {
+  const rows = db
+    .query<{ id: number }, Params>(
+      `SELECT j.id FROM jobs j
+       LEFT JOIN libraries l
+         ON l.id = COALESCE(j.library_id, (SELECT a.library_id FROM assets a WHERE a.id = j.asset_id))
+       LEFT JOIN library_health h ON h.library_id = l.id
+       WHERE j.state = 'failed'
+         AND j.last_error LIKE '[SOURCE_OFFLINE]%'
+         AND (l.id IS NULL OR h.state = 'ONLINE')
+         AND NOT EXISTS (
+           SELECT 1 FROM jobs n
+           WHERE n.dedupe_key = j.dedupe_key AND n.state IN ('queued','running','paused')
+         )
+       ORDER BY j.id ASC
+       LIMIT 100`,
+    )
+    .all()
+  if (rows.length === 0) return 0
+
+  let requeued = 0
+  db.transaction(() => {
+    for (const row of rows) {
+      requeued += db
+        .query<null, Params>(
+          `UPDATE jobs SET
+             state = 'queued',
+             attempts = 0,
+             worker_id = NULL,
+             lease_expires_at = NULL,
+             run_after = ?,
+             updated_at = ?
+           WHERE id = ? AND state = 'failed'
+             AND NOT EXISTS (
+               SELECT 1 FROM jobs n
+               WHERE n.dedupe_key = jobs.dedupe_key AND n.state IN ('queued','running','paused')
+             )`,
+        )
+        .run(now, now, row.id).changes
+    }
+  }).immediate()
+  return requeued
 }
 
 export function recoverRunningJobs(db: Db, now: number): number {

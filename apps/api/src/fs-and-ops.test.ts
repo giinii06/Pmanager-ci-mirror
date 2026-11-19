@@ -104,6 +104,7 @@ async function createHarness() {
       dimensions: 3,
       windowMs: 4000,
       overlapMs: 0,
+      maxWindows: 120,
       queryUrl: 'http://127.0.0.1:9999',
     },
   }

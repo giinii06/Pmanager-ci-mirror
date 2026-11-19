@@ -22,6 +22,7 @@ class Config:
     poll_seconds: float
     gpu_wait_seconds: float
     max_windows: int
+    stage_timeout_seconds: float = 3600.0
 
 
 def _int(source: dict[str, str], name: str, fallback: int) -> int:
@@ -67,4 +68,5 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         poll_seconds=_float(source, "SCENE_POLL_SECONDS", 2.0),
         gpu_wait_seconds=_float(source, "SCENE_GPU_WAIT_SECONDS", 900.0),
         max_windows=_int(source, "SCENE_MAX_WINDOWS", 120),
+        stage_timeout_seconds=_float(source, "SCENE_STAGE_TIMEOUT_SECONDS", 3600.0),
     )

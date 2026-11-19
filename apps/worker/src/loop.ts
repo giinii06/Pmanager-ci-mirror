@@ -16,6 +16,7 @@ import {
 import { StructuredLogger } from '@mediavault/media'
 import type { WorkerConfig } from './config'
 import { executeJob } from './handlers'
+import { classifyJobError } from './job-errors'
 import { collectHlsGarbage } from './hls-maintenance'
 import { runMutationLoop } from './mutations/worker'
 import { runWorkerRecovery } from './recovery'
@@ -196,10 +197,12 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
           }
         } else {
           const message = (error as Error).message.slice(0, 500)
-          failJob(db, job.id, message, Date.now(), currentFence())
+          const errorCode = classifyJobError(error)
+          failJob(db, job.id, message, Date.now(), currentFence(), errorCode)
           logger.warn('worker.job.failed', {
             jobId: job.id,
             kind: job.kind,
+            errorCode,
             errorMessage: message,
           })
         }

@@ -8,6 +8,7 @@ import {
   listLibraries,
   recordRecoveryLog,
   recoverExpiredJobs,
+  requeueSourceOfflineJobs,
   type Db,
 } from '@mediavault/database'
 import { fileExists, posterPath, resolveInside, thumbnailPath } from '@mediavault/media'
@@ -23,6 +24,7 @@ export interface RecoverySummary {
   cleanedTempFiles: number
   completedExistingThumbnails: number
   requeuedThumbnails: number
+  requeuedSourceOffline: number
   dbIntegrity: string
 }
 
@@ -221,6 +223,7 @@ export async function runWorkerRecovery(
   const cutoffMs = now - staleAgeMs
   const dbIntegrity = getSqliteRuntimeInfo(db).integrity
   const recoveredJobs = recoverExpiredJobs(db, now)
+  const requeuedSourceOffline = requeueSourceOfflineJobs(db, now)
   db.query<null, [number, number]>(
     `UPDATE scan_runs SET
        phase = 'failed',
@@ -259,6 +262,7 @@ export async function runWorkerRecovery(
     cleanedTempFiles: cleanedTemp,
     completedExistingThumbnails: thumbs.completedExisting,
     requeuedThumbnails: thumbs.requeuedMissing,
+    requeuedSourceOffline,
     dbIntegrity,
   }
 }

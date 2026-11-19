@@ -16,6 +16,8 @@ services:
       SCENE_PIPELINE_VERSION: ${SCENE_PIPELINE_VERSION:-1}
       SCENE_WINDOW_SECONDS: ${SCENE_WINDOW_SECONDS:-10}
       SCENE_OVERLAP_SECONDS: ${SCENE_OVERLAP_SECONDS:-2}
+      # Same cap as the worker, so the queue's coverage figure matches the plan.
+      SCENE_MAX_WINDOWS: ${SCENE_MAX_WINDOWS:-120}
       SCENE_QUERY_URL: http://scene-query:8091
 
   scene-worker:

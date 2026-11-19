@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 import os
-import subprocess
 import sys
 import tempfile
 import time
@@ -12,12 +11,16 @@ from pathlib import Path
 from typing import Any
 
 from .model import encode_clip, encode_vector, load_model
+from .processes import ProcessTimeout, run_checked
 
 log = logging.getLogger("scene_worker.stage")
 
 CLIP_SIZE = 336
 CLIP_FPS = 16
 THUMB_WIDTH = 320
+
+FFPROBE_TIMEOUT_SECONDS = 30.0
+FFMPEG_TIMEOUT_SECONDS = float(os.environ.get("SCENE_FFMPEG_TIMEOUT_SECONDS", "300"))
 
 
 def plan_windows(
@@ -46,24 +49,30 @@ def plan_windows(
 
 
 def has_audio(path: str) -> bool:
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "a",
-            "-show_entries",
-            "stream=index",
-            "-of",
-            "csv=p=0",
-            path,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.returncode == 0 and result.stdout.strip() != ""
+    try:
+        result = run_checked(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a",
+                "-show_entries",
+                "stream=index",
+                "-of",
+                "csv=p=0",
+                path,
+            ],
+            timeout_seconds=FFPROBE_TIMEOUT_SECONDS,
+            capture_stdout=True,
+        )
+    except ProcessTimeout:
+        # A probe that never returns is a broken file or a stuck mount, not
+        # "no audio": fail the job instead of silently dropping the audio vectors.
+        raise
+    except RuntimeError:
+        return False
+    return (result.stdout or b"").strip() != b""
 
 
 def cut_clip(source: str, start_ms: int, end_ms: int, dest: Path, *, with_audio: bool) -> None:
@@ -129,12 +138,12 @@ def cut_clip(source: str, start_ms: int, end_ms: int, dest: Path, *, with_audio:
             "1",
             str(dest),
         ]
-    subprocess.run(["ffmpeg", *args], check=True, capture_output=True)
+    run_checked(["ffmpeg", *args], timeout_seconds=FFMPEG_TIMEOUT_SECONDS)
 
 
 def write_thumbnail(source: str, at_ms: int, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
+    run_checked(
         [
             "ffmpeg",
             "-y",
@@ -152,8 +161,7 @@ def write_thumbnail(source: str, at_ms: int, dest: Path) -> None:
             "4",
             str(dest),
         ],
-        check=True,
-        capture_output=True,
+        timeout_seconds=FFMPEG_TIMEOUT_SECONDS,
     )
 
 

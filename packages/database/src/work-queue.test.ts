@@ -1,21 +1,26 @@
 import { describe, expect, test } from 'bun:test'
+import { formatJobError } from '@mediavault/shared'
 import {
   acquireGpuLease,
   claimAsrJob,
   claimEmbeddingJob,
   claimNextJob,
+  claimSceneJob,
   completeEmbeddingJob,
   completeJob,
   createAsrJob,
   createEmbeddingJob,
   createLibrary,
+  createSceneJob,
   deleteLibrary,
   enqueueJob,
   failAsrJob,
   failEmbeddingJob,
   failJob,
+  failSceneJob,
   insertAsset,
   openDatabase,
+  sceneWindowCount,
   upsertFolder,
   workQueue,
 } from './index'
@@ -163,6 +168,16 @@ function finishedEmbedding(
   return start + durationMs
 }
 
+/** A completed ASR row with a known claim-to-finish duration, without transcripts. */
+function finishedAsrRow(db: Db, id: string, startedAt: number, durationMs: number): void {
+  db.query(
+    `INSERT INTO asr_jobs (
+       id, asset_id, file_version, state, stage, progress, attempts, max_attempts,
+       model_revision, aligner_revision, pipeline_version, created_at, updated_at, started_at
+     ) VALUES (?, 'asset1', 1, 'completed', 'completed', 100, 1, 3, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, MODEL, ALIGNER, PIPELINE, startedAt, startedAt + durationMs, startedAt)
+}
+
 describe('work queue', () => {
   test('an idle queue reports zero and no estimate', () => {
     const db = seed()
@@ -228,7 +243,7 @@ describe('work queue', () => {
 
     expect(queue.pipelines[0]!.etaSeconds).toBeNull()
     expect(queue.etaSeconds).toBeNull()
-    expect(queue.basis).toBeNull()
+    expect(queue.basis).toBe('insufficient_data')
   })
 
   test('an expired lease is stalled, counted, and never estimated', () => {
@@ -384,5 +399,133 @@ describe('work queue', () => {
     expect(queue.failures[0]!.kind).toBe('embedding')
     expect(queue.failures[0]!.assetName).toBe('asset1.mp4')
     expect(queue.failures[0]!.errorMessage).toBe('llama-server exited 1')
+  })
+
+  test('window planning mirrors the scene worker', () => {
+    expect(sceneWindowCount(60_000, 10_000, 2_000)).toBe(8)
+    expect(sceneWindowCount(60_000, 10_000, 2_000, 2)).toBe(2)
+    expect(sceneWindowCount(5_000, 10_000, 2_000, 120)).toBe(1)
+    expect(sceneWindowCount(0, 10_000, 2_000)).toBe(0)
+  })
+
+  test('the scene lane reports sampling and follows the lease', () => {
+    const db = seed()
+    createSceneJob(
+      db,
+      {
+        id: 's1',
+        assetId: 'asset1',
+        fileVersion: 1,
+        modelId: 'pe-av-base',
+        modelRevision: 'rev1',
+        modelSha256: 'sha1',
+        pipelineVersion: '1',
+        dimensions: 4,
+        windowMs: 10_000,
+        overlapMs: 2_000,
+      },
+      1_000,
+    )
+    claimSceneJob(db, 'scene-w', 120_000, 1_000)
+
+    const waiting = workQueue(db, 2_000, RESOURCE, { maxSceneWindows: 2 })
+    const waitingLane = waiting.pipelines.find((lane) => lane.pipeline === 'scene')!
+
+    expect(waitingLane.running).toBe(1)
+    expect(waitingLane.waitingGpu).toBe(1)
+    expect(waitingLane.runningGpu).toBe(0)
+    expect(waiting.running[0]!.onGpu).toBe(false)
+    expect(waiting.running[0]!.waitingGpu).toBe(true)
+    expect(waiting.running[0]!.coverage).toEqual({ analyzed: 2, total: 8, sampled: true })
+
+    acquireGpuLease(
+      db,
+      { resourceId: RESOURCE, owner: 'scene-w', taskKind: 'scene', leaseMs: 120_000 },
+      2_000,
+    )
+
+    const holding = workQueue(db, 3_000, RESOURCE, { maxSceneWindows: 2 })
+    const holdingLane = holding.pipelines.find((lane) => lane.pipeline === 'scene')!
+
+    expect(holdingLane.runningGpu).toBe(1)
+    expect(holdingLane.waitingGpu).toBe(0)
+    expect(holding.running[0]!.onGpu).toBe(true)
+    expect(holding.running[0]!.waitingGpu).toBe(false)
+  })
+
+  test('a scene failure keeps its standard error code', () => {
+    const db = seed()
+    createSceneJob(
+      db,
+      {
+        id: 's1',
+        assetId: 'asset1',
+        fileVersion: 1,
+        modelId: 'pe-av-base',
+        modelRevision: 'rev1',
+        modelSha256: 'sha1',
+        pipelineVersion: '1',
+        dimensions: 4,
+        windowMs: 10_000,
+        overlapMs: 2_000,
+        maxAttempts: 1,
+      },
+      1_000,
+    )
+    claimSceneJob(db, 'scene-w', 120_000, 1_000)
+    failSceneJob(
+      db,
+      's1',
+      formatJobError('PROCESS_TIMEOUT', 'scene stage exceeded 60s'),
+      2_000,
+    )
+
+    const queue = workQueue(db, 3_000, RESOURCE)
+
+    expect(queue.failures).toHaveLength(1)
+    expect(queue.failures[0]!.pipeline).toBe('scene')
+    expect(queue.failures[0]!.errorCode).toBe('PROCESS_TIMEOUT')
+    expect(queue.failures[0]!.errorMessage).toBe('scene stage exceeded 60s')
+  })
+
+  test('a waiting GPU job finishes after the holder and the wait does not shrink it', () => {
+    const db = seed()
+    const start = 200_000
+    // Both lanes have a 20s median from 10s, 20s and 30s completions.
+    finishedAsrRow(db, 'a1', start - 100_000, 10_000)
+    finishedAsrRow(db, 'a2', start - 80_000, 20_000)
+    finishedAsrRow(db, 'a3', start - 60_000, 30_000)
+    let done = start - 50_000
+    done = finishedEmbedding(db, 'e1', 'asset1', done, 10_000)
+    done = finishedEmbedding(db, 'e2', 'asset2', done, 20_000)
+    finishedEmbedding(db, 'e3', 'asset3', done, 30_000)
+
+    asrJob(db, 'a4', 'asset1', start)
+    insertAsset(db, assetInput('asset4', 'folder1'))
+    embeddingJob(db, 'e4', 'asset4', start)
+    claimAsrJob(db, 'asr-w', 120_000, start)
+    claimEmbeddingJob(db, 'embed-w', 120_000, start)
+    acquireGpuLease(
+      db,
+      { resourceId: RESOURCE, owner: 'asr-w', taskKind: 'asr', leaseMs: 120_000 },
+      start,
+    )
+
+    const early = workQueue(db, start + 5_000, RESOURCE)
+    const earlyHolder = early.running.find((item) => item.id === 'a4')!
+    const earlyWaiter = early.running.find((item) => item.id === 'e4')!
+
+    expect(earlyHolder.onGpu).toBe(true)
+    expect(earlyHolder.etaSeconds).toBe(15)
+    // 15s left for the ASR holder plus this job's own 20s.
+    expect(earlyWaiter.waitingGpu).toBe(true)
+    expect(earlyWaiter.etaSeconds).toBe(35)
+    expect(early.pipelines.find((lane) => lane.pipeline === 'embedding')!.etaSeconds).toBe(20)
+
+    const later = workQueue(db, start + 15_000, RESOURCE)
+    const laterWaiter = later.running.find((item) => item.id === 'e4')!
+
+    // The waiter spent 10 more seconds waiting, not 10 seconds processing.
+    expect(laterWaiter.etaSeconds).toBe(25)
   })
 })

@@ -245,6 +245,7 @@ async function harness(options: { sceneEnabled?: boolean; query?: boolean } = {}
       dimensions: DIMENSIONS,
       windowMs: 10_000,
       overlapMs: 2_000,
+      maxWindows: 120,
       queryUrl,
     },
   }
