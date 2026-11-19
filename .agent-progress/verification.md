@@ -148,3 +148,25 @@
 - `/health/ready` `200`, `/` `200`, unauthenticated `/api/libraries` `401`, authenticated `200`.
 - With the flag off, a cached video reports `{"state":"ready","playlistUrl":"/api/assets/<id>/hls/master.m3u8","progressPercent":100}`, the legacy `master.m3u8` returns `200`, and the generation route returns `404`. The asset DTO carries the new `hlsStatusUrl`.
 - Worker logs contain no `worker.hls.gc` or `worker.hls.gc_failed` lines: the GC pass ran with nothing to reconcile or collect.
+
+## Spec v1.0 PR 05 Verification (2026-11-19)
+
+- `bun run typecheck`: exit `0` across all 6 workspaces plus the root scripts project.
+- `bun test`: **`402 pass, 0 fail`**, `1570` expect calls, 48 files, `13.19s` (PR 04: `376`/46 files).
+- `bun run --cwd apps/web build`: exit `0`, `212ms`. No web source changed in PR 05; the existing SPA already reads `authenticated` from `/api/auth/status`.
+- Argon2id parameters measured on the Mac: `hash 59 ms`, `verify 55 ms` at `memoryCost 65536, timeCost 2`.
+- v19 rehearsal on a `VACUUM INTO` clone of the live v18 database (`/tmp/pmanager-v18-live.db`, 259 MB): `user_version 18 -> 19`; counters identical at assets `12,851` live / `12,852` total, folders `115`, tags `63`, `asset_tags` `331`, users `2`, playback `191`, `watch_time_ms` `908,884`, libraries `1`, jobs `13,433`, `file_mutations` `0`, `hls_generations` `0`; `integrity_check = ok`; foreign-key violations `0`; `user_sessions`, `auth_login_attempts` and `auth_events` created; both users still carry `scrypt` hashes for the on-login upgrade.
+- Both live scrypt hashes parse under the new strict verifier and return `{ ok: false, needsRehash: true }` for a wrong password in 18–20 ms, with no exception. This proves the stored profile is accepted; the correct password would take the same path and then rehash.
+- Route tests: argon2id format and verify; legacy scrypt verify plus rehash flag; malformed/oversized scrypt rejected without throwing; login upgrades a scrypt row to `$argon2id$`; cookie flags (`HttpOnly`, `SameSite=Strict`, `Path=/`, `Max-Age=2592000`) and `Cache-Control: no-store`; logout revokes; session list marks the caller; another user's session id is a 404 and stays valid; logout-all kills every session; password change refuses a wrong current password, replaces all sessions, updates the hash, and only the new password logs in; malformed cookies are ignored; two concurrent setup calls produce `201` and `409` with one user; ten failures produce `429` with `Retry-After`; the per-IP limit counts attempts; a forwarded header from an untrusted peer does not create a new client identity; cross-origin, `null` origin and `cross-site` fetch metadata are `403` while the same origin and safe methods pass; a worker route is `401` without its token.
+
+### PR 05 Live Host Verification (`media-server`, 2026-11-19)
+
+- Shipped `be9071f` by bundle from host `4947eff`; `git merge --ff-only` fast-forwarded cleanly.
+- Took a pre-v19 backup with `VACUUM INTO` into `~/Pmanager-backups/pre-v19-20261119-222438/` (`mediavault.db` 259 MB, `secret.key`, and the five env snapshots). Counters match the live DB.
+- Rebuilt and recreated only `api` (worker and web unchanged), then restarted `nginx`. `api` reached `healthy` in 12 s. Live schema is `v19`; `user_sessions` and `auth_events` are empty; `12,851` active assets unchanged.
+- `/health/ready` `200`, `/` `200`. The old HMAC cookie returns `401`, and `/api/auth/status` reports `{setupRequired:false, authenticated:false, user:null}` — the documented one-time sign-out.
+- `docker exec mediavault-api-1 bun scripts/mint-session.ts` printed a token; `/api/libraries` returned `200`, `/api/auth/status` reported `giini`, and `/api/auth/sessions` listed one row with `current: true` and a 30-day expiry. `POST /api/auth/logout` returned `204` and the same token then returned `401`.
+- Origin checks through nginx: `Origin: http://evil.example` → `403`; `Origin: null` behaviour covered by tests; `Origin: http://127.0.0.1:8080` and `http://192.168.0.27:8080` → `401` (reaches login); an origin without the port → `403`.
+- **Bug found and fixed during verification:** nginx forwarded `Host $host`, which drops `:8080`, so every same-origin state-changing request was refused. `d9fbf87` switches `/api/` to `Host $http_host`; after the restart the same-origin login request reached the route.
+- Live rate limit: ten wrong passwords for a non-existent username produced `429` with `retry-after: 899`. The real account names were not used, so no operator login was locked.
+- API and worker logs since the deploy contain no errors.

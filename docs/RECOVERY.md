@@ -51,3 +51,28 @@ docker run --rm -v mediavault_mediavault-data:/data alpine \
 # 4. 무결성 확인 및 기동
 docker compose ... up -d api worker
 ```
+
+## 5. 로그인·세션 복구
+
+세션은 서버 측 `user_sessions` 행이며 쿠키에는 256비트 토큰만 들어간다. DB에는 토큰의 HMAC 다이제스트만 저장되므로 DB 사본으로 로그인할 수는 없지만, 운영자는 다음 두 가지를 알아야 한다.
+
+### 비밀번호를 잊었을 때
+
+복구 엔드포인트는 의도적으로 없다. 대신 오프라인 스크립트가 Argon2id 해시를 다시 쓰고 모든 세션을 폐기한다.
+
+```bash
+# API를 먼저 멈춘다. 실행 중인 WAL DB에 스크립트를 돌리지 않는다.
+docker compose ... stop api
+printf '%s\n' '<새 비밀번호>' | docker exec -i mediavault-api-1 bun scripts/reset-password.ts --user <계정>
+docker compose ... start api
+```
+
+사용자가 둘 이상이면 `--user`가 필수이고, 없으면 스크립트가 계정 목록을 출력하고 종료한다.
+
+### 강제 로그아웃
+
+`POST /api/auth/logout-all`은 그 사용자의 모든 세션을 폐기한다. 특정 세션만 끊으려면 `GET /api/auth/sessions`로 `id`를 확인한 뒤 `DELETE /api/auth/sessions/:id`를 호출한다. 비밀번호를 바꾸면 기존 세션이 전부 폐기되고 현재 브라우저에 새 세션이 발급된다.
+
+### 자동 점검용 세션
+
+`docker exec mediavault-api-1 bun scripts/mint-session.ts`가 30일 세션을 만들고 `mv_session=<token>`을 출력한다. 스키마 `v19` 이전의 HMAC 서명 토큰은 더 이상 받지 않는다.
