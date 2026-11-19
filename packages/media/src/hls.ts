@@ -245,10 +245,19 @@ export async function runFfmpeg(
   const proc = Bun.spawn([ffmpegBin(), ...ffmpegArgs(src, dir, options, encoder, runOptions.progress)], {
     stdout: 'pipe',
     stderr: 'pipe',
+    // A new session makes ffmpeg the leader of its own group, so a cancel can
+    // take down any helper it spawned instead of leaving it holding the file.
+    detached: true,
   })
 
   let timedOut = false
-  const kill = () => proc.kill(9)
+  const kill = () => {
+    try {
+      process.kill(-proc.pid, 'SIGKILL')
+    } catch {
+      proc.kill(9)
+    }
+  }
   options.signal?.addEventListener('abort', kill, { once: true })
   const wallTimer = setTimeout(() => {
     timedOut = true

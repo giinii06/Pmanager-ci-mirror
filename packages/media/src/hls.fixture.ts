@@ -57,4 +57,10 @@ if (args.includes('-progress')) {
 if (mode === 'slow') {
   await Bun.sleep(30_000)
 }
+if (mode === 'tree') {
+  // A helper in the same group, so a group kill must take it down too.
+  const child = Bun.spawn([process.execPath, '-e', 'await Bun.sleep(60_000)'])
+  writeFileSync(path.join(tmpdir(), 'mv-fake-ffmpeg.child'), String(child.pid))
+  await Bun.sleep(60_000)
+}
 if (args.includes('-progress')) process.stdout.write('progress=end\n')

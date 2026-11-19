@@ -1,5 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
@@ -193,4 +202,36 @@ describe('bounded ffmpeg execution', () => {
     expect(Date.now() - started).toBeLessThan(5_000)
     clearMode()
   })
+
+  test('a timeout takes down a helper the encoder spawned', async () => {
+    const childPidFile = path.join(tmpdir(), 'mv-fake-ffmpeg.child')
+    rmSync(childPidFile, { force: true })
+    setMode('tree')
+    const { cacheDir, source } = workspace()
+    const outDir = path.join(cacheDir, 'encode')
+    mkdirSync(outDir, { recursive: true })
+
+    const failure = await runFfmpeg(
+      source,
+      outDir,
+      { hwaccel: null, width: 1280, durationMs: 10_000 },
+      'libx264',
+      { progress: false, timeoutMs: 1_500, stallTimeoutMs: 0 },
+    ).catch((error) => error)
+
+    expect(failure).toBeInstanceOf(ProcessTimeoutError)
+    const childPid = Number(readFileSync(childPidFile, 'utf8'))
+    expect(Number.isInteger(childPid)).toBe(true)
+
+    const deadline = Date.now() + 5_000
+    while (Date.now() < deadline && processAlive(childPid)) await Bun.sleep(50)
+    expect(processAlive(childPid)).toBe(false)
+    clearMode()
+  })
 })
+
+function processAlive(pid: number): boolean {
+  const result = Bun.spawnSync(['ps', '-o', 'stat=', '-p', String(pid)])
+  const state = result.stdout.toString().trim()
+  return state !== '' && !state.startsWith('Z')
+}
