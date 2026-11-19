@@ -1,0 +1,21 @@
+# Local sample stack. Production compose requires real host paths and never
+# creates them. This override swaps the media bind for the checked-in sample
+# folder so `bun run sample` and local UI work need no drive configuration.
+#
+#   docker compose --env-file .env.example -f compose.yaml -f compose.dev.yaml up
+services:
+  api:
+    volumes: !override
+      - ./sample-media:/media
+      - mediavault-data:/data
+      - mediavault-cache:/cache
+  worker:
+    volumes: !override
+      - ./sample-media:/media
+      - mediavault-data:/data
+      - mediavault-cache:/cache
+  nginx:
+    volumes: !override
+      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./sample-media:/media:ro
+      - mediavault-cache:/cache:ro

@@ -1,0 +1,62 @@
+# Extra media drives. Include this file only on a host that has these drives
+# and registers libraries inside them.
+#
+#   docker compose --env-file .env -f compose.yaml -f compose.drives.yaml up -d
+#
+# Every source must exist. Docker never creates a missing drive path, because a
+# new empty directory would look like a library whose files all disappeared.
+x-drive-binds: &drive-binds
+  - type: bind
+    source: ${EXTRA_MEDIA_ROOT:?set EXTRA_MEDIA_ROOT to the host extra media folder}
+    target: /media/extra
+    bind:
+      create_host_path: false
+  - type: bind
+    source: ${DRIVE_C_ROOT:?set DRIVE_C_ROOT to the host C drive mount}
+    target: /media/drives/c
+    bind:
+      create_host_path: false
+  - type: bind
+    source: ${DRIVE_D_ROOT:?set DRIVE_D_ROOT to the host D drive mount}
+    target: /media/drives/d
+    bind:
+      create_host_path: false
+  - type: bind
+    source: ${DRIVE_E_ROOT:?set DRIVE_E_ROOT to the host E drive mount}
+    target: /media/drives/e
+    bind:
+      create_host_path: false
+
+x-drive-binds-ro: &drive-binds-ro
+  - type: bind
+    source: ${EXTRA_MEDIA_ROOT:?set EXTRA_MEDIA_ROOT to the host extra media folder}
+    target: /media/extra
+    read_only: true
+    bind:
+      create_host_path: false
+  - type: bind
+    source: ${DRIVE_C_ROOT:?set DRIVE_C_ROOT to the host C drive mount}
+    target: /media/drives/c
+    read_only: true
+    bind:
+      create_host_path: false
+  - type: bind
+    source: ${DRIVE_D_ROOT:?set DRIVE_D_ROOT to the host D drive mount}
+    target: /media/drives/d
+    read_only: true
+    bind:
+      create_host_path: false
+  - type: bind
+    source: ${DRIVE_E_ROOT:?set DRIVE_E_ROOT to the host E drive mount}
+    target: /media/drives/e
+    read_only: true
+    bind:
+      create_host_path: false
+
+services:
+  api:
+    volumes: *drive-binds
+  worker:
+    volumes: *drive-binds
+  nginx:
+    volumes: *drive-binds-ro

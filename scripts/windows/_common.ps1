@@ -17,6 +17,7 @@ $script:ComposeArgs = @(
     "--env-file .env.embedding",
     "--env-file .env.scene",
     "-f compose.yaml",
+    "-f compose.drives.yaml",
     "-f compose.asr.models.yaml",
     "-f compose.asr.cuda.yaml",
     "-f compose.translation.models.yaml",
@@ -66,4 +67,15 @@ function Invoke-WslBash {
         ExitCode = $exitCode
         Output   = ($output -join "`n")
     }
+}
+
+function Test-MvPreflight {
+    $cmd = "cd $($script:RepoDir) && docker compose $($script:ComposeArgs) run --rm --no-deps --build api bun run scripts/preflight.ts --require-all --min-free-mb 1024"
+    $res = Invoke-WslBash -Command $cmd
+    if ($res.ExitCode -ne 0) {
+        Write-MvLog "Preflight failed (exit $($res.ExitCode)): $($res.Output)" "ERROR"
+        return $false
+    }
+    Write-MvLog "Preflight passed: every media root is readable and has free space."
+    return $true
 }

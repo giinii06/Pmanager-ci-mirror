@@ -9,7 +9,7 @@
 ## Spec v1.0 PR Sequence
 
 - [x] **PR 00 Baseline/Backup:** `docs/IMPLEMENTATION-BASELINE.md`, v15 backup verification, restore rehearsal, baseline test counts.
-- [ ] **PR 01 Ignore/Compose:** `.env*` ignore rules, long-syntax binds with `create_host_path: false`, required drive roots, ASR/scene read-only mounts, preflight script and tests.
+- [x] **PR 01 Ignore/Compose:** `.env*` ignore rules, long-syntax binds with `create_host_path: false`, required drive roots, ASR/scene read-only mounts, preflight script and tests.
 - [ ] **PR 02 Library Health:** `ONLINE/OFFLINE/DEGRADED/UNVERIFIED` health, scanner finalize guard, small-library deletion policy, health API/UI, zero-deletion regression tests.
 - [ ] **PR 03 Mutation Engine:** `v16` `file_mutations`, `mutation_events`, `library_health`, quarantine delete state machine, idempotent delete API, dedicated mutation worker, SIGKILL reconciliation tests.
 - [ ] **PR 04 Cache/HLS:** `v17` `hls_generations`, `hls_active`, immutable generation publishing and routes.

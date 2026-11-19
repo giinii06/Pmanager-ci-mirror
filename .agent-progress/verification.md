@@ -55,3 +55,16 @@
 - Latest host backup `mediavault-2026-11-19T03-25-54-233Z-r777ns.db`: v15, integrity `ok`, FK `0`, same counts.
 - Restore rehearsal on `/tmp/restore-rehearsal.db` inside `mediavault-api-1`: integrity `ok`, FK `0`, counts match; temp file removed. Production DB and backup original untouched.
 - Not verified in PR 00: Windows unattended boot rehearsal, full Docker Compose render, real GPU inference. These belong to later PRs and the release gate.
+
+## Spec v1.0 PR 01 Verification (2026-11-19)
+
+- `bun run typecheck`: exit `0`, including the new root `tsconfig.json` check for `scripts/**/*.ts`.
+- `bun test`: **`309 pass, 0 fail`**, `1157` expect calls, 37 files, `7.63s` (11 new preflight tests).
+- `bun run --cwd apps/web build`: exit `0`, `206ms`.
+- `docker compose --env-file .env.example -f compose.yaml -f compose.drives.yaml config`: exit `0`. Rendered 5 mounts per media service, `create_host_path: false` on every bind.
+- `docker compose --env-file .env.example -f compose.yaml config`: exit `0` (single-root host).
+- `docker compose --env-file .env.example -f compose.yaml -f compose.dev.yaml config`: exit `0`; the `!override` tag replaced the production media bind with `./sample-media`.
+- `docker compose` with an empty env file and an empty project directory: exit `1` with `required variable MEDIA_ROOT is missing a value`, which is the intended fail-fast.
+- ASR/scene compose render with example env files and test tokens: exit `0`; 21 drive mounts and 7 extra-root mounts across api, worker, nginx, asr-worker and scene-worker.
+- `git check-ignore`: `.env.scene` and `.env.asr.bak-langid` match `.env.*`; `.env.example` and `.env.asr.example` remain unignored.
+- Not verified yet: live host restart with the new compose files. That check follows the commit and is recorded below when it runs.

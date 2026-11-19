@@ -12,7 +12,8 @@
     "sample": "bun run scripts/make-sample.ts",
     "smoke": "bun run scripts/smoke.ts",
     "test": "bun test",
-    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/database typecheck && bun run --cwd packages/media typecheck && bun run --cwd apps/api typecheck && bun run --cwd apps/worker typecheck && bun run --cwd apps/web typecheck",
+    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/database typecheck && bun run --cwd packages/media typecheck && bun run --cwd apps/api typecheck && bun run --cwd apps/worker typecheck && bun run --cwd apps/web typecheck && tsc -p tsconfig.json --noEmit",
+    "preflight": "bun run scripts/preflight.ts",
     "api": "bun run apps/api/src/index.ts",
     "worker": "bun run apps/worker/src/index.ts",
     "web": "bun run --cwd apps/web dev"

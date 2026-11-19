@@ -44,8 +44,36 @@ services:
       SCENE_GPU_WAIT_SECONDS: ${SCENE_GPU_WAIT_SECONDS:-3600}
       HF_HUB_OFFLINE: "1"
     volumes:
-      - ${MEDIA_ROOT:-./sample-media}:/media:ro
-      - ${EXTRA_MEDIA_ROOT:-./sample-media}:/media/extra:ro
+      - type: bind
+        source: ${MEDIA_ROOT:?set MEDIA_ROOT to the host media folder}
+        target: /media
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${EXTRA_MEDIA_ROOT:?set EXTRA_MEDIA_ROOT to the host extra media folder}
+        target: /media/extra
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DRIVE_C_ROOT:?set DRIVE_C_ROOT to the host C drive mount}
+        target: /media/drives/c
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DRIVE_D_ROOT:?set DRIVE_D_ROOT to the host D drive mount}
+        target: /media/drives/d
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DRIVE_E_ROOT:?set DRIVE_E_ROOT to the host E drive mount}
+        target: /media/drives/e
+        read_only: true
+        bind:
+          create_host_path: false
       - ./models:/models:ro
       - mediavault-cache:/cache
     depends_on:

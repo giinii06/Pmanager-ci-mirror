@@ -62,3 +62,12 @@
 - Verified live host read-only: schema `v15`, `12,756` active assets, `113` folders, `63` tags, `1` library, `191` playback rows, `1` vote event, `integrity_check = ok`, `foreign_key_check = 0`.
 - Verified latest host backup `mediavault-2026-11-19T03-25-54-233Z-r777ns.db` (255 MB, v15, integrity `ok`, 0 FK violations).
 - Restore rehearsal on a container `/tmp` copy passed with matching counts and was deleted. The production DB and the backup original were not modified.
+
+## Spec v1.0 PR 01 — Ignore, Compose, Preflight
+
+- `.gitignore` and `.dockerignore` now ignore `.env` and `.env.*`, with exceptions for `.env.example` and `.env.*.example`. `git ls-files` shows only example files tracked; `git check-ignore` confirms `.env.scene` and `.env.asr.bak-langid` are ignored.
+- `compose.yaml` mounts only `MEDIA_ROOT` at `/media`, uses long-syntax binds with `create_host_path: false`, and fails interpolation when `MEDIA_ROOT` is missing. `compose.drives.yaml` adds `/media/extra` and `/media/drives/{c,d,e}` with required roots. `compose.dev.yaml` is the only file that uses `./sample-media`.
+- `compose.asr.cuda.yaml` and `compose.scene.cuda.yaml` now mount the extra root and all three drives read-only, with required variables and no host path creation.
+- Added `scripts/preflight.ts` with 11 tests. It checks existence, directory type, read access, device identity, free space, optional non-empty and marker requirements, and duplicate device warnings. It exits `1` on a failed required path.
+- Added `Test-MvPreflight` to the Windows supervisor and start script, and added `compose.drives.yaml` to the shared compose arguments. The API image now copies `scripts/` so preflight runs inside the container view.
+- `package.json` typecheck now includes the root `tsconfig.json` that covers `scripts/**/*.ts`.

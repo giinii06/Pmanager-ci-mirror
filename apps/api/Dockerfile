@@ -37,6 +37,7 @@ COPY --from=deps /app/apps/api ./apps/api
 COPY package.json tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/api ./apps/api
+COPY scripts ./scripts
 
 RUN mkdir -p /data /cache
 

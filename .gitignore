@@ -1,9 +1,9 @@
 node_modules/
 dist/
 .env
-.env.asr
-.env.translation
-.env.embedding
+.env.*
+!.env.example
+!.env.*.example
 .DS_Store
 
 data/

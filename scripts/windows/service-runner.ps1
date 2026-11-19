@@ -61,6 +61,9 @@ function Wait-DrivesReady {
 }
 
 function Start-ComposeStack {
+    if (-not (Test-MvPreflight)) {
+        return $false
+    }
     $cmd = "cd $($script:RepoDir) && docker compose $($script:ComposeArgs) up -d --remove-orphans"
     $res = Invoke-WslBash -Command $cmd
     if ($res.ExitCode -ne 0) {
