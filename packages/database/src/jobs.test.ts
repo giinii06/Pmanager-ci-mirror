@@ -188,4 +188,31 @@ describe('job queue', () => {
     expect(requeueSourceOfflineJobs(db, 2_000)).toBe(0)
     db.close()
   })
+
+  test('records the API request that asked for the work', () => {
+    const db = freshDb()
+    enqueueJob(
+      db,
+      { dedupeKey: 'preview:a:v1', kind: 'preview', priority: 2, requestId: 'req-abc' },
+      1_000,
+    )
+    enqueueJob(db, { dedupeKey: 'thumbnail:b:v1', kind: 'thumbnail', priority: 2 }, 1_000)
+
+    expect(claimNextJob(db, 1_100, { excludeKinds: ['thumbnail'] })?.requestId).toBe('req-abc')
+    expect(claimNextJob(db, 1_200, { excludeKinds: ['thumbnail'] })).toBeNull()
+    db.close()
+  })
+
+  test('excluded kinds stay queued instead of failing', () => {
+    const db = freshDb()
+    enqueueJob(db, { dedupeKey: 'thumbnail:a:v1', kind: 'thumbnail', priority: 1 }, 1_000)
+    enqueueJob(db, { dedupeKey: 'hls:a:v1', kind: 'hls', priority: 2 }, 1_000)
+    enqueueJob(db, { dedupeKey: 'scan:lib1', kind: 'scan_library', priority: 3 }, 1_000)
+
+    const claimed = claimNextJob(db, 1_100, { excludeKinds: ['thumbnail', 'hls'] })
+    expect(claimed?.kind).toBe('scan_library')
+    expect(jobCounts(db).queued).toBe(2)
+    expect(jobCounts(db).failed).toBe(0)
+    db.close()
+  })
 })

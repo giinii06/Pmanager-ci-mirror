@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 24
+export const SCHEMA_VERSION = 25
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -943,6 +943,94 @@ ALTER TABLE file_mutations ADD COLUMN target_library_id TEXT;
 ALTER TABLE file_mutations ADD COLUMN target_rel TEXT;
 `
 
+// An incident is one row, not one row per evaluation. `dedupe_key` names the
+// condition; the partial unique index keeps a single open row per condition and
+// lets a resolved row free the key so a later incident can open a new one.
+// Notifications are system-wide because the server has one operator, while
+// `read_at` still records that the operator saw it. Delivery attempts are
+// separate rows so a Discord outage never loses the notification itself.
+//
+// A heartbeat row is keyed by `instance_id`, a random id per worker boot,
+// because Docker reuses `worker_id` across restarts. Counting distinct
+// instances in the last hour is what detects a restart loop.
+export const V25_OBSERVABILITY_SQL = `
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN (
+    'drive_offline','mass_missing','disk_low','gpu_oom','job_stalled',
+    'backup_missing','backup_failed','db_integrity','restart_loop','mutation_failed'
+  )),
+  severity TEXT NOT NULL CHECK (severity IN ('info','warning','critical')),
+  state TEXT NOT NULL CHECK (state IN ('open','resolved','dismissed')),
+  dedupe_key TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  metadata_json TEXT,
+  occurrences INTEGER NOT NULL DEFAULT 1,
+  read_at INTEGER,
+  first_seen_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  last_notified_at INTEGER,
+  resolved_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_notifications_active_dedupe
+  ON notifications(dedupe_key) WHERE state IN ('open','dismissed');
+CREATE INDEX IF NOT EXISTS idx_notifications_state_seen
+  ON notifications(state, last_seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS notification_delivery_attempts (
+  id TEXT PRIMARY KEY,
+  notification_id TEXT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+  channel TEXT NOT NULL CHECK (channel IN ('discord')),
+  message_kind TEXT NOT NULL CHECK (message_kind IN ('alert','recovery')),
+  status TEXT NOT NULL CHECK (status IN ('pending','sent','failed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at INTEGER NOT NULL,
+  last_error TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_delivery_due
+  ON notification_delivery_attempts(status, next_attempt_at);
+
+CREATE TABLE IF NOT EXISTS diagnostics_runs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  format TEXT NOT NULL CHECK (format IN ('json','md')),
+  size_bytes INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_diagnostics_runs_created ON diagnostics_runs(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS worker_heartbeats (
+  instance_id TEXT PRIMARY KEY,
+  worker_id TEXT NOT NULL,
+  component TEXT NOT NULL,
+  pid INTEGER NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('idle','running','stopping')),
+  current_job_id INTEGER,
+  started_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_worker_heartbeats_seen ON worker_heartbeats(last_seen_at);
+
+CREATE TABLE IF NOT EXISTS cache_cleanup_runs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  types_json TEXT NOT NULL,
+  candidate_bytes INTEGER NOT NULL,
+  deleted_bytes INTEGER NOT NULL,
+  deleted_files INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cache_cleanup_runs_created ON cache_cleanup_runs(created_at DESC);
+
+ALTER TABLE jobs ADD COLUMN request_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_jobs_request ON jobs(request_id) WHERE request_id IS NOT NULL;
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -1002,4 +1090,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V22_DUPLICATES_SQL),
   (exec) => exec(V23_COLLECTIONS_SQL),
   (exec) => exec(V24_BULK_OPERATIONS_SQL),
+  (exec) => exec(V25_OBSERVABILITY_SQL),
 ]

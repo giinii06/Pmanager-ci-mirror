@@ -345,4 +345,59 @@ describe('schema v18 HLS generations', () => {
     expect(generation.errorCode).toBe('orphaned')
     db.close()
   })
+
+  test('a ready generation with no active pointer is collected once idle', () => {
+    const db = openDatabase(':memory:')
+    seedLibrary(db)
+    const created = request(db)
+    const job = claimJob(db)
+    expect(claimHlsGeneration(db, created.generation.id, fence(job))).toBe(true)
+    publishHlsGeneration(db, {
+      id: created.generation.id,
+      fence: fence(job),
+      storageRel: 'hls/asset1/v1/g/a',
+      playlistRel: 'hls/asset1/v1/g/a/master.m3u8',
+      encoder: 'libx264',
+      graceMs: 1_000,
+    })
+
+    // The version trigger clears `hls_active`, so nothing points at the row and
+    // it never received an `eligible_for_gc_at` stamp.
+    db.query('DELETE FROM hls_active').run()
+    db.query('UPDATE hls_generations SET eligible_for_gc_at = NULL WHERE id = ?').run(
+      created.generation.id,
+    )
+
+    const publishedAt = getHlsGeneration(db, created.generation.id)!.publishedAt!
+    expect(listHlsGcCandidates(db, publishedAt + 30 * 60_000, 60 * 60_000)).toHaveLength(0)
+    expect(listHlsGcCandidates(db, publishedAt + 61 * 60_000, 60 * 60_000)).toHaveLength(1)
+
+    // A fresh access pushes the idle deadline out again.
+    db.query('UPDATE hls_generations SET last_access_at = ? WHERE id = ?').run(
+      publishedAt + 61 * 60_000,
+      created.generation.id,
+    )
+    expect(listHlsGcCandidates(db, publishedAt + 90 * 60_000, 60 * 60_000)).toHaveLength(0)
+    db.close()
+  })
+
+  test('an active generation is protected even when idle', () => {
+    const db = openDatabase(':memory:')
+    seedLibrary(db)
+    const created = request(db)
+    const job = claimJob(db)
+    expect(claimHlsGeneration(db, created.generation.id, fence(job))).toBe(true)
+    publishHlsGeneration(db, {
+      id: created.generation.id,
+      fence: fence(job),
+      storageRel: 'hls/asset1/v1/g/a',
+      playlistRel: 'hls/asset1/v1/g/a/master.m3u8',
+      encoder: 'libx264',
+      graceMs: 1_000,
+    })
+    db.query('UPDATE hls_generations SET eligible_for_gc_at = 1, last_access_at = 1').run()
+
+    expect(listHlsGcCandidates(db, 10_000_000, 60_000)).toHaveLength(0)
+    db.close()
+  })
 })

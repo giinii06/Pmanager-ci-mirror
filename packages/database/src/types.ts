@@ -3,10 +3,14 @@ import type {
   AsrJobState,
   AsrStage,
   AssetKind,
+  CacheType,
   EmbeddingJobState,
   EmbeddingStage,
   JobKind,
   JobState,
+  NotificationKind,
+  NotificationSeverity,
+  NotificationState,
   ScanState,
   SceneJobState,
   SceneStage,
@@ -264,6 +268,7 @@ export interface JobRecord {
   pauseRequested: 0 | 1
   cancelRequested: 0 | 1
   lastError: string | null
+  requestId: string | null
   startedAt: number | null
   completedAt: number | null
   updatedAt: number
@@ -735,4 +740,94 @@ export interface UserSessionRecord {
   lastSeenAt: number
   expiresAt: number
   revokedAt: number | null
+}
+
+export interface NotificationFinding {
+  kind: NotificationKind
+  severity: NotificationSeverity
+  dedupeKey: string
+  title: string
+  body: string
+  metadata?: unknown
+}
+
+export interface NotificationRecord {
+  id: string
+  kind: NotificationKind
+  severity: NotificationSeverity
+  state: NotificationState
+  dedupeKey: string
+  title: string
+  body: string
+  metadataJson: string | null
+  occurrences: number
+  readAt: number | null
+  firstSeenAt: number
+  lastSeenAt: number
+  lastNotifiedAt: number | null
+  resolvedAt: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface NotificationDeliveryRecord {
+  id: string
+  notificationId: string
+  channel: 'discord'
+  messageKind: 'alert' | 'recovery'
+  status: 'pending' | 'sent' | 'failed'
+  attempts: number
+  nextAttemptAt: number
+  lastError: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface DiagnosticsRunRecord {
+  id: string
+  userId: string | null
+  format: 'json' | 'md'
+  sizeBytes: number
+  createdAt: number
+}
+
+export interface WorkerHeartbeatRecord {
+  instanceId: string
+  workerId: string
+  component: string
+  pid: number
+  state: 'idle' | 'running' | 'stopping'
+  currentJobId: number | null
+  startedAt: number
+  lastSeenAt: number
+}
+
+export interface WorkerHeartbeatInput {
+  instanceId: string
+  workerId: string
+  component: string
+  pid: number
+  state: WorkerHeartbeatRecord['state']
+  currentJobId?: number | null
+  now: number
+}
+
+export interface CacheCleanupRunRecord {
+  id: string
+  userId: string | null
+  typesJson: string
+  candidateBytes: number
+  deletedBytes: number
+  deletedFiles: number
+  createdAt: number
+}
+
+export interface CacheCleanupRunInput {
+  id: string
+  userId: string | null
+  types: CacheType[]
+  candidateBytes: number
+  deletedBytes: number
+  deletedFiles: number
+  now: number
 }

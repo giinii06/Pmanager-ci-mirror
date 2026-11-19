@@ -386,6 +386,13 @@ export function touchHlsGenerationAccess(
   ).run(now, id, now - minAgeMs)
 }
 
+/**
+ * A `ready` generation that no `hls_active` row points at can never be served
+ * again, so idleness alone makes it a candidate. `eligible_for_gc_at` still
+ * holds a superseded generation back for its grace period, but a row that lost
+ * its active pointer without that stamp (a crash, or the version trigger) is
+ * reclaimed once its last touch is older than the idle window.
+ */
 export function listHlsGcCandidates(
   db: Db,
   now: number,
@@ -396,10 +403,10 @@ export function listHlsGcCandidates(
     .query<HlsGenerationRecord, Params>(
       `SELECT ${GENERATION_SELECT} FROM hls_generations g
        WHERE g.state = 'ready'
-         AND g.eligible_for_gc_at IS NOT NULL AND g.eligible_for_gc_at <= ?
-         AND (g.last_access_at IS NULL OR g.last_access_at <= ?)
+         AND (g.eligible_for_gc_at IS NULL OR g.eligible_for_gc_at <= ?)
+         AND COALESCE(g.last_access_at, g.published_at, g.updated_at) <= ?
          AND NOT EXISTS (SELECT 1 FROM hls_active a WHERE a.generation_id = g.id)
-       ORDER BY g.eligible_for_gc_at ASC LIMIT ?`,
+       ORDER BY COALESCE(g.eligible_for_gc_at, g.published_at, g.updated_at) ASC LIMIT ?`,
     )
     .all(now, now - minIdleMs, limit)
 }

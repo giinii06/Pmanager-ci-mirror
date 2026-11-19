@@ -30,6 +30,7 @@ const JOB_SELECT = `
   phase, checkpoint,
   pause_requested AS pauseRequested, cancel_requested AS cancelRequested,
   last_error AS lastError, started_at AS startedAt, completed_at AS completedAt,
+  request_id AS requestId,
   updated_at AS updatedAt
 `
 
@@ -42,6 +43,8 @@ export interface EnqueueJobInput {
   payload?: unknown
   maxAttempts?: number
   progressTotal?: number | null
+  /** The API request that asked for the work; null for background triggers. */
+  requestId?: string | null
 }
 
 export interface LeaseFence {
@@ -53,6 +56,8 @@ export interface LeaseFence {
 export interface ClaimOptions {
   workerId?: string
   leaseMs?: number
+  /** Kinds the caller cannot run right now, e.g. cache writes below disk headroom. */
+  excludeKinds?: JobKind[]
 }
 
 export interface JobProgressPatch {
@@ -71,8 +76,8 @@ export function enqueueJob(db: Db, input: EnqueueJobInput, now: number): JobStat
     .query<{ state: JobState }, Params>(
       `INSERT INTO jobs (
          dedupe_key, kind, state, priority, asset_id, library_id, payload, max_attempts,
-         progress_total, created_at, updated_at
-       ) VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)
+         progress_total, request_id, created_at, updated_at
+       ) VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (dedupe_key) WHERE state IN ('queued','running','paused') DO UPDATE SET
          priority = MIN(jobs.priority, excluded.priority),
          updated_at = excluded.updated_at
@@ -87,6 +92,7 @@ export function enqueueJob(db: Db, input: EnqueueJobInput, now: number): JobStat
       input.payload === undefined ? null : JSON.stringify(input.payload),
       input.maxAttempts ?? 3,
       input.progressTotal ?? null,
+      input.requestId ?? null,
       now,
       now,
     )
@@ -112,6 +118,9 @@ export function claimNextJob(
 ): JobRecord | null {
   const workerId = options.workerId ?? 'worker-default'
   const leaseExpiresAt = now + (options.leaseMs ?? DEFAULT_JOB_LEASE_MS)
+  const excluded = options.excludeKinds ?? []
+  const excludeClause =
+    excluded.length > 0 ? `AND kind NOT IN (${excluded.map(() => '?').join(', ')})` : ''
   return (
     db
       .query<JobRecord, Params>(
@@ -127,7 +136,7 @@ export function claimNextJob(
            updated_at = ?
          WHERE id = (
            SELECT id FROM jobs
-           WHERE state = 'queued' AND run_after <= ?
+           WHERE state = 'queued' AND run_after <= ? ${excludeClause}
            ORDER BY
              MAX(0, priority - CAST((? - created_at) / ${AGING_MS_PER_LEVEL} AS INTEGER)) ASC,
              priority ASC,
@@ -136,7 +145,7 @@ export function claimNextJob(
          )
          RETURNING ${JOB_SELECT}`,
       )
-      .get(workerId, leaseExpiresAt, now, now, now, now) ?? null
+      .get(workerId, leaseExpiresAt, now, now, now, ...excluded, now) ?? null
   )
 }
 

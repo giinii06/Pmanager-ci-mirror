@@ -199,6 +199,8 @@ export interface JobDTO {
   cancelRequested: boolean
   completedAt: string | null
   lastError: string | null
+  /** The API request that enqueued this job, so a support report can trace it. */
+  requestId?: string | null
   updatedAt: string
 }
 
@@ -1065,4 +1067,272 @@ export interface BulkOperationDetailDTO extends BulkOperationDTO {
 
 export interface BulkOperationListDTO {
   operations: BulkOperationDTO[]
+}
+
+export const NOTIFICATION_KINDS = [
+  'drive_offline',
+  'mass_missing',
+  'disk_low',
+  'gpu_oom',
+  'job_stalled',
+  'backup_missing',
+  'backup_failed',
+  'db_integrity',
+  'restart_loop',
+  'mutation_failed',
+] as const
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
+
+export const NOTIFICATION_SEVERITIES = ['info', 'warning', 'critical'] as const
+export type NotificationSeverity = (typeof NOTIFICATION_SEVERITIES)[number]
+
+export const NOTIFICATION_STATES = ['open', 'resolved', 'dismissed'] as const
+export type NotificationState = (typeof NOTIFICATION_STATES)[number]
+
+/** One incident. `metadata` carries the ids the worker saw, never a secret. */
+export interface NotificationDTO {
+  id: string
+  kind: NotificationKind
+  severity: NotificationSeverity
+  state: NotificationState
+  title: string
+  body: string
+  metadata: unknown
+  occurrences: number
+  readAt: string | null
+  firstSeenAt: string
+  lastSeenAt: string
+  lastNotifiedAt: string | null
+  resolvedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificationListDTO {
+  notifications: NotificationDTO[]
+  nextCursor: string | null
+}
+
+export interface NotificationUnreadDTO {
+  unread: number
+  open: number
+}
+
+export interface DeliveryAttemptDTO {
+  id: string
+  notificationId: string
+  channel: 'discord'
+  messageKind: 'alert' | 'recovery'
+  status: 'pending' | 'sent' | 'failed'
+  attempts: number
+  nextAttemptAt: string
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WorkerHeartbeatDTO {
+  instanceId: string
+  workerId: string
+  component: string
+  pid: number
+  state: 'idle' | 'running' | 'stopping'
+  currentJobId: number | null
+  startedAt: string
+  lastSeenAt: string
+}
+
+export interface GpuLeaseHealthDTO {
+  resourceId: string
+  owner: string
+  taskKind: string
+  leaseExpiresAt: string
+  updatedAt: string
+  expired: boolean
+}
+
+/** `stale` means the capacity read failed; the numbers are unknown, not zero. */
+export interface VolumeHealthDTO {
+  label: string
+  totalBytes: number | null
+  freeBytes: number | null
+  freeRatio: number | null
+  stale: boolean
+}
+
+export interface StorageCategoryDTO {
+  type: string
+  bytes: number
+  files: number
+}
+
+export const CACHE_TYPES = [
+  'thumbs',
+  'previews',
+  'hls',
+  'scenes',
+  'scene_checkpoints',
+  'temp',
+  'exports',
+] as const
+export type CacheType = (typeof CACHE_TYPES)[number]
+
+export interface CacheTypeDTO {
+  type: CacheType
+  bytes: number
+  files: number
+  oldestAt: string | null
+  newestAt: string | null
+  /** Safe to delete and rebuild from the original. */
+  regenerable: boolean
+  /** Never a cleanup candidate at all. */
+  protected: boolean
+}
+
+export interface CacheInventoryDTO {
+  computedAt: string
+  totalBytes: number
+  types: CacheTypeDTO[]
+}
+
+export interface CacheCleanupPreviewDTO {
+  generation: string
+  cutoff: string
+  types: CacheType[]
+  files: number
+  bytes: number
+  protectedBytes: number
+  /** What the operator pays to get the deleted data back. */
+  restoreCost: string
+}
+
+export interface CacheCleanupResultDTO {
+  deletedFiles: number
+  deletedBytes: number
+  failed: number
+}
+
+export interface DiagnosticsAppSectionDTO {
+  version: string
+  startedAt: string
+  uptimeSeconds: number
+  pid: number
+  bunVersion: string
+}
+
+export interface DiagnosticsDatabaseSectionDTO {
+  schemaVersion: number
+  integrity: string
+  sqliteVersion: string
+  synchronousMode: string
+  journalMode: string
+  dbBytes: number
+  walBytes: number
+  pageCount: number
+  freelistCount: number
+  busyTimeoutMs: number
+}
+
+export interface DiagnosticsWorkerSectionDTO {
+  heartbeats: WorkerHeartbeatDTO[]
+  activeLeases: Array<{
+    workerId: string
+    jobId: number
+    kind: JobKind
+    phase: string | null
+    progressCurrent: number
+    progressTotal: number | null
+    leaseExpiresAt: string | null
+  }>
+  gpuLeases: GpuLeaseHealthDTO[]
+  recentFailures: JobDTO[]
+}
+
+export interface DiagnosticsQueueSectionDTO {
+  counts: Record<JobState, number>
+  pipelines: WorkPipelineDTO[]
+  stalled: number
+  remaining: number
+}
+
+export interface DiagnosticsBackupSectionDTO {
+  latest: BackupRecordDTO | null
+  lastSuccessAt: string | null
+  lastSuccessAgeHours: number | null
+  count: number
+  totalBytes: number
+  externalCopy: 'unknown'
+}
+
+export interface DiagnosticsStorageSectionDTO {
+  volumes: VolumeHealthDTO[]
+  categories: StorageCategoryDTO[]
+}
+
+export interface DiagnosticsNotificationSectionDTO {
+  open: number
+  unread: number
+  last24h: number
+}
+
+export interface DiagnosticsFlagsDTO {
+  fileMutation: boolean
+  hlsGenerations: boolean
+  bulkOperations: boolean
+  notifications: boolean
+  searchFts: boolean
+}
+
+export interface DiagnosticsReportDTO {
+  generatedAt: string
+  app: DiagnosticsAppSectionDTO
+  database: DiagnosticsDatabaseSectionDTO
+  libraries: LibraryHealthDTO[]
+  workers: DiagnosticsWorkerSectionDTO
+  queues: DiagnosticsQueueSectionDTO
+  backups: DiagnosticsBackupSectionDTO
+  storage: DiagnosticsStorageSectionDTO
+  caches: CacheInventoryDTO
+  notifications: DiagnosticsNotificationSectionDTO
+  flags: DiagnosticsFlagsDTO
+}
+
+export interface CapabilitiesDTO {
+  fileMutation: boolean
+  hlsGenerations: boolean
+  bulkOperations: boolean
+  notifications: boolean
+  searchFts: boolean
+  smartAlbums: boolean
+  version: string
+  schemaVersion: number
+}
+
+export interface RequestMetricDTO {
+  method: string
+  route: string
+  count: number
+  errors: number
+  clientErrors: number
+  p50Ms: number
+  p95Ms: number
+  maxMs: number
+}
+
+export interface SystemMetricsDTO {
+  since: string
+  generatedAt: string
+  requests: RequestMetricDTO[]
+  database: {
+    walBytes: number
+    dbBytes: number
+    pageCount: number
+    freelistCount: number
+  }
+  queues: Record<JobState, number>
+  process: {
+    rssBytes: number
+    heapUsedBytes: number
+    uptimeSeconds: number
+  }
 }
