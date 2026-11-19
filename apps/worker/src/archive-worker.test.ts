@@ -122,6 +122,8 @@ describe('worker archive pipeline end-to-end', () => {
       workerId: 'w-test',
       scanDeleteGuardRatio: 0.2,
       scanDeleteForce: false,
+      asrResultDir: path.join(dir, 'asr-results'),
+      translationResultDir: path.join(dir, 'asr-results'),
       archiveStableMs: 20,
     }
 
@@ -176,6 +178,8 @@ describe('worker archive pipeline end-to-end', () => {
       workerId: 'w-test',
       scanDeleteGuardRatio: 0.2,
       scanDeleteForce: false,
+      asrResultDir: path.join(dir, 'asr-results'),
+      translationResultDir: path.join(dir, 'asr-results'),
       archiveStableMs: 20,
     }
 

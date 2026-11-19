@@ -49,6 +49,7 @@ function apiConfig(dir: string, options: { scene?: boolean }): ApiConfig {
     hwaccel: null,
     secureCookies: false,
     scanIntervalMs: 15 * 60_000,
+    fileMutationEnabled: false,
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: true,

@@ -7,6 +7,7 @@ import type {
   BackupRecordDTO,
   FolderDTO,
   FolderSort,
+  FileOperationDTO,
   HostBrowseResponseDTO,
   HostDriveDTO,
   JobDTO,
@@ -152,6 +153,12 @@ export const api = {
       body: JSON.stringify({ positionMs }),
     }),
   deleteAsset: (id: string) => request<void>(`/api/assets/${id}`, { method: 'DELETE' }),
+  createDeleteOperation: (id: string, requestKey: string) =>
+    request<FileOperationDTO>(`/api/assets/${id}/delete-operations`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': requestKey },
+    }),
+  getFileOperation: (id: string) => request<FileOperationDTO>(`/api/file-operations/${id}`),
 
   tags: () => request<{ tags: TagSummaryDTO[] }>('/api/tags'),
   createTag: (name: string) =>

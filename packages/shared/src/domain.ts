@@ -662,3 +662,28 @@ export interface SemanticSearchDTO {
   /** False when the scene index could not be reached, so only text ranked. */
   scenesSearched: boolean
 }
+
+export type FileOperationState =
+  | 'requested'
+  | 'validated'
+  | 'quarantined'
+  | 'db_committed'
+  | 'purging'
+  | 'completed'
+  | 'failed_retryable'
+  | 'blocked'
+  | 'cancelled_pre_commit'
+
+/** A durable delete or move request. The client polls until it reaches a terminal state. */
+export interface FileOperationDTO {
+  id: string
+  kind: 'delete' | 'move' | 'copy' | 'extract'
+  assetId: string | null
+  state: FileOperationState
+  errorCode: string | null
+  attempts: number
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+  statusUrl: string
+}

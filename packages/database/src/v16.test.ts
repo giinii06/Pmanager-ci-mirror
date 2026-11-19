@@ -84,7 +84,6 @@ describe('schema v16 library health', () => {
     const db = openDatabase(file)
     const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()
     expect(version?.user_version).toBe(SCHEMA_VERSION)
-    expect(SCHEMA_VERSION).toBe(16)
 
     const health = getLibraryHealth(db, 'lib1')
     expect(health).toMatchObject({

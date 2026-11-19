@@ -68,6 +68,8 @@ async function makeTempConfig(): Promise<{ dir: string; config: WorkerConfig }> 
       workerId: 'worker-a',
       scanDeleteGuardRatio: 0.2,
       scanDeleteForce: false,
+      asrResultDir: path.join(dir, 'asr-results'),
+      translationResultDir: path.join(dir, 'asr-results'),
       staleTempAgeMs: 60_000,
     },
   }

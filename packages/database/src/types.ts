@@ -101,6 +101,69 @@ export interface AssetFileInfo {
   deletedAt: number | null
 }
 
+export type FileMutationKind = 'delete' | 'move' | 'copy' | 'extract'
+
+export type FileMutationState =
+  | 'requested'
+  | 'validated'
+  | 'quarantined'
+  | 'db_committed'
+  | 'purging'
+  | 'completed'
+  | 'failed_retryable'
+  | 'blocked'
+  | 'cancelled_pre_commit'
+
+export interface FileMutationRecord {
+  id: string
+  kind: FileMutationKind
+  assetId: string | null
+  libraryId: string | null
+  userId: string | null
+  requestKey: string
+  requestedFileVersion: number | null
+  originalDeletedAt: number | null
+  state: FileMutationState
+  resumeState: FileMutationState | null
+  sourceRel: string | null
+  quarantineRel: string | null
+  quarantineRoot: string | null
+  manifestJson: string | null
+  attempts: number
+  maxAttempts: number
+  retryAfter: number
+  leaseOwner: string | null
+  leaseEpoch: number
+  leaseExpiresAt: number | null
+  errorCode: string | null
+  errorMessage: string | null
+  createdAt: number
+  updatedAt: number
+  completedAt: number | null
+}
+
+export interface MutationEventRecord {
+  id: number
+  mutationId: string
+  state: string
+  payloadRedacted: string | null
+  createdAt: number
+}
+
+export interface MutationAssetRow {
+  id: string
+  libraryId: string
+  relativePath: string
+  filename: string
+  fileVersion: number
+  sizeBytes: number
+  mtimeMs: number
+  deletedAt: number | null
+  pendingDeleteMutationId: string | null
+  libraryRoot: string
+}
+
+
 export interface JobRecord {
   id: number
   kind: JobKind

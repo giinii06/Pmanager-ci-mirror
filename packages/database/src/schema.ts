@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 16
+export const SCHEMA_VERSION = 17
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -548,6 +548,58 @@ ALTER TABLE scan_runs ADD COLUMN authoritative_verified INTEGER NOT NULL DEFAULT
 ALTER TABLE scan_runs ADD COLUMN health_state TEXT;
 `
 
+// A delete or move is a durable job with its own lease and audit trail. The
+// asset keeps a pointer to its mutation so scanner writes cannot resurrect it
+// while the file sits in quarantine, and the audit rows deliberately carry no
+// foreign key to assets so they survive the final hard delete.
+export const V17_FILE_MUTATIONS_SQL = `
+CREATE TABLE IF NOT EXISTS file_mutations (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('delete','move','copy','extract')),
+  asset_id TEXT,
+  library_id TEXT,
+  user_id TEXT,
+  request_key TEXT NOT NULL UNIQUE,
+  requested_file_version INTEGER,
+  original_deleted_at INTEGER,
+  state TEXT NOT NULL CHECK (state IN (
+    'requested','validated','quarantined','db_committed','purging','completed',
+    'failed_retryable','blocked','cancelled_pre_commit'
+  )),
+  resume_state TEXT,
+  source_rel TEXT,
+  quarantine_rel TEXT,
+  quarantine_root TEXT,
+  manifest_json TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  retry_after INTEGER NOT NULL DEFAULT 0,
+  lease_owner TEXT,
+  lease_epoch INTEGER NOT NULL DEFAULT 0,
+  lease_expires_at INTEGER,
+  error_code TEXT,
+  error_message TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  completed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_file_mutations_state ON file_mutations(state, retry_after, updated_at);
+CREATE INDEX IF NOT EXISTS idx_file_mutations_asset ON file_mutations(asset_id, state);
+
+CREATE TABLE IF NOT EXISTS mutation_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mutation_id TEXT NOT NULL,
+  state TEXT NOT NULL,
+  payload_redacted TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mutation_events_mutation ON mutation_events(mutation_id, created_at);
+
+ALTER TABLE assets ADD COLUMN pending_delete_mutation_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_assets_pending_delete ON assets(pending_delete_mutation_id)
+  WHERE pending_delete_mutation_id IS NOT NULL;
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -599,4 +651,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
              SELECT 1 FROM library_health h WHERE h.library_id = l.id
            )`)
   },
+  (exec) => exec(V17_FILE_MUTATIONS_SQL),
 ]

@@ -39,6 +39,8 @@ describe('filesystem watcher for archives', () => {
         workerId: 'w-watch',
         scanDeleteGuardRatio: 0.2,
         scanDeleteForce: false,
+        asrResultDir: path.join(dir, 'asr-results'),
+        translationResultDir: path.join(dir, 'asr-results'),
         archiveStableMs: 50,
         watchPolling: true,
       }

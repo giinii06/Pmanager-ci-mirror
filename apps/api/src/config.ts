@@ -66,6 +66,8 @@ export interface ApiConfig {
   secureCookies: boolean
   /** How stale a library scan may be before the pipeline pass queues another. */
   scanIntervalMs: number
+  /** Enables the quarantine delete engine. Off by default; delete requests get 503 when off. */
+  fileMutationEnabled: boolean
   gpu: GpuConfig
   asr: AsrConfig
   translation: TranslationConfig
@@ -215,6 +217,7 @@ export async function loadConfig(
     hwaccel: env.HWACCEL === 'nvenc' ? 'nvenc' : null,
     secureCookies: env.COOKIE_SECURE === '1',
     scanIntervalMs: resolveScanInterval(env),
+    fileMutationEnabled: env.FILE_MUTATION_ENGINE_ENABLED === '1',
     gpu: { resourceId: env.GPU_RESOURCE?.trim() || 'gpu:0' },
     asr,
     translation,

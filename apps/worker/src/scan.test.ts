@@ -62,6 +62,8 @@ async function harness(): Promise<ScanHarness> {
       workerId: 'test',
       scanDeleteGuardRatio: 0.2,
       scanDeleteForce: false,
+      asrResultDir: path.join(dir, 'asr-results'),
+      translationResultDir: path.join(dir, 'asr-results'),
     },
   }
 }

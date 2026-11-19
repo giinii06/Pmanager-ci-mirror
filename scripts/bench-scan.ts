@@ -191,6 +191,8 @@ async function runSuite(): Promise<void> {
       workerId: 'bench-w',
       scanDeleteGuardRatio: 0.2,
       scanDeleteForce: false,
+      asrResultDir: path.join(dir, 'asr-results'),
+      translationResultDir: path.join(dir, 'asr-results'),
     }
 
     const tInitial0 = performance.now()

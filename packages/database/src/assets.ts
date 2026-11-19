@@ -375,13 +375,28 @@ export function getAssetDeletePlan(db: Db, id: string): PermanentDeleteResult {
   }
 }
 
-export function commitPermanentDelete(db: Db, id: string, libraryId: string): void {
-  db.transaction(() => {
+export function commitPermanentDelete(
+  db: Db,
+  id: string,
+  libraryId: string,
+  expectedMutationId?: string,
+): boolean {
+  const removed = db.transaction(() => {
+    if (expectedMutationId !== undefined) {
+      const owned = db
+        .query<{ n: number }, Params>(
+          'SELECT COUNT(*) AS n FROM assets WHERE id = ? AND pending_delete_mutation_id = ?',
+        )
+        .get(id, expectedMutationId)?.n
+      if (owned !== 1) return false
+    }
     deleteAssetVoteEvents(db, id)
     db.query<null, Params>('DELETE FROM jobs WHERE asset_id = ?').run(id)
-    db.query<null, Params>('DELETE FROM assets WHERE id = ?').run(id)
+    const result = db.query<null, Params>('DELETE FROM assets WHERE id = ?').run(id)
+    return result.changes === 1
   }).immediate()
-  recomputeFolderCounts(db, libraryId)
+  if (removed) recomputeFolderCounts(db, libraryId)
+  return removed
 }
 
 export function deleteAssetPermanently(db: Db, id: string): PermanentDeleteResult {
@@ -509,14 +524,14 @@ export interface AssetFileUpdate {
   scanId: string
 }
 
-export function updateAssetFile(db: Db, id: string, update: AssetFileUpdate): void {
-  db.query<null, Params>(
+export function updateAssetFile(db: Db, id: string, update: AssetFileUpdate): boolean {
+  const result = db.query<null, Params>(
     `UPDATE assets SET
        folder_id = ?, filename = ?, mime_type = ?, size_bytes = ?, mtime_ms = ?,
        width = ?, height = ?, duration_ms = ?, taken_at = ?,
        video_codec = ?, audio_codec = ?, container = ?, indexed_at = ?,
        file_version = file_version + 1, deleted_at = NULL, last_seen_scan = ?
-     WHERE id = ?`,
+     WHERE id = ? AND pending_delete_mutation_id IS NULL`,
   ).run(
     update.folderId,
     update.filename,
@@ -534,16 +549,24 @@ export function updateAssetFile(db: Db, id: string, update: AssetFileUpdate): vo
     update.scanId,
     id,
   )
+  return result.changes === 1
 }
 
-export function touchAssets(db: Db, ids: string[], scanId: string): void {
-  if (ids.length === 0) return
+/**
+ * A delete mutation owns the asset's tombstone. Touching it here would clear
+ * `deleted_at` and resurrect an asset whose file is already in quarantine.
+ * Returns the ids that were actually touched.
+ */
+export function touchAssets(db: Db, ids: string[], scanId: string): Set<string> {
+  const touched = new Set<string>()
+  if (ids.length === 0) return touched
   const statement = db.query<null, Params>(
-    'UPDATE assets SET last_seen_scan = ?, deleted_at = NULL WHERE id = ?',
+    'UPDATE assets SET last_seen_scan = ?, deleted_at = NULL WHERE id = ? AND pending_delete_mutation_id IS NULL',
   )
   db.transaction(() => {
-    for (const id of ids) statement.run(scanId, id)
+    for (const id of ids) if (statement.run(scanId, id).changes === 1) touched.add(id)
   })()
+  return touched
 }
 
 export function softDeleteMissing(db: Db, libraryId: string, scanId: string, now: number): number {

@@ -3,6 +3,7 @@ import { findUserById } from '@mediavault/database'
 import { SESSION_COOKIE, parseCookies, verifySessionToken } from './auth'
 import type { AppContext } from './context'
 import { registerAssetRoutes } from './routes/assets'
+import { registerFileOperationRoutes } from './routes/file-operations'
 import { registerAuthRoutes } from './routes/auth'
 import { registerFsRoutes } from './routes/fs'
 import { registerIndexRoutes } from './routes/index-run'
@@ -71,6 +72,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerIndexRoutes(app, ctx)
   registerLibraryRoutes(app, ctx)
   registerAssetRoutes(app, ctx)
+  registerFileOperationRoutes(app, ctx)
   registerTagRoutes(app, ctx)
   registerMediaRoutes(app, ctx)
   registerTranscriptionRoutes(app, ctx)

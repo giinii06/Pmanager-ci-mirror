@@ -18,6 +18,14 @@ services:
     volumes:
       - ./asr-results:/asr-results
 
+  # The mutation worker removes a deleted asset's transcript directories, so it
+  # needs the same results folder the API reads.
+  worker:
+    environment:
+      ASR_RESULT_DIR: /asr-results
+    volumes:
+      - ./asr-results:/asr-results
+
   asr-worker:
     build:
       context: .

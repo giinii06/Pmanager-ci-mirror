@@ -327,16 +327,21 @@ export async function scanLibrary(
     const flushNow = Date.now()
     db.transaction(() => {
       if (touchBuffer.length > 0) {
-        touchAssets(
+        const touched = touchAssets(
           db,
           touchBuffer.map((t) => t.id),
           activeScanId,
         )
         for (const item of touchBuffer) {
           const entry = existingMap.get(item.rel)
-          if (entry) {
+          if (!entry) continue
+          if (touched.has(item.id)) {
             entry.deletedAt = null
             entry.lastSeenScan = activeScanId
+          } else {
+            // A delete mutation owns this row. Leave the tombstone alone and
+            // report the file as skipped instead of silently resurrecting it.
+            summary.skipped += 1
           }
         }
       }
@@ -363,7 +368,11 @@ export async function scanLibrary(
             lastSeenScan: activeScanId,
           })
         } else if (m.kind === 'update' && m.assetId && m.update) {
-          updateAssetFile(db, m.assetId, m.update)
+          if (!updateAssetFile(db, m.assetId, m.update)) {
+            summary.updated -= 1
+            summary.skipped += 1
+            continue
+          }
           enqueueJob(
             db,
             {

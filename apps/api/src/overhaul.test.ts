@@ -7,6 +7,7 @@ import {
   createLibrary,
   createUser,
   insertAsset,
+  markLibraryHealthy,
   openDatabase,
   upsertFolder,
   type Db,
@@ -78,6 +79,8 @@ async function createTestHarness() {
   createUser(db, { id: 'user1', username: 'owner', passwordHash: 'x', createdAt: 1 })
   createLibrary(db, { id: 'libv', name: 'Videos', rootPath: 'Videos', createdAt: 1 })
   createLibrary(db, { id: 'libp', name: 'Photos', rootPath: 'Photos', createdAt: 1 })
+  markLibraryHealthy(db, { libraryId: 'libv', rootIdentity: null, now: Date.now() })
+  markLibraryHealthy(db, { libraryId: 'libp', rootIdentity: null, now: Date.now() })
   upsertFolder(db, {
     id: 'fv1',
     libraryId: 'libv',
@@ -171,6 +174,7 @@ async function createTestHarness() {
     hwaccel: null,
     secureCookies: false,
     scanIntervalMs: 60_000,
+    fileMutationEnabled: true,
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: false,
@@ -406,9 +410,31 @@ describe('API overhaul routes', () => {
       url: '/api/assets/vid0001',
       headers: h.headers,
     })
-    expect(deleted.statusCode).toBe(204)
-    expect(await exists(h.videoPath)).toBe(false)
-    expect(await exists(path.join(h.cacheDir, 'thumbs', 'vid0001'))).toBe(false)
+    expect(deleted.statusCode).toBe(202)
+    const operation = deleted.json() as { id: string; state: string; statusUrl: string }
+    expect(operation.state).toBe('requested')
+    expect(operation.statusUrl).toBe(`/api/file-operations/${operation.id}`)
+
+    // The API only queues the delete. The mutation worker owns the original
+    // file and the derived cache, so neither may change here.
+    expect(await exists(h.videoPath)).toBe(true)
+    expect(await exists(path.join(h.cacheDir, 'thumbs', 'vid0001'))).toBe(true)
+
+    const repeated = await h.app.inject({
+      method: 'DELETE',
+      url: '/api/assets/vid0001',
+      headers: h.headers,
+    })
+    expect(repeated.statusCode).toBe(202)
+    expect((repeated.json() as { id: string }).id).toBe(operation.id)
+
+    const fetched = await h.app.inject({
+      method: 'GET',
+      url: operation.statusUrl,
+      headers: h.headers,
+    })
+    expect(fetched.statusCode).toBe(200)
+    expect((fetched.json() as { state: string }).state).toBe('requested')
 
     h.db.close()
   })

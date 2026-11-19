@@ -4,6 +4,7 @@ import type {
   AssetDTO,
   EmbeddingJobDTO,
   FolderDTO,
+  FileOperationDTO,
   JobDTO,
   LibraryDTO,
   LibraryHealthDetailDTO,
@@ -28,6 +29,7 @@ import type {
   AsrJobRecord,
   AssetRecord,
   EmbeddingJobRecord,
+  FileMutationRecord,
   FolderRecord,
   JobRecord,
   LibraryHealthRecord,
@@ -422,5 +424,20 @@ export function toWorkQueueDTO(queue: WorkQueueRecord): WorkQueueDTO {
     pipelines: queue.pipelines,
     failures: queue.failures.map(toWorkItemDTO),
     lastCompletedAt: iso(queue.lastCompletedAt),
+  }
+}
+
+export function toFileOperationDTO(record: FileMutationRecord): FileOperationDTO {
+  return {
+    id: record.id,
+    kind: record.kind,
+    assetId: record.assetId,
+    state: record.state,
+    errorCode: record.errorCode,
+    attempts: record.attempts,
+    createdAt: new Date(record.createdAt).toISOString(),
+    updatedAt: new Date(record.updatedAt).toISOString(),
+    completedAt: iso(record.completedAt),
+    statusUrl: `/api/file-operations/${record.id}`,
   }
 }

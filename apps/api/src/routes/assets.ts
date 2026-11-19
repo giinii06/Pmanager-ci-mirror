@@ -1,20 +1,19 @@
-import { rm, unlink } from 'node:fs/promises'
-import path from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import {
   addAssetWatchTime,
   addTagToAsset,
   bumpPosterVersion,
-  commitPermanentDelete,
+  createDeleteMutation,
   createTag,
   deleteReview,
   enqueueJob,
   findTagByName,
   getAsset,
-  getAssetDeletePlan,
   getAssetFileInfo,
   getLibrary,
+  getLibraryHealth,
+  getMutationAsset,
   getProgress,
   getReview,
   getTag,
@@ -35,7 +34,7 @@ import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PRIORITY, VIDEO_SORTS, newId } from '
 import { extractCustomVideoPoster, fileExists, posterPath, resolveInside } from '@mediavault/media'
 import type { AppContext } from '../context'
 import { decodeCursor, encodeCursor } from '../cursor'
-import { toAssetDTO, toEmbeddingJobDTO, toPlaybackDTO, toReviewDTO } from '../dto'
+import { toAssetDTO, toEmbeddingJobDTO, toFileOperationDTO, toPlaybackDTO, toReviewDTO } from '../dto'
 import { enqueueEmbedding } from '../embedding-trigger'
 import { parseInput } from '../validate'
 
@@ -102,32 +101,6 @@ function toAssetFilter(query: z.infer<typeof assetFilterQuery>): AssetFilter {
   if (query.seed !== undefined) filter.seed = query.seed
   if (query.q) filter.query = query.q
   return filter
-}
-
-async function unlinkInside(baseDir: string, relative: string, strict: boolean): Promise<void> {
-  const target = resolveInside(baseDir, relative)
-  if (!target || path.resolve(target) === path.resolve(baseDir)) return
-  try {
-    await unlink(target)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
-    if (strict) throw error
-    console.warn('[assets] cache unlink failed', { target, error })
-  }
-}
-
-async function unlinkStrictMediaFile(baseDir: string, relative: string): Promise<void> {
-  await unlinkInside(baseDir, relative, true)
-}
-
-async function unlinkIfInside(baseDir: string, relative: string): Promise<void> {
-  await unlinkInside(baseDir, relative, false)
-}
-
-async function rmDirIfInside(baseDir: string, relative: string): Promise<void> {
-  const target = resolveInside(baseDir, relative)
-  if (!target || path.resolve(target) === path.resolve(baseDir)) return
-  await rm(target, { recursive: true, force: true }).catch(() => undefined)
 }
 
 export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -273,50 +246,42 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     reply.send({ asset: toAssetDTO(updated) })
   })
 
+  // Compatibility shim for clients that still call DELETE. It never touches the
+  // file itself: the mutation worker owns every original-file change.
   app.delete('/api/assets/:id', async (request, reply) => {
     const params = parseInput(idParams, request.params, reply)
     if (!params) return
 
-    const res = getAssetDeletePlan(ctx.db, params.id)
-    if (!res.deleted || !res.fileInfo) {
-      reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
+    if (!ctx.config.fileMutationEnabled) {
+      reply
+        .code(503)
+        .send({ error: 'mutation_engine_disabled', message: 'The delete engine is turned off.' })
       return
     }
 
-    if (res.libraryRoot !== null) {
-      const libRoot = resolveInside(ctx.config.mediaRoot, res.libraryRoot)
-      if (libRoot) {
-        try {
-          await unlinkStrictMediaFile(libRoot, res.fileInfo.relativePath)
-        } catch (error) {
-          request.log.error({ err: error, assetId: params.id }, 'failed to unlink media file')
-          reply
-            .code(500)
-            .send({ error: 'delete_failed', message: 'Failed to delete media file from disk.' })
-          return
-        }
-      }
+    const asset = getMutationAsset(ctx.db, params.id)
+    if (!asset || asset.deletedAt !== null) {
+      reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
+      return
+    }
+    const health = getLibraryHealth(ctx.db, asset.libraryId)
+    if (!health || health.state !== 'ONLINE') {
+      reply
+        .code(409)
+        .send({ error: 'source_offline', message: 'The library that holds this file is not online.' })
+      return
     }
 
-    commitPermanentDelete(ctx.db, params.id, res.fileInfo.libraryId)
-
-    await Promise.all([
-      rmDirIfInside(ctx.config.cacheDir, path.join('thumbs', res.fileInfo.id)),
-      rmDirIfInside(ctx.config.cacheDir, path.join('previews', res.fileInfo.id)),
-      rmDirIfInside(ctx.config.cacheDir, path.join('hls', res.fileInfo.id)),
-      ...res.sceneThumbPaths.map((rel) => unlinkIfInside(ctx.config.cacheDir, rel)),
-      ...res.asrResultDirs.map((dir) =>
-        rmDirIfInside(ctx.config.asr.resultDir, path.relative(ctx.config.asr.resultDir, dir)),
-      ),
-      ...res.translationResultDirs.map((dir) =>
-        rmDirIfInside(
-          ctx.config.translation.resultDir,
-          path.relative(ctx.config.translation.resultDir, dir),
-        ),
-      ),
-    ])
-
-    reply.code(204).send()
+    const result = createDeleteMutation(ctx.db, {
+      assetId: asset.id,
+      libraryId: asset.libraryId,
+      userId: request.user!.id,
+      requestKey: `${request.user!.id}:legacy-delete:${asset.id}`,
+      requestedFileVersion: asset.fileVersion,
+      sourceRel: asset.relativePath,
+      now: Date.now(),
+    })
+    reply.code(202).send(toFileOperationDTO(result.record))
   })
 
   app.post('/api/assets/:id/tags', async (request, reply) => {
@@ -478,7 +443,8 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     if (!params) return
     const body = parseInput(progressBody, request.body, reply)
     if (!body) return
-    if (!getAssetFileInfo(ctx.db, params.id)) {
+    const info = getAssetFileInfo(ctx.db, params.id)
+    if (!info || info.deletedAt !== null) {
       reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
       return
     }

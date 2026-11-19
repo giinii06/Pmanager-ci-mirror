@@ -16,6 +16,7 @@ import {
 import { StructuredLogger } from '@mediavault/media'
 import type { WorkerConfig } from './config'
 import { executeJob } from './handlers'
+import { runMutationLoop } from './mutations/worker'
 import { runWorkerRecovery } from './recovery'
 import { ScanInterruptedError } from './scan'
 import { startMediaWatcher } from './watch'
@@ -50,9 +51,16 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
   const watcher = config.once ? null : startMediaWatcher(db, config)
   let stopping = false
   let activeController: AbortController | null = null
+  const mutationController = new AbortController()
+  const mutationLoop = config.once
+    ? null
+    : runMutationLoop(db, config, logger, mutationController.signal).catch((error) => {
+        logger.error('worker.mutation_loop.crashed', { errorMessage: (error as Error).message })
+      })
   const stop = () => {
     stopping = true
     activeController?.abort('shutdown')
+    mutationController.abort('shutdown')
   }
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
@@ -188,6 +196,7 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
   } finally {
     process.off('SIGINT', stop)
     process.off('SIGTERM', stop)
+    if (mutationLoop) await mutationLoop
     if (watcher) await watcher.close()
   }
 }

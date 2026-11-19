@@ -147,8 +147,25 @@ export function WatchPage({
     onError: () => toast('태그를 제거하지 못했습니다.', 'error'),
   })
 
+  const deleteKeyRef = useRef(`${asset.id}:${crypto.randomUUID()}`)
+  useEffect(() => {
+    deleteKeyRef.current = `${asset.id}:${crypto.randomUUID()}`
+  }, [asset.id])
+
   const destroyAsset = useMutation({
-    mutationFn: () => api.deleteAsset(asset.id),
+    mutationFn: async () => {
+      const created = await api.createDeleteOperation(asset.id, deleteKeyRef.current)
+      let current = created
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        if (current.state === 'completed') return current
+        if (current.state === 'blocked' || current.state === 'cancelled_pre_commit') {
+          throw new Error('삭제를 진행할 수 없습니다. 라이브러리 상태를 확인해 주세요.')
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 500))
+        current = await api.getFileOperation(created.id)
+      }
+      return current
+    },
     onSuccess: () => {
       setDeleteOpen(false)
       removeAssetFromCaches(queryClient, asset.id)

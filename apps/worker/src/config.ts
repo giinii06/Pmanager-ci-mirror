@@ -25,6 +25,14 @@ export interface WorkerConfig {
   watchPolling?: boolean
   /** Override minimum age for stale temp cleanup on recovery (ms). */
   staleTempAgeMs?: number
+  /** Enables the quarantine delete engine. Off by default; the API reports 503 when off. */
+  fileMutationEnabled?: boolean
+  /** How often the mutation loop looks for work while idle. */
+  mutationPollMs?: number
+  /** Where ASR transcripts keep their result directories, for derived-data cleanup. */
+  asrResultDir: string
+  /** Where translations keep their result directories. */
+  translationResultDir: string
 }
 
 export async function loadWorkerConfig(
@@ -52,6 +60,10 @@ export async function loadWorkerConfig(
     archiveTimeoutMs: resolveNonNegativeInt(env.ARCHIVE_TIMEOUT_MS, 15 * 60_000),
     watchPolling: env.WATCH_POLLING === '1',
     staleTempAgeMs: resolveNonNegativeInt(env.STALE_TEMP_AGE_MS, 2 * 60_000),
+    fileMutationEnabled: env.FILE_MUTATION_ENGINE_ENABLED === '1',
+    mutationPollMs: resolveNonNegativeInt(env.MUTATION_POLL_MS, 1_000),
+    asrResultDir: path.resolve(env.ASR_RESULT_DIR ?? 'asr-results'),
+    translationResultDir: path.resolve(env.TRANSLATION_RESULT_DIR ?? env.ASR_RESULT_DIR ?? 'asr-results'),
   }
 }
 
