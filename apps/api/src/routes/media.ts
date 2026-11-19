@@ -1,8 +1,23 @@
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
-import { enqueueJob, getAssetFileInfo, getLibrary, type AssetFileInfo, type LibraryRecord } from '@mediavault/database'
-import { PRIORITY } from '@mediavault/shared'
+import {
+  createHlsRequest,
+  enqueueJob,
+  findPendingHlsGeneration,
+  getAssetFileInfo,
+  getHlsActive,
+  getHlsGeneration,
+  getLatestHlsGeneration,
+  getLibrary,
+  getLibraryHealth,
+  touchHlsGenerationAccess,
+  type AssetFileInfo,
+  type HlsGenerationRecord,
+  type LibraryRecord,
+} from '@mediavault/database'
+import { PRIORITY, type HlsStatusDTO } from '@mediavault/shared'
 import {
   cacheRelativePath,
   ensureImageThumbnail,
@@ -10,6 +25,7 @@ import {
   fileExists,
   hlsDir,
   hlsPlaylistPath,
+  hlsProfileHash,
   posterPath,
   resolveInside,
   thumbnailPath,
@@ -26,6 +42,11 @@ const thumbnailQuery = z.object({
   p: z.string().optional(),
 })
 const hlsParams = z.object({ id: z.string().min(1).max(64), file: z.string().min(1).max(64) })
+const hlsGenerationParams = z.object({
+  id: z.string().min(1).max(64),
+  generationId: z.string().regex(/^[a-z0-9]{6,32}$/),
+  file: z.string().min(1).max(64),
+})
 const streamQuery = z.object({ v: z.string().optional(), download: z.enum(['0', '1']).optional() })
 
 function resolveMedia(
@@ -47,6 +68,111 @@ function mediaRelativePath(library: LibraryRecord, info: AssetFileInfo): string 
 
 function notFound(reply: FastifyReply): void {
   reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
+}
+
+function hlsPlaylistUrl(assetId: string, generationId: string): string {
+  return `/api/assets/${assetId}/hls/g/${generationId}/master.m3u8`
+}
+
+function hlsSegmentUrl(assetId: string, generationId: string, file: string): string {
+  return `/api/assets/${assetId}/hls/g/${generationId}/${file}`
+}
+
+function sendHlsStatus(reply: FastifyReply, code: number, body: HlsStatusDTO): void {
+  reply.header('Cache-Control', 'no-store')
+  if (code === 202) reply.header('Retry-After', String(body.retryAfterSeconds ?? 2))
+  reply.code(code).send(body)
+}
+
+function generationStatus(generation: HlsGenerationRecord): HlsStatusDTO {
+  const state: HlsStatusDTO['state'] =
+    generation.state === 'running'
+      ? 'running'
+      : generation.state === 'retry_wait'
+        ? 'retry_wait'
+        : generation.state === 'failed' || generation.state === 'cancelled'
+          ? generation.state
+          : 'queued'
+  return {
+    state,
+    generationId: generation.id,
+    jobId: generation.jobId,
+    stage: generation.stage,
+    progressPercent: generation.progress,
+    retryAfterSeconds: 2,
+    errorCode: generation.errorCode,
+    message: generation.errorMessage,
+  }
+}
+
+function activeReadyGeneration(ctx: AppContext, info: AssetFileInfo): HlsGenerationRecord | null {
+  const profileHash = hlsProfileHash({ width: info.width })
+  const active = getHlsActive(ctx.db, info.id, info.fileVersion, profileHash)
+  if (!active) return null
+  const generation = getHlsGeneration(ctx.db, active.generationId)
+  if (!generation || generation.state !== 'ready' || !generation.playlistRel) return null
+  return generation
+}
+
+/**
+ * A ready generation is served even when the library is offline; only a new
+ * encode needs the source. Everything else reports its real state instead of
+ * leaving the player on an endless `preparing` screen.
+ */
+function resolveHlsStatus(
+  ctx: AppContext,
+  info: AssetFileInfo,
+): { code: number; body: HlsStatusDTO } {
+  const ready = activeReadyGeneration(ctx, info)
+  if (ready) {
+    return {
+      code: 200,
+      body: {
+        state: 'ready',
+        generationId: ready.id,
+        jobId: ready.jobId,
+        progressPercent: 100,
+        playlistUrl: hlsPlaylistUrl(info.id, ready.id),
+      },
+    }
+  }
+
+  const profileHash = hlsProfileHash({ width: info.width })
+  const pending = findPendingHlsGeneration(ctx.db, info.id, info.fileVersion, profileHash)
+  if (pending) return { code: 202, body: generationStatus(pending) }
+
+  const latest = getLatestHlsGeneration(ctx.db, info.id, info.fileVersion, profileHash)
+  if (latest && (latest.state === 'failed' || latest.state === 'cancelled')) {
+    return {
+      code: 200,
+      body: {
+        state: latest.state,
+        generationId: latest.id,
+        errorCode: latest.errorCode,
+        message: latest.errorMessage,
+      },
+    }
+  }
+
+  const health = getLibraryHealth(ctx.db, info.libraryId)
+  if (!health || health.state !== 'ONLINE') {
+    return {
+      code: 503,
+      body: {
+        state: 'source_offline',
+        message: 'The library that holds this file is not online.',
+      },
+    }
+  }
+
+  const created = createHlsRequest(ctx.db, {
+    assetId: info.id,
+    fileVersion: info.fileVersion,
+    profileHash,
+    priority: PRIORITY.now,
+    now: Date.now(),
+  })
+  return { code: 202, body: generationStatus(created.generation) }
 }
 
 export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -191,6 +317,135 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
     })
   })
 
+  app.get('/api/assets/:id/hls', async (request, reply) => {
+    const params = parseInput(idParams, request.params, reply)
+    if (!params) return
+    const info = getAssetFileInfo(ctx.db, params.id)
+    if (!info || info.deletedAt !== null) {
+      notFound(reply)
+      return
+    }
+
+    if (!ctx.config.hlsGenerationsEnabled) {
+      const playlist = hlsPlaylistPath(ctx.config.cacheDir, info.id, info.fileVersion)
+      if (await fileExists(playlist)) {
+        reply.send({
+          state: 'ready',
+          playlistUrl: `/api/assets/${info.id}/hls/master.m3u8`,
+          progressPercent: 100,
+        })
+        return
+      }
+      enqueueJob(
+        ctx.db,
+        {
+          dedupeKey: `hls:${info.id}:${info.fileVersion}`,
+          kind: 'hls',
+          priority: PRIORITY.now,
+          assetId: info.id,
+        },
+        Date.now(),
+      )
+      sendHlsStatus(reply, 202, { state: 'queued', retryAfterSeconds: 2 })
+      return
+    }
+
+    const status = resolveHlsStatus(ctx, info)
+    sendHlsStatus(reply, status.code, status.body)
+  })
+
+  app.post('/api/assets/:id/hls/retry', async (request, reply) => {
+    if (!ctx.config.hlsGenerationsEnabled) {
+      reply.code(404).send({ error: 'not_found', message: 'HLS generations are disabled.' })
+      return
+    }
+    const params = parseInput(idParams, request.params, reply)
+    if (!params) return
+    const info = getAssetFileInfo(ctx.db, params.id)
+    if (!info || info.deletedAt !== null) {
+      notFound(reply)
+      return
+    }
+
+    const profileHash = hlsProfileHash({ width: info.width })
+    const active = getHlsActive(ctx.db, info.id, info.fileVersion, profileHash)
+    const activeGeneration = active ? getHlsGeneration(ctx.db, active.generationId) : null
+    if (activeGeneration?.state === 'ready' && activeGeneration.playlistRel) {
+      sendHlsStatus(reply, 200, {
+        state: 'ready',
+        generationId: activeGeneration.id,
+        progressPercent: 100,
+        playlistUrl: hlsPlaylistUrl(info.id, activeGeneration.id),
+      })
+      return
+    }
+
+    const health = getLibraryHealth(ctx.db, info.libraryId)
+    if (!health || health.state !== 'ONLINE') {
+      sendHlsStatus(reply, 503, {
+        state: 'source_offline',
+        message: 'The library that holds this file is not online.',
+      })
+      return
+    }
+
+    const created = createHlsRequest(ctx.db, {
+      assetId: info.id,
+      fileVersion: info.fileVersion,
+      profileHash,
+      priority: PRIORITY.now,
+      now: Date.now(),
+    })
+    sendHlsStatus(reply, 202, generationStatus(created.generation))
+  })
+
+  app.get('/api/assets/:id/hls/g/:generationId/:file', async (request, reply) => {
+    if (!ctx.config.hlsGenerationsEnabled) {
+      notFound(reply)
+      return
+    }
+    const params = parseInput(hlsGenerationParams, request.params, reply)
+    if (!params) return
+    if (!/^(master\.m3u8|seg\d{5}\.ts)$/.test(params.file)) {
+      notFound(reply)
+      return
+    }
+
+    const info = getAssetFileInfo(ctx.db, params.id)
+    if (!info || info.deletedAt !== null) {
+      notFound(reply)
+      return
+    }
+    const generation = getHlsGeneration(ctx.db, params.generationId)
+    if (
+      !generation ||
+      generation.assetId !== info.id ||
+      generation.state !== 'ready' ||
+      !generation.storageRel
+    ) {
+      notFound(reply)
+      return
+    }
+
+    const generationDir = resolveInside(ctx.config.cacheDir, generation.storageRel)
+    const target = generationDir ? resolveInside(generationDir, params.file) : null
+    if (!target || !(await fileExists(target))) {
+      notFound(reply)
+      return
+    }
+
+    touchHlsGenerationAccess(ctx.db, generation.id, Date.now())
+    const contentType =
+      params.file === 'master.m3u8' ? 'application/vnd.apple.mpegurl' : 'video/mp2t'
+    const accel = ctx.config.accel
+      ? accelPathFor('/internal/cache', cacheRelativePath(ctx.config.cacheDir, target))
+      : undefined
+    await sendFile(request, reply, target, contentType, {
+      cacheControl: 'private, max-age=31536000, immutable',
+      ...(accel ? { accelPath: accel } : {}),
+    })
+  })
+
   app.get('/api/assets/:id/hls/:file', async (request, reply) => {
     const params = parseInput(hlsParams, request.params, reply)
     if (!params) return
@@ -202,6 +457,45 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
     const info = getAssetFileInfo(ctx.db, params.id)
     if (!info || info.deletedAt !== null) {
       notFound(reply)
+      return
+    }
+
+    if (ctx.config.hlsGenerationsEnabled) {
+      const generation = activeReadyGeneration(ctx, info)
+      if (generation) {
+        if (params.file === 'master.m3u8') {
+          const playlist = generation.playlistRel
+            ? resolveInside(ctx.config.cacheDir, generation.playlistRel)
+            : null
+          if (!playlist || !(await fileExists(playlist))) {
+            notFound(reply)
+            return
+          }
+          const text = await readFile(playlist, 'utf8')
+          const pinned = text
+            .split('\n')
+            .map((line) => {
+              const trimmed = line.trim()
+              if (trimmed === '' || trimmed.startsWith('#')) return line
+              return hlsSegmentUrl(info.id, generation.id, trimmed)
+            })
+            .join('\n')
+          reply
+            .header('Cache-Control', 'no-cache')
+            .type('application/vnd.apple.mpegurl')
+            .send(pinned)
+          return
+        }
+        reply.redirect(hlsSegmentUrl(info.id, generation.id, params.file), 302)
+        return
+      }
+
+      if (params.file !== 'master.m3u8') {
+        notFound(reply)
+        return
+      }
+      const status = resolveHlsStatus(ctx, info)
+      sendHlsStatus(reply, status.code, status.body)
       return
     }
 

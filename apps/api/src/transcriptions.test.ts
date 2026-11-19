@@ -115,6 +115,7 @@ async function harness(): Promise<Harness> {
     secureCookies: false,
     scanIntervalMs: 15 * 60_000,
     fileMutationEnabled: false,
+    hlsGenerationsEnabled: false,
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: true,

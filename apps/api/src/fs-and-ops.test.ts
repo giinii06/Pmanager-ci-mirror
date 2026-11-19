@@ -61,6 +61,7 @@ async function createHarness() {
     secureCookies: false,
     scanIntervalMs: 60_000,
     fileMutationEnabled: false,
+    hlsGenerationsEnabled: false,
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: false,

@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 17
+export const SCHEMA_VERSION = 18
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -600,6 +600,66 @@ CREATE INDEX IF NOT EXISTS idx_assets_pending_delete ON assets(pending_delete_mu
   WHERE pending_delete_mutation_id IS NOT NULL;
 `
 
+// An HLS generation is immutable once published. The row carries the physical
+// attempt directory because two workers can encode the same generation, and
+// only the attempt whose fenced publication wins may be served.
+export const V18_HLS_GENERATIONS_SQL = `
+CREATE TABLE IF NOT EXISTS hls_generations (
+  id TEXT PRIMARY KEY,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  profile_hash TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN (
+    'queued','running','ready','failed','cancelled','retry_wait','deleting','removed'
+  )),
+  stage TEXT,
+  progress INTEGER NOT NULL DEFAULT 0,
+  storage_rel TEXT,
+  playlist_rel TEXT,
+  job_id INTEGER,
+  worker_id TEXT,
+  lease_epoch INTEGER NOT NULL DEFAULT 0,
+  request_seq INTEGER NOT NULL,
+  encoder TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  published_at INTEGER,
+  superseded_at INTEGER,
+  eligible_for_gc_at INTEGER,
+  last_access_at INTEGER,
+  error_code TEXT,
+  error_message TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_hls_generations_pending
+  ON hls_generations(asset_id, file_version, profile_hash)
+  WHERE state IN ('queued','running','retry_wait');
+CREATE INDEX IF NOT EXISTS idx_hls_generations_lookup
+  ON hls_generations(asset_id, file_version, profile_hash, state);
+CREATE INDEX IF NOT EXISTS idx_hls_generations_job ON hls_generations(job_id);
+CREATE INDEX IF NOT EXISTS idx_hls_generations_gc
+  ON hls_generations(state, eligible_for_gc_at);
+
+CREATE TABLE IF NOT EXISTS hls_active (
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  profile_hash TEXT NOT NULL,
+  generation_id TEXT NOT NULL REFERENCES hls_generations(id) ON DELETE CASCADE,
+  request_seq INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (asset_id, file_version, profile_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_hls_active_generation ON hls_active(generation_id);
+
+-- A new file version starts a new playback generation. Leaving the old active
+-- rows behind would protect their directories from GC forever.
+CREATE TRIGGER IF NOT EXISTS trg_assets_version_clears_hls_active
+AFTER UPDATE OF file_version ON assets
+WHEN NEW.file_version <> OLD.file_version
+BEGIN
+  DELETE FROM hls_active WHERE asset_id = NEW.id AND file_version <> NEW.file_version;
+END;
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -652,4 +712,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
            )`)
   },
   (exec) => exec(V17_FILE_MUTATIONS_SQL),
+  (exec) => exec(V18_HLS_GENERATIONS_SQL),
 ]

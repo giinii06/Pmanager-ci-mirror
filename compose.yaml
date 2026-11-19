@@ -17,6 +17,8 @@ services:
       PIPELINE_BATCH: ${PIPELINE_BATCH:-500}
       # Delete requests are refused unless the quarantine engine is explicitly on.
       FILE_MUTATION_ENGINE_ENABLED: ${FILE_MUTATION_ENGINE_ENABLED:-0}
+      # Immutable HLS generations; off keeps the single fixed playlist path.
+      HLS_GENERATIONS_ENABLED: ${HLS_GENERATIONS_ENABLED:-0}
     volumes:
       - type: bind
         source: ${MEDIA_ROOT:?set MEDIA_ROOT to the host media folder}

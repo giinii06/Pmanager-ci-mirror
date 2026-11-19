@@ -202,6 +202,7 @@ async function harness(options: { sceneEnabled?: boolean; query?: boolean } = {}
     secureCookies: false,
     scanIntervalMs: 15 * 60_000,
     fileMutationEnabled: false,
+    hlsGenerationsEnabled: false,
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: false,

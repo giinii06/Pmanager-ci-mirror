@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
 import { Maximize, Minimize, Pause, Play, Volume2, VolumeX } from 'lucide-react'
-import type { AssetDTO, SubtitleTrackDTO } from '@mediavault/shared'
-import { api } from '../lib/api'
+import type { AssetDTO, HlsStatusDTO, SubtitleTrackDTO } from '@mediavault/shared'
+import { api, ApiError } from '../lib/api'
 import { patchAssetPlaybackStats } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
 import { formatDuration } from '../lib/format'
@@ -17,7 +17,7 @@ import {
 import { Spinner } from './ui/Spinner'
 import { SubtitleMenu, languageName, trackLabel } from './SubtitleMenu'
 
-type HlsState = 'idle' | 'preparing' | 'ready' | 'error'
+type HlsState = 'idle' | 'preparing' | 'ready' | 'error' | 'offline'
 
 export function VideoPlayer({
   asset,
@@ -49,6 +49,10 @@ export function VideoPlayer({
   const videoRef = externalRef ?? localRef
   const [useHls, setUseHls] = useState(asset.playback === 'hls')
   const [hlsState, setHlsState] = useState<HlsState>(asset.playback === 'hls' ? 'preparing' : 'idle')
+  const [playlistUrl, setPlaylistUrl] = useState<string | null>(null)
+  const [hlsProgress, setHlsProgress] = useState<number | null>(null)
+  const [retryToken, setRetryToken] = useState(0)
+  const [retrying, setRetrying] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const [captionLines, setCaptionLines] = useState<string[] | null>(null)
   const [controlsVisible, setControlsVisible] = useState(true)
@@ -100,38 +104,67 @@ export function VideoPlayer({
 
   useEffect(() => {
     if (!useHls) return
-    let cancelled = false
+    const controller = new AbortController()
     let timer: number | null = null
+    let attempts = 0
+
+    const schedule = () => {
+      if (controller.signal.aborted) return
+      // 2s, 4s, 8s, 16s, then a 30s ceiling: an encode of a long file must not
+      // turn into a request every two seconds for an hour.
+      const delay = Math.min(2000 * 2 ** Math.min(attempts, 4), 30_000)
+      attempts += 1
+      timer = window.setTimeout(() => void check(), delay)
+    }
 
     const check = async () => {
+      timer = null
       try {
-        const response = await fetch(asset.hlsUrl)
-        if (cancelled) return
-        if (response.status === 202) {
-          setHlsState('preparing')
-          timer = window.setTimeout(check, 2000)
+        const response = await fetch(asset.hlsStatusUrl, {
+          signal: controller.signal,
+          credentials: 'same-origin',
+          headers: { accept: 'application/json' },
+        })
+        if (controller.signal.aborted) return
+        const body = (await response.json().catch(() => null)) as HlsStatusDTO | null
+
+        if (body?.state === 'source_offline' || response.status === 503) {
+          setHlsState('offline')
           return
         }
-        if (response.ok) {
+        if (body?.state === 'ready' && body.playlistUrl) {
+          setPlaylistUrl(body.playlistUrl)
+          setHlsProgress(100)
           setHlsState('ready')
           return
         }
-        setHlsState('error')
-        setFailure(`재생 준비가 실패했습니다 (${response.status})`)
-      } catch {
-        if (!cancelled) {
+        if (body?.state === 'failed' || body?.state === 'cancelled') {
           setHlsState('error')
-          setFailure('재생 준비 상태를 확인하지 못했습니다.')
+          setFailure(body.message ?? null)
+          return
         }
+        if (!response.ok && response.status !== 202) {
+          setHlsState('error')
+          setFailure(`재생 준비가 실패했습니다 (${response.status})`)
+          return
+        }
+
+        if (typeof body?.progressPercent === 'number') setHlsProgress(body.progressPercent)
+        setHlsState('preparing')
+        schedule()
+      } catch {
+        if (controller.signal.aborted) return
+        setHlsState('error')
+        setFailure('재생 준비 상태를 확인하지 못했습니다.')
       }
     }
 
     void check()
     return () => {
-      cancelled = true
+      controller.abort()
       if (timer !== null) window.clearTimeout(timer)
     }
-  }, [asset.hlsUrl, useHls])
+  }, [asset.hlsStatusUrl, retryToken, useHls])
 
   useEffect(() => {
     const video = videoRef.current
@@ -180,17 +213,33 @@ export function VideoPlayer({
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
+    if (useHls && (hlsState !== 'ready' || !playlistUrl)) return
+    const source = useHls ? playlistUrl : asset.streamUrl
+    if (!source) return
 
     let hls: Hls | null = null
-    const source = useHls ? asset.hlsUrl : asset.streamUrl
-    if (useHls && hlsState !== 'ready') return
+    // Recovery is bounded per mount: a stream that keeps failing must surface
+    // the retry button instead of reloading forever.
+    let networkRetries = 0
+    let mediaRetries = 0
 
     if (useHls && Hls.isSupported()) {
       hls = new Hls({ enableWorker: true, backBufferLength: 90 })
       hls.loadSource(source)
       hls.attachMedia(video)
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) setFailure('영상을 재생하지 못했습니다.')
+        if (!data.fatal) return
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 3) {
+          networkRetries += 1
+          hls?.startLoad()
+          return
+        }
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < 2) {
+          mediaRetries += 1
+          hls?.recoverMediaError()
+          return
+        }
+        setFailure('영상을 재생하지 못했습니다.')
       })
     } else {
       video.src = source
@@ -202,7 +251,7 @@ export function VideoPlayer({
       video.removeAttribute('src')
       video.load()
     }
-  }, [asset.hlsUrl, asset.streamUrl, hlsState, useHls])
+  }, [asset.streamUrl, hlsState, playlistUrl, useHls])
 
   useEffect(() => {
     const video = videoRef.current
@@ -495,7 +544,32 @@ export function VideoPlayer({
     setPseudoFullscreen(true)
   }
 
-  if (failure) {
+  const retryPlayback = async () => {
+    if (retrying) return
+    setRetrying(true)
+    try {
+      // An offline library needs no new job, only a fresh status check; the
+      // request would just be refused with the same 503.
+      if (hlsState !== 'offline') await api.retryHls(asset.id)
+      setFailure(null)
+      setPlaylistUrl(null)
+      setHlsProgress(null)
+      setHlsState('preparing')
+      setRetryToken((value) => value + 1)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 503) {
+        setFailure(null)
+        setHlsState('offline')
+        return
+      }
+      setFailure(error instanceof ApiError ? error.message : '다시 시도하지 못했습니다.')
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  const offline = hlsState === 'offline'
+  if (failure || hlsState === 'error' || offline) {
     return (
       <div
         className={cn(
@@ -503,13 +577,29 @@ export function VideoPlayer({
           fill ? 'h-full w-full justify-center px-6' : 'max-w-sm',
         )}
       >
-        <p className="text-white">{failure}</p>
-        <a
-          href={`${asset.streamUrl}&download=1`}
-          className="rounded-lg border border-white/25 px-3 py-1.5 text-white transition-colors hover:bg-white/10"
-        >
-          원본 내려받기
-        </a>
+        <p className="text-white">
+          {failure ??
+            (offline ? '원본이 있는 라이브러리가 오프라인입니다.' : '영상을 재생하지 못했습니다.')}
+        </p>
+        {offline ? <p>라이브러리가 다시 연결되면 이어서 재생할 수 있습니다.</p> : null}
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {useHls ? (
+            <button
+              type="button"
+              onClick={() => void retryPlayback()}
+              disabled={retrying}
+              className="rounded-lg border border-white/25 px-3 py-1.5 text-white transition-colors hover:bg-white/10 disabled:opacity-60"
+            >
+              {retrying ? '다시 시도 중…' : offline ? '다시 확인' : '다시 시도'}
+            </button>
+          ) : null}
+          <a
+            href={`${asset.streamUrl}&download=1`}
+            className="rounded-lg border border-white/25 px-3 py-1.5 text-white transition-colors hover:bg-white/10"
+          >
+            원본 내려받기
+          </a>
+        </div>
       </div>
     )
   }
@@ -719,7 +809,9 @@ export function VideoPlayer({
           <div>
             <p className="text-[13px] font-medium text-white">재생을 준비하고 있습니다</p>
             <p className="mt-1 text-[12px] text-white/75">
-              이 형식은 브라우저에서 바로 재생되지 않아 H.264로 변환합니다.
+              {hlsProgress !== null && hlsProgress > 0
+                ? `H.264로 변환하는 중입니다 · ${Math.round(hlsProgress)}%`
+                : '이 형식은 브라우저에서 바로 재생되지 않아 H.264로 변환합니다.'}
             </p>
           </div>
         </div>

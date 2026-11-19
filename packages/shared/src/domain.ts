@@ -137,6 +137,29 @@ export interface AssetDTO {
   previewUrl: string
   streamUrl: string
   hlsUrl: string
+  hlsStatusUrl: string
+}
+
+export type HlsStatusState =
+  | 'queued'
+  | 'running'
+  | 'ready'
+  | 'failed'
+  | 'retry_wait'
+  | 'cancelled'
+  | 'source_offline'
+
+/** The player's view of an HLS generation request. */
+export interface HlsStatusDTO {
+  state: HlsStatusState
+  generationId?: string
+  jobId?: number | null
+  stage?: string | null
+  progressPercent?: number
+  retryAfterSeconds?: number
+  errorCode?: string | null
+  message?: string | null
+  playlistUrl?: string
 }
 
 export interface Page<T> {

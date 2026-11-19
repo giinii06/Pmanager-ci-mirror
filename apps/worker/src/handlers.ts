@@ -1,18 +1,30 @@
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
+import { newId } from '@mediavault/shared'
 import {
+  HLS_GC_GRACE_MS,
+  claimHlsGeneration,
+  failHlsGeneration,
   getArchiveJob,
   getAssetFileInfo,
+  getHlsGeneration,
   getJob,
   getLibrary,
+  isHlsJobLeaseLive,
+  publishHlsGeneration,
   setScanState,
   updateArchiveJob,
+  updateHlsProgress,
   type Db,
+  type HlsJobFence,
   type JobRecord,
 } from '@mediavault/database'
 import {
+  HlsAbortedError,
   ensurePreview,
   extractAndProcessArchive,
   generateHls,
+  generateHlsGeneration,
   generateImageThumbnails,
   generateVideoThumbnails,
   resolveInside,
@@ -163,6 +175,134 @@ async function runArchiveJob(
   }
 }
 
+function classifyHlsError(message: string): string {
+  if (/lease was lost/.test(message)) return 'gpu_lease_lost'
+  if (/MPEG-TS|playlist|segment/i.test(message)) return 'validation_failed'
+  if (/nvenc/i.test(message)) return 'nvenc_failed'
+  return 'encode_failed'
+}
+
+/**
+ * Encodes one immutable generation. The attempt directory is unique, so a
+ * worker that loses its lease can only delete its own output; the publish
+ * transaction decides which attempt becomes the active generation.
+ */
+async function runHlsGeneration(
+  db: Db,
+  config: WorkerConfig,
+  job: JobRecord,
+  info: NonNullable<ReturnType<typeof getAssetFileInfo>>,
+  source: string,
+  generationId: string,
+  execCtx: ExecuteJobContext,
+): Promise<void> {
+  const generation = getHlsGeneration(db, generationId)
+  if (!generation) throw new Error(`hls generation ${generationId} does not exist`)
+  if (generation.assetId !== info.id) throw new Error('hls generation belongs to another asset')
+  if (generation.state === 'ready') return
+  if (generation.fileVersion !== info.fileVersion) {
+    throw new Error(
+      `hls generation is for version ${generation.fileVersion}, the asset is ${info.fileVersion}`,
+    )
+  }
+
+  const fence: HlsJobFence = {
+    workerId: execCtx.fence?.workerId ?? job.workerId ?? config.workerId,
+    leaseEpoch: execCtx.fence?.leaseEpoch ?? job.leaseEpoch,
+    jobId: job.id,
+    now: Date.now(),
+  }
+  if (!claimHlsGeneration(db, generationId, fence)) {
+    throwIfAborted(execCtx.signal)
+    if (getHlsGeneration(db, generationId)?.state === 'ready') return
+    throw new Error(`hls generation ${generationId} could not be claimed`)
+  }
+
+  let lastProgressWrite = 0
+  const onProgress = (percent: number) => {
+    const now = Date.now()
+    if (now - lastProgressWrite < 10_000) return
+    lastProgressWrite = now
+    fence.now = now
+    updateHlsProgress(db, generationId, fence, percent, 'encoding')
+  }
+  const canPublish = () => {
+    fence.now = Date.now()
+    return isHlsJobLeaseLive(db, fence)
+  }
+
+  const encode = (hwaccel: 'nvenc' | null, leaseSignal?: AbortSignal) => {
+    const combined =
+      leaseSignal && execCtx.signal
+        ? AbortSignal.any([execCtx.signal, leaseSignal])
+        : (execCtx.signal ?? leaseSignal)
+    return generateHlsGeneration(source, config.cacheDir, {
+      assetId: info.id,
+      fileVersion: info.fileVersion,
+      generationId,
+      attemptId: newId(),
+      hwaccel,
+      width: info.width,
+      durationMs: info.durationMs,
+      signal: combined,
+      onProgress,
+      canPublish,
+    })
+  }
+
+  try {
+    const result =
+      config.hwaccel !== 'nvenc'
+        ? await encode(config.hwaccel)
+        : await withGpuLease(
+            db,
+            {
+              resourceId: config.gpuResource,
+              owner: config.workerId,
+              taskKind: 'hls',
+              waitMs: HLS_LEASE_WAIT_MS,
+              leaseMs: HLS_LEASE_MS,
+            },
+            (held, leaseSignal) => encode(held ? 'nvenc' : null, leaseSignal),
+          )
+
+    if (!result) return
+    fence.now = Date.now()
+    const published = publishHlsGeneration(db, {
+      id: generationId,
+      fence,
+      storageRel: result.storageRel,
+      playlistRel: result.playlistRel,
+      encoder: result.encoder,
+      graceMs: HLS_GC_GRACE_MS,
+    })
+    if (!published.published) {
+      const dir = resolveInside(config.cacheDir, result.storageRel)
+      if (dir) await rm(dir, { recursive: true, force: true })
+      throw new Error('hls publication was refused by the lease or the asset state')
+    }
+  } catch (error) {
+    fence.now = Date.now()
+    if (error instanceof HlsAbortedError || execCtx.signal?.aborted) {
+      const reason = execCtx.signal?.reason
+      failHlsGeneration(db, generationId, fence, {
+        state: reason === 'cancelled' ? 'cancelled' : 'retry_wait',
+        errorCode: String(reason ?? 'aborted'),
+        errorMessage: 'the encode was interrupted',
+      })
+      throwIfAborted(execCtx.signal)
+      throw error
+    }
+    const message = (error as Error).message
+    failHlsGeneration(db, generationId, fence, {
+      state: job.attempts >= job.maxAttempts ? 'failed' : 'retry_wait',
+      errorCode: classifyHlsError(message),
+      errorMessage: message,
+    })
+    throw error
+  }
+}
+
 export interface ExecuteJobContext {
   signal?: AbortSignal
   fence?: ScanFenceContext
@@ -254,6 +394,13 @@ export async function executeJob(
   }
 
   if (job.kind === 'hls') {
+    const payload = job.payload ? (JSON.parse(job.payload) as { generationId?: string }) : {}
+    if (payload.generationId) {
+      await runHlsGeneration(db, config, job, info, source, payload.generationId, execCtx)
+      throwIfAborted(execCtx.signal)
+      return
+    }
+
     const encode = (hwaccel: 'nvenc' | null, leaseSignal?: AbortSignal) => {
       const combined = leaseSignal && execCtx.signal
         ? AbortSignal.any([execCtx.signal, leaseSignal])

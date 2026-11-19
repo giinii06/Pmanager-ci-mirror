@@ -179,6 +179,7 @@ export function toAssetDTO(asset: AssetRecord): AssetDTO {
     previewUrl: `/api/assets/${asset.id}/preview?v=${version}`,
     streamUrl: `/api/assets/${asset.id}/stream?v=${version}`,
     hlsUrl: `/api/assets/${asset.id}/hls/master.m3u8`,
+    hlsStatusUrl: `/api/assets/${asset.id}/hls`,
   }
 }
 

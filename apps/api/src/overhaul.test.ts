@@ -175,6 +175,7 @@ async function createTestHarness() {
     secureCookies: false,
     scanIntervalMs: 60_000,
     fileMutationEnabled: true,
+    hlsGenerationsEnabled: false,
     gpu: { resourceId: 'gpu:0' },
     asr: {
       enabled: false,

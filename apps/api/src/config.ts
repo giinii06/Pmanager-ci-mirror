@@ -68,6 +68,8 @@ export interface ApiConfig {
   scanIntervalMs: number
   /** Enables the quarantine delete engine. Off by default; delete requests get 503 when off. */
   fileMutationEnabled: boolean
+  /** Enables immutable HLS generations. Off by default; the legacy playlist path stays. */
+  hlsGenerationsEnabled: boolean
   gpu: GpuConfig
   asr: AsrConfig
   translation: TranslationConfig
@@ -218,6 +220,7 @@ export async function loadConfig(
     secureCookies: env.COOKIE_SECURE === '1',
     scanIntervalMs: resolveScanInterval(env),
     fileMutationEnabled: env.FILE_MUTATION_ENGINE_ENABLED === '1',
+    hlsGenerationsEnabled: env.HLS_GENERATIONS_ENABLED === '1',
     gpu: { resourceId: env.GPU_RESOURCE?.trim() || 'gpu:0' },
     asr,
     translation,

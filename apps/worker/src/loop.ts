@@ -16,6 +16,7 @@ import {
 import { StructuredLogger } from '@mediavault/media'
 import type { WorkerConfig } from './config'
 import { executeJob } from './handlers'
+import { collectHlsGarbage } from './hls-maintenance'
 import { runMutationLoop } from './mutations/worker'
 import { runWorkerRecovery } from './recovery'
 import { ScanInterruptedError } from './scan'
@@ -23,6 +24,7 @@ import { startMediaWatcher } from './watch'
 
 const HEARTBEAT_INTERVAL_MS = 20_000
 const RECOVERY_INTERVAL_MS = 15_000
+const HLS_GC_INTERVAL_MS = 10 * 60_000
 const BACKUP_INTERVAL_MS = 24 * 60 * 60_000
 const JOB_RETENTION_MS = 14 * 24 * 60 * 60_000
 
@@ -67,6 +69,7 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
 
   let lastRecoveryCheck = Date.now()
   let lastBackupCheck = Date.now()
+  let lastHlsGc = 0
 
   try {
     while (!stopping) {
@@ -82,6 +85,18 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
           logger.warn('worker.recovery.expired_leases', {
             recoveredJobs: periodic.recoveredJobs,
           })
+        }
+      }
+
+      if (!config.once && now - lastHlsGc >= HLS_GC_INTERVAL_MS) {
+        lastHlsGc = now
+        try {
+          const gc = await collectHlsGarbage(db, config.cacheDir, now)
+          if (gc.removed > 0 || gc.orphaned > 0) {
+            logger.info('worker.hls.gc', { removed: gc.removed, orphaned: gc.orphaned })
+          }
+        } catch (error) {
+          logger.error('worker.hls.gc_failed', { errorMessage: (error as Error).message })
         }
       }
 

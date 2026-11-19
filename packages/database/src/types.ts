@@ -553,3 +553,47 @@ export interface ArchiveJobRecord {
   createdAt: number
   updatedAt: number
 }
+
+export type HlsGenerationState =
+  | 'queued'
+  | 'running'
+  | 'ready'
+  | 'failed'
+  | 'cancelled'
+  | 'retry_wait'
+  | 'deleting'
+  | 'removed'
+
+export interface HlsGenerationRecord {
+  id: string
+  assetId: string
+  fileVersion: number
+  profileHash: string
+  state: HlsGenerationState
+  stage: string | null
+  progress: number
+  storageRel: string | null
+  playlistRel: string | null
+  jobId: number | null
+  workerId: string | null
+  leaseEpoch: number
+  requestSeq: number
+  encoder: string | null
+  createdAt: number
+  updatedAt: number
+  publishedAt: number | null
+  supersededAt: number | null
+  eligibleForGcAt: number | null
+  lastAccessAt: number | null
+  errorCode: string | null
+  errorMessage: string | null
+}
+
+export interface HlsActiveRecord {
+  assetId: string
+  fileVersion: number
+  profileHash: string
+  generationId: string
+  requestSeq: number
+  updatedAt: number
+}

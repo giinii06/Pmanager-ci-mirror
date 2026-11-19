@@ -10,6 +10,7 @@ import type {
   FileOperationDTO,
   HostBrowseResponseDTO,
   HostDriveDTO,
+  HlsStatusDTO,
   JobDTO,
   JobSummaryDTO,
   LibraryDTO,
@@ -153,6 +154,8 @@ export const api = {
       body: JSON.stringify({ positionMs }),
     }),
   deleteAsset: (id: string) => request<void>(`/api/assets/${id}`, { method: 'DELETE' }),
+  retryHls: (id: string) =>
+    request<HlsStatusDTO>(`/api/assets/${id}/hls/retry`, { method: 'POST' }),
   createDeleteOperation: (id: string, requestKey: string) =>
     request<FileOperationDTO>(`/api/assets/${id}/delete-operations`, {
       method: 'POST',
