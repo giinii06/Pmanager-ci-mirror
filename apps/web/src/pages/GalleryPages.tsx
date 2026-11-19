@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, Film, Folder as FolderIcon, Pencil, Plus, Tag, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Check, Film, Folder as FolderIcon, FolderHeart, Pencil, Plus, Tag, Trash2, X } from 'lucide-react'
 import { POSTER_SCHEME, type VideoSort } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
+import { draftFromAssetQuery } from '../lib/filterTree'
 import { formatCount } from '../lib/format'
 import { useUi } from '../store/ui'
 import { useViewer } from '../store/viewer'
+import { AlbumDialog } from '../components/AlbumDialog'
 import { AssetGallery } from '../components/AssetGallery'
 import { EmptyState } from '../components/EmptyState'
 import { PageHeading } from '../components/PageHeading'
@@ -62,6 +64,7 @@ export function VideosPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const [sort, setSort] = useState<VideoSort>('rate')
+  const [savingAlbum, setSavingAlbum] = useState(false)
   const sessionSeed = useRef(createSessionSeed())
   const sharedId = params.get('v')
   const openedFor = useRef<string | null>(null)
@@ -101,25 +104,37 @@ export function VideosPage() {
   }
 
   return (
-    <AssetGallery
-      title="동영상"
-      filters={filters}
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <SortBar sort={sort} onChange={setSort} />
-          <Link to="/videos/tags">
-            <Button size="sm">
-              <Tag size={13} />
-              태그별 보기
+    <>
+      <AssetGallery
+        title="동영상"
+        filters={filters}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <SortBar sort={sort} onChange={setSort} />
+            <Button size="sm" onClick={() => setSavingAlbum(true)}>
+              <FolderHeart size={13} />
+              앨범으로 저장
             </Button>
-          </Link>
-        </div>
-      }
-      emptyTitle="동영상이 없습니다"
-      emptyBody="MP4, MOV, MKV, WebM 파일을 스캔하면 여기에 모입니다."
-      emptyIcon={<Film size={20} />}
-      emptyAction={<Button onClick={() => navigate('/settings')}>라이브러리 추가</Button>}
-    />
+            <Link to="/videos/tags">
+              <Button size="sm">
+                <Tag size={13} />
+                태그별 보기
+              </Button>
+            </Link>
+          </div>
+        }
+        emptyTitle="동영상이 없습니다"
+        emptyBody="MP4, MOV, MKV, WebM 파일을 스캔하면 여기에 모입니다."
+        emptyIcon={<Film size={20} />}
+        emptyAction={<Button onClick={() => navigate('/settings')}>라이브러리 추가</Button>}
+      />
+      <AlbumDialog
+        open={savingAlbum}
+        onClose={() => setSavingAlbum(false)}
+        initialDraft={draftFromAssetQuery({ kind: 'video' })}
+        initialSort={sort}
+      />
+    </>
   )
 }
 
@@ -133,6 +148,7 @@ export function VideoTagsPage() {
   const [newTagName, setNewTagName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [savingAlbum, setSavingAlbum] = useState(false)
 
   const tagsQuery = useQuery({ queryKey: ['tags'], queryFn: api.tags })
 
@@ -173,31 +189,47 @@ export function VideoTagsPage() {
 
   if (tagId) {
     return (
-      <AssetGallery
-        title={selectedTag ? `# ${selectedTag.name}` : '태그 동영상'}
-        filters={{
-          kind: 'video',
-          tagId,
-          sort,
-          ...(sort === 'rate' ? { seed: sessionSeed.current } : {}),
-        }}
-        breadcrumb={
-          <div className="pt-4">
-            <Link
-              to="/videos/tags"
-              className="inline-flex items-center gap-1.5 text-[12.5px] text-muted transition-colors hover:text-ink"
-            >
-              <ArrowLeft size={14} />
-              태그별 보기로 돌아가기
-            </Link>
-          </div>
-        }
-        actions={<SortBar sort={sort} onChange={setSort} />}
-        emptyTitle="이 태그의 동영상이 없습니다"
-        emptyBody="동영상 상세 화면에서 이 태그를 지정하면 여기에 표시됩니다."
-        emptyIcon={<Tag size={20} />}
-        emptyAction={<Button onClick={() => navigate('/videos')}>전체 동영상</Button>}
-      />
+      <>
+        <AssetGallery
+          title={selectedTag ? `# ${selectedTag.name}` : '태그 동영상'}
+          filters={{
+            kind: 'video',
+            tagId,
+            sort,
+            ...(sort === 'rate' ? { seed: sessionSeed.current } : {}),
+          }}
+          breadcrumb={
+            <div className="pt-4">
+              <Link
+                to="/videos/tags"
+                className="inline-flex items-center gap-1.5 text-[12.5px] text-muted transition-colors hover:text-ink"
+              >
+                <ArrowLeft size={14} />
+                태그별 보기로 돌아가기
+              </Link>
+            </div>
+          }
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <SortBar sort={sort} onChange={setSort} />
+              <Button size="sm" onClick={() => setSavingAlbum(true)}>
+                <FolderHeart size={13} />
+                앨범으로 저장
+              </Button>
+            </div>
+          }
+          emptyTitle="이 태그의 동영상이 없습니다"
+          emptyBody="동영상 상세 화면에서 이 태그를 지정하면 여기에 표시됩니다."
+          emptyIcon={<Tag size={20} />}
+          emptyAction={<Button onClick={() => navigate('/videos')}>전체 동영상</Button>}
+        />
+        <AlbumDialog
+          open={savingAlbum}
+          onClose={() => setSavingAlbum(false)}
+          initialDraft={draftFromAssetQuery({ kind: 'video', tagId })}
+          initialSort={sort}
+        />
+      </>
     )
   }
 

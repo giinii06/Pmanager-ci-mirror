@@ -19,6 +19,7 @@ import { VideoTagsPage, VideosPage } from './pages/GalleryPages'
 import { DuplicatesPage } from './pages/DuplicatesPage'
 import { SearchPage } from './pages/SearchPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { SmartAlbumPage, SmartAlbumsPage } from './pages/SmartAlbumsPage'
 
 function Splash() {
   return (
@@ -84,6 +85,8 @@ export function App() {
           <Route path="folders/:folderId" element={<FolderPage />} />
           <Route path="search" element={<SearchRoute />} />
           <Route path="duplicates" element={<DuplicatesPage />} />
+          <Route path="smart-albums" element={<SmartAlbumsPage />} />
+          <Route path="smart-albums/:id" element={<SmartAlbumPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>

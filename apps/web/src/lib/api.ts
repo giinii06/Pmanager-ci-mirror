@@ -10,6 +10,7 @@ import type {
   FolderDTO,
   FolderSort,
   FileOperationDTO,
+  FilterTree,
   HostBrowseResponseDTO,
   HostDriveDTO,
   HlsStatusDTO,
@@ -24,6 +25,7 @@ import type {
   PlaybackProgressDTO,
   ReviewDTO,
   SemanticSearchDTO,
+  SmartAlbumDTO,
   StatsDTO,
   StorageStatsDTO,
   SubtitleTracksDTO,
@@ -38,6 +40,7 @@ import type {
   TranslationStatusDTO,
   TranslationSummaryDTO,
   UserDTO,
+  VideoSort,
   VoteActivityStatsDTO,
   WorkQueueDTO,
 } from '@mediavault/shared'
@@ -86,6 +89,7 @@ function queryString(query: AssetQuery): string {
   if (query.folderId) params.set('folderId', query.folderId)
   if (query.kind) params.set('kind', query.kind)
   if (query.tagId) params.set('tagId', query.tagId)
+  if (query.albumId) params.set('albumId', query.albumId)
   if (query.sort) params.set('sort', query.sort)
   if (query.seed !== undefined) params.set('seed', String(query.seed))
   if (query.q) params.set('q', query.q)
@@ -326,6 +330,32 @@ export const api = {
       embeddings: number
       scenes: number
     }>('/api/index/run', { method: 'POST' }),
+
+  smartAlbums: () => request<{ albums: SmartAlbumDTO[] }>('/api/smart-albums'),
+  smartAlbum: (id: string) => request<SmartAlbumDTO>(`/api/smart-albums/${id}`),
+  createSmartAlbum: (body: {
+    name: string
+    description?: string | null
+    filter: FilterTree
+    sort?: VideoSort | null
+    pinned?: boolean
+  }) => request<SmartAlbumDTO>('/api/smart-albums', { method: 'POST', body: JSON.stringify(body) }),
+  updateSmartAlbum: (
+    id: string,
+    body: Partial<{
+      name: string
+      description: string | null
+      filter: FilterTree
+      sort: VideoSort | null
+      pinned: boolean
+    }>,
+  ) =>
+    request<SmartAlbumDTO>(`/api/smart-albums/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteSmartAlbum: (id: string) =>
+    request<void>(`/api/smart-albums/${id}`, { method: 'DELETE' }),
 
   transcriptionStatus: (id: string) =>
     request<TranscriptionStatusDTO>(`/api/assets/${id}/transcription/status`),

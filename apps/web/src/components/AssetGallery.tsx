@@ -69,6 +69,7 @@ export function AssetGallery({
     filters.folderId,
     filters.kind,
     filters.tagId,
+    filters.albumId,
     filters.sort,
     filters.seed,
     filters.q,
