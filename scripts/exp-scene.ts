@@ -1,5 +1,4 @@
 import {
-  getScene,
   searchScenes,
   openDatabase,
   type SceneQueryVectors,
@@ -131,7 +130,8 @@ function variantB(db: Db, query: SceneQueryVectors, f: Fingerprint, limit: numbe
     thumbs.push(row.thumbnailPath)
   }
 
-  const scores = new Float32Array(ids.length).fill(-Infinity)
+  // Float64, not Float32: narrowing the score loses the digits the ordering needs.
+  const scores = new Float64Array(ids.length).fill(-Infinity)
   const modalities: ('visual' | 'audio' | 'av')[] = new Array(ids.length)
   for (const row of db
     .query<{ sceneId: string; modality: 'visual' | 'audio' | 'av'; vector: Uint8Array }, [number]>(
@@ -259,4 +259,3 @@ try {
 } finally {
   console.info = info
 }
-void getScene
