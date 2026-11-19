@@ -140,9 +140,9 @@ export function WatchPage({
     onError: () => toast('태그를 제거하지 못했습니다.', 'error'),
   })
 
-  const deleteKeyRef = useRef(`${asset.id}:${crypto.randomUUID()}`)
+  const deleteKeyRef = useRef(`${asset.id}:${randomToken()}`)
   useEffect(() => {
-    deleteKeyRef.current = `${asset.id}:${crypto.randomUUID()}`
+    deleteKeyRef.current = `${asset.id}:${randomToken()}`
   }, [asset.id])
 
   const destroyAsset = useMutation({
