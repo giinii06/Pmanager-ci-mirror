@@ -14,6 +14,7 @@ import type {
   ReviewDTO,
   SceneJobDTO,
   ScanRunDTO,
+  SmartAlbumDTO,
   TagDTO,
   TagSummaryDTO,
   TranscriptDTO,
@@ -42,6 +43,7 @@ import type {
   ReviewRecord,
   ScanRunRecord,
   SceneJobRecord,
+  SmartAlbumRecord,
   TagRecord,
   TagSummaryRecord,
   TranscriptRecord,
@@ -483,5 +485,18 @@ function toDuplicateGroupMemberDTO(member: DuplicateGroupMemberRecord): Duplicat
     confidence: member.confidence,
     sameInode: member.sameInode,
     thumbnailUrl: `/api/assets/${member.assetId}/thumbnail?size=320&v=${member.fileVersion}&pv=${member.posterVersion}`,
+  }
+}
+
+export function toSmartAlbumDTO(album: SmartAlbumRecord): SmartAlbumDTO {
+  return {
+    id: album.id,
+    name: album.name,
+    description: album.description,
+    filter: album.filter,
+    sort: album.sort,
+    pinned: album.pinned,
+    createdAt: new Date(album.createdAt).toISOString(),
+    updatedAt: new Date(album.updatedAt).toISOString(),
   }
 }

@@ -101,6 +101,7 @@ async function createHarness() {
     scanIntervalMs: 60_000,
     fileMutationEnabled: false,
     hlsGenerationsEnabled: false,
+    smartAlbumsEnabled: false,
     trustProxy: [],
     publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },

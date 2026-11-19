@@ -176,6 +176,7 @@ async function createTestHarness() {
     scanIntervalMs: 60_000,
     fileMutationEnabled: true,
     hlsGenerationsEnabled: false,
+    smartAlbumsEnabled: false,
     trustProxy: [],
     publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },

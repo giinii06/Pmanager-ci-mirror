@@ -11,6 +11,7 @@ import { registerLibraryRoutes } from './routes/libraries'
 import { registerMediaRoutes } from './routes/media'
 import { registerPlaybackRoutes } from './routes/playback'
 import { registerSceneRoutes } from './routes/scenes'
+import { registerSmartAlbumRoutes } from './routes/smart-albums'
 import { registerSystemRoutes } from './routes/system'
 import { registerTagRoutes } from './routes/tags'
 import { registerTranscriptionRoutes } from './routes/transcriptions'
@@ -130,6 +131,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerPlaybackRoutes(app, ctx)
   registerFileOperationRoutes(app, ctx)
   registerDuplicateRoutes(app, ctx)
+  registerSmartAlbumRoutes(app, ctx)
   registerTagRoutes(app, ctx)
   registerMediaRoutes(app, ctx)
   registerTranscriptionRoutes(app, ctx)

@@ -1,3 +1,5 @@
+import type { FilterTree } from './filters'
+
 export type AssetKind = 'image' | 'video'
 
 export type JobKind = 'scan_library' | 'thumbnail' | 'preview' | 'hls' | 'process_archive' | 'maintenance'
@@ -747,6 +749,8 @@ export interface AssetQuery {
   sort?: VideoSort
   seed?: number
   q?: string
+  /** Serves a saved filter's membership alongside any of the filters above. */
+  albumId?: string
   cursor?: string | null
   limit?: number
 }
@@ -860,3 +864,26 @@ export interface DuplicateGroupListDTO {
   groups: DuplicateGroupDTO[]
   nextCursor: string | null
 }
+
+/**
+ * A stored filter as it is served. `valid: false` means the album's JSON no
+ * longer parses against the current field registry, so its asset list is
+ * refused rather than answered with a broad match.
+ */
+export type SmartAlbumFilter =
+  | { valid: true; tree: FilterTree }
+  | { valid: false; error: string }
+
+/** A saved filter. It moves no file and copies no row; only the condition is stored. */
+export interface SmartAlbumDTO {
+  id: string
+  name: string
+  description: string | null
+  filter: SmartAlbumFilter
+  sort: VideoSort | null
+  pinned: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type SmartAlbumPage = Page<AssetDTO> & { album: SmartAlbumDTO }

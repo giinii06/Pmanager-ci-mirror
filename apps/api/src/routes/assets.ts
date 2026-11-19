@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import {
   addAssetWatchTime,
@@ -19,14 +19,12 @@ import {
   getReview,
   getTag,
   incrementAssetView,
-  listAssets,
   listMatchingAssetIds,
   pickRandomAsset,
   putProgress,
   relatedAssets,
   relatedByEmbedding,
   removeTagFromAsset,
-  resolveAssetSort,
   upsertReview,
   voteAsset,
   type AssetFilter,
@@ -34,11 +32,12 @@ import {
 } from '@mediavault/database'
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PRIORITY, VIDEO_SORTS, newId } from '@mediavault/shared'
 import { extractCustomVideoPoster, fileExists, posterPath, resolveInside } from '@mediavault/media'
+import { readAssetPage } from '../asset-page'
 import type { AppContext } from '../context'
-import { decodeCursor, encodeCursor } from '../cursor'
 import { toAssetDTO, toEmbeddingJobDTO, toFileOperationDTO, toPlaybackDTO, toReviewDTO } from '../dto'
 import { enqueueEmbedding } from '../embedding-trigger'
 import { parseInput } from '../validate'
+import { resolveAlbumFilter, sendAlbumFilterInvalid } from './smart-albums'
 
 const idParams = z.object({ id: z.string().min(1).max(64) })
 const tagParams = z.object({ id: z.string().min(1).max(64), tagId: z.string().min(1).max(64) })
@@ -51,6 +50,7 @@ const assetFilterQuery = z.object({
   sort: z.enum(VIDEO_SORTS).optional(),
   seed: z.coerce.number().int().min(0).max(2_147_483_647).optional(),
   q: z.string().max(200).optional(),
+  albumId: z.string().max(64).optional(),
 })
 
 const assetQuery = assetFilterQuery.extend({
@@ -72,6 +72,7 @@ const randomBody = z.object({
   kind: z.enum(['image', 'video']).optional(),
   tagId: z.string().max(64).optional(),
   q: z.string().max(200).optional(),
+  albumId: z.string().max(64).optional(),
   currentAssetId: z.string().min(1).max(64).optional(),
   recentIds: z.array(z.string().min(1).max(64)).max(50).optional(),
   seed: z.number().int().min(0).max(2_147_483_647).optional(),
@@ -129,20 +130,50 @@ function toAssetFilter(query: z.infer<typeof assetFilterQuery>): AssetFilter {
   return filter
 }
 
+/**
+ * Adds a saved album's predicate to the filter. An explicit sort in the request
+ * wins over the album's, so the same album can be browsed by another order.
+ */
+function applyAlbum(
+  ctx: AppContext,
+  albumId: string | undefined,
+  filter: AssetFilter,
+  userId: string,
+  reply: FastifyReply,
+): boolean {
+  if (!albumId) return true
+  if (!ctx.config.smartAlbumsEnabled) {
+    reply.code(404).send({ error: 'not_available', message: 'Smart albums are turned off.' })
+    return false
+  }
+  const resolved = resolveAlbumFilter(ctx.db, albumId, userId)
+  if (resolved.kind === 'missing') {
+    reply.code(404).send({ error: 'not_found', message: 'Smart album not found.' })
+    return false
+  }
+  if (resolved.kind === 'invalid') {
+    sendAlbumFilterInvalid(reply, resolved.album)
+    return false
+  }
+  filter.where = resolved.where
+  if (!filter.sort && resolved.album.sort) filter.sort = resolved.album.sort
+  return true
+}
+
 export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/assets', async (request, reply) => {
     const query = parseInput(assetQuery, request.query, reply)
     if (!query) return
 
-    const cursor = query.cursor ? decodeCursor(query.cursor) : null
-    if (query.cursor && !cursor) {
+    const filter = toAssetFilter(query)
+    if (!applyAlbum(ctx, query.albumId, filter, request.user!.id, reply)) return
+
+    const page = readAssetPage(ctx.db, filter, query.cursor ?? null, query.limit ?? DEFAULT_PAGE_SIZE)
+    if (page.kind === 'invalid_cursor') {
       reply.code(400).send({ error: 'invalid_cursor', message: 'The cursor is not valid.' })
       return
     }
-
-    const filter = toAssetFilter(query)
-    const limit = query.limit ?? DEFAULT_PAGE_SIZE
-    const { records, total, hasMore } = listAssets(ctx.db, filter, cursor, limit)
+    const { records, total, nextCursor } = page.page
 
     const now = Date.now()
     const missingPosters: AssetRecord[] = []
@@ -168,16 +199,6 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
       })()
     }
 
-    const effectiveSort = resolveAssetSort(filter)
-    const currentOffset = cursor && 'offset' in cursor ? cursor.offset : 0
-    const last = records[records.length - 1]
-    const nextCursor =
-      hasMore && last
-        ? effectiveSort === 'latest' && (!cursor || 'takenAt' in cursor)
-          ? encodeCursor({ takenAt: last.takenAt, id: last.id })
-          : encodeCursor({ offset: currentOffset + records.length })
-        : null
-
     reply.send({
       items: records.map(toAssetDTO),
       total,
@@ -188,8 +209,9 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
   app.get('/api/assets/ids', async (request, reply) => {
     const query = parseInput(idsQuery, request.query, reply)
     if (!query) return
-    const ids = listMatchingAssetIds(ctx.db, toAssetFilter(query), query.limit ?? 10_000)
-    reply.send({ ids })
+    const filter = toAssetFilter(query)
+    if (!applyAlbum(ctx, query.albumId, filter, request.user!.id, reply)) return
+    reply.send({ ids: listMatchingAssetIds(ctx.db, filter, query.limit ?? 10_000) })
   })
 
   app.post('/api/assets/random', async (request, reply) => {
@@ -201,6 +223,7 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     if (body.kind) filter.kind = body.kind
     if (body.tagId) filter.tagId = body.tagId
     if (body.q) filter.query = body.q
+    if (!applyAlbum(ctx, body.albumId, filter, request.user!.id, reply)) return
     const asset = pickRandomAsset(ctx.db, filter, {
       currentAssetId: body.currentAssetId ?? null,
       recentIds: body.recentIds ?? [],
@@ -229,7 +252,9 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     if (!params) return
     const query = parseInput(neighborQuery, request.query, reply)
     if (!query) return
-    const result = getAssetNeighbor(ctx.db, params.id, toAssetFilter(query), query.direction)
+    const filter = toAssetFilter(query)
+    if (!applyAlbum(ctx, query.albumId, filter, request.user!.id, reply)) return
+    const result = getAssetNeighbor(ctx.db, params.id, filter, query.direction)
     if (result.kind === 'missing') {
       reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
       return

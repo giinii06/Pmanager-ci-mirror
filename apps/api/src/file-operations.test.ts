@@ -92,6 +92,7 @@ async function createHarness(options: { enabled: boolean; online?: boolean } = {
     scanIntervalMs: 60_000,
     fileMutationEnabled: options.enabled,
     hlsGenerationsEnabled: false,
+    smartAlbumsEnabled: false,
     trustProxy: [],
     publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },

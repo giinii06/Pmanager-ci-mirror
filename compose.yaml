@@ -23,6 +23,8 @@ services:
       HLS_GENERATIONS_ENABLED: ${HLS_GENERATIONS_ENABLED:-0}
       # Trigram index for the search box; 0 keeps every query on the LIKE scan.
       SEARCH_FTS_ENABLED: ${SEARCH_FTS_ENABLED:-1}
+      # Saved filters; 0 turns the smart-album routes off.
+      SMART_ALBUMS_ENABLED: ${SMART_ALBUMS_ENABLED:-1}
     volumes:
       - type: bind
         source: ${MEDIA_ROOT:?set MEDIA_ROOT to the host media folder}

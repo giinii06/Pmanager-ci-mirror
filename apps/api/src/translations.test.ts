@@ -149,6 +149,7 @@ async function harness(language = 'ja'): Promise<Harness> {
     scanIntervalMs: 15 * 60_000,
     fileMutationEnabled: false,
     hlsGenerationsEnabled: false,
+    smartAlbumsEnabled: false,
     trustProxy: [],
     publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },
