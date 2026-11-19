@@ -60,6 +60,8 @@ export interface CreateEmbeddingJobInput {
   pipelineVersion: string
   dimensions: number
   maxAttempts?: number
+  /** Restarts a completed run even when its model fingerprint still matches. */
+  force?: boolean
 }
 
 export interface EmbeddingVectorInput {
@@ -133,7 +135,7 @@ export function createEmbeddingJob(
     )
     .get(input.assetId, input.fileVersion)
 
-  if (newest && isCurrent(newest, input)) return newest
+  if (newest && !input.force && isCurrent(newest, input)) return newest
 
   if (newest && !ACTIVE.has(newest.state)) {
     // Reset the finished row in place so the table keeps one row per file version.

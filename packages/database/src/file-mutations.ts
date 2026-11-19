@@ -15,6 +15,7 @@ const MUTATION_SELECT = `
   request_key AS requestKey, requested_file_version AS requestedFileVersion,
   original_deleted_at AS originalDeletedAt, state, resume_state AS resumeState,
   source_rel AS sourceRel,
+  target_library_id AS targetLibraryId, target_rel AS targetRel,
   quarantine_rel AS quarantineRel, quarantine_root AS quarantineRoot,
   manifest_json AS manifestJson, attempts, max_attempts AS maxAttempts,
   retry_after AS retryAfter, lease_owner AS leaseOwner, lease_epoch AS leaseEpoch,
@@ -106,16 +107,21 @@ export interface CreateDeleteMutationInput {
   now: number
 }
 
+export interface CreateMoveMutationInput extends CreateDeleteMutationInput {
+  targetLibraryId: string
+  targetRel: string
+}
+
 export interface CreateMutationResult {
   record: FileMutationRecord
   created: boolean
 }
 
-/**
- * One request key maps to one mutation forever, so a retried HTTP call returns
- * the original operation instead of queuing a second delete of the same file.
- */
-export function createDeleteMutation(db: Db, input: CreateDeleteMutationInput): CreateMutationResult {
+function createMutation(
+  db: Db,
+  kind: 'delete' | 'move' | 'copy',
+  input: CreateDeleteMutationInput & { targetLibraryId?: string; targetRel?: string },
+): CreateMutationResult {
   return db.transaction(() => {
     const existing = getMutationByRequestKey(db, input.requestKey)
     if (existing) return { record: existing, created: false }
@@ -123,22 +129,43 @@ export function createDeleteMutation(db: Db, input: CreateDeleteMutationInput): 
     db.query<null, Params>(
       `INSERT INTO file_mutations (
          id, kind, asset_id, library_id, user_id, request_key, requested_file_version,
-         state, source_rel, created_at, updated_at
-       ) VALUES (?, 'delete', ?, ?, ?, ?, ?, 'requested', ?, ?, ?)`,
+         state, source_rel, target_library_id, target_rel, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?, ?)`,
     ).run(
       id,
+      kind,
       input.assetId,
       input.libraryId,
       input.userId,
       input.requestKey,
       input.requestedFileVersion,
       input.sourceRel,
+      input.targetLibraryId ?? null,
+      input.targetRel ?? null,
       input.now,
       input.now,
     )
-    recordMutationEvent(db, id, 'requested', { kind: 'delete' }, input.now)
+    recordMutationEvent(db, id, 'requested', { kind }, input.now)
     return { record: getFileMutation(db, id)!, created: true }
   }).immediate()
+}
+
+/**
+ * One request key maps to one mutation forever, so a retried HTTP call returns
+ * the original operation instead of queuing a second delete of the same file.
+ */
+export function createDeleteMutation(db: Db, input: CreateDeleteMutationInput): CreateMutationResult {
+  return createMutation(db, 'delete', input)
+}
+
+/** A move keeps the asset row and its derived data; only its location changes. */
+export function createMoveMutation(db: Db, input: CreateMoveMutationInput): CreateMutationResult {
+  return createMutation(db, 'move', input)
+}
+
+/** A copy publishes a verified second file and lets the scanner index it. */
+export function createCopyMutation(db: Db, input: CreateMoveMutationInput): CreateMutationResult {
+  return createMutation(db, 'copy', input)
 }
 
 export function claimNextMutation(
@@ -304,6 +331,100 @@ export function clearAssetPendingDelete(db: Db, assetId: string, mutationId: str
     )
     .run(assetId, mutationId)
   return result.changes === 1
+}
+
+/**
+ * Claims the asset for a move without hiding it. The scanner's `touchAssets`
+ * and `updateAssetFile` already refuse a row whose pending mutation is set, so
+ * a move gets the same protection from a concurrent scan that a delete does,
+ * while `deleted_at` stays null and the asset keeps serving its old path until
+ * the relocation commits.
+ */
+export function markAssetPendingMutation(
+  db: Db,
+  assetId: string,
+  mutationId: string,
+  expectedFileVersion: number,
+  fence: MutationLeaseFence,
+): boolean {
+  const result = db
+    .query<null, Params>(
+      `UPDATE assets SET pending_delete_mutation_id = ?
+       WHERE id = ? AND deleted_at IS NULL AND pending_delete_mutation_id IS NULL
+         AND file_version = ?
+         AND EXISTS (
+           SELECT 1 FROM file_mutations
+           WHERE id = ? AND lease_owner = ? AND lease_epoch = ? AND lease_expires_at > ?
+         )`,
+    )
+    .run(
+      mutationId,
+      assetId,
+      expectedFileVersion,
+      mutationId,
+      fence.workerId,
+      fence.leaseEpoch,
+      fence.now,
+    )
+  return result.changes === 1
+}
+
+/** Releases a move's claim without touching the tombstone. */
+export function clearAssetPendingMutation(db: Db, assetId: string, mutationId: string): boolean {
+  const result = db
+    .query<null, Params>(
+      `UPDATE assets SET pending_delete_mutation_id = NULL
+       WHERE id = ? AND pending_delete_mutation_id = ?`,
+    )
+    .run(assetId, mutationId)
+  return result.changes === 1
+}
+
+/**
+ * Stops a mutation that has not touched the file yet. Guarded on the lease so
+ * a cancel can never race an executing worker: once a worker holds the lease,
+ * the cancel loses and the operation finishes. Only `requested`/`validated`
+ * qualify, because a quarantined file has already moved.
+ *
+ * Validation already claimed the asset, so the claim (and, for a delete, the
+ * tombstone) is released here. Without that the asset would stay invisible to
+ * a delete or permanently claimed for a move even though its file never moved.
+ */
+export function cancelMutationPreCommit(db: Db, id: string, now: number): boolean {
+  return db.transaction(() => {
+    const row = getFileMutation(db, id)
+    if (!row) return false
+    const step = row.state === 'failed_retryable' ? (row.resumeState ?? 'requested') : row.state
+    if (step !== 'requested' && step !== 'validated') return false
+    if (row.leaseExpiresAt !== null && row.leaseExpiresAt > now) return false
+    const result = db
+      .query<null, Params>(
+        `UPDATE file_mutations SET
+           state = 'cancelled_pre_commit', resume_state = NULL, lease_owner = NULL,
+           lease_expires_at = NULL, error_code = 'cancelled_by_user',
+           error_message = 'The operation was cancelled before it touched the file.',
+           retry_after = 0, updated_at = ?
+         WHERE id = ? AND state IN ('requested','validated','failed_retryable')
+           AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+      )
+      .run(now, id, now)
+    if (result.changes !== 1) return false
+    if (row.assetId) {
+      if (row.kind === 'delete') {
+        db.query<null, Params>(
+          `UPDATE assets SET pending_delete_mutation_id = NULL, deleted_at = NULL
+           WHERE id = ? AND pending_delete_mutation_id = ?`,
+        ).run(row.assetId, id)
+      } else {
+        db.query<null, Params>(
+          `UPDATE assets SET pending_delete_mutation_id = NULL
+           WHERE id = ? AND pending_delete_mutation_id = ?`,
+        ).run(row.assetId, id)
+      }
+    }
+    recordMutationEvent(db, id, 'cancelled_pre_commit', { cancelledBy: 'bulk' }, now)
+    return true
+  }).immediate()
 }
 
 /**

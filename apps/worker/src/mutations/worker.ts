@@ -7,6 +7,7 @@ import {
 } from '@mediavault/database'
 import type { WorkerConfig } from '../config'
 import { executeDeleteMutation, type MutationLogger } from './delete'
+import { executeMoveMutation } from './move'
 
 /**
  * Runs beside the job loop in the same process. The lease makes it safe to
@@ -37,7 +38,12 @@ export async function runMutationLoop(
     }, Math.floor(leaseMs / 3))
 
     try {
-      await executeDeleteMutation({ db, config, logger, fence }, mutation)
+      const ctx = { db, config, logger, fence }
+      if (mutation.kind === 'move' || mutation.kind === 'copy') {
+        await executeMoveMutation(ctx, mutation)
+      } else {
+        await executeDeleteMutation(ctx, mutation)
+      }
     } finally {
       clearInterval(timer)
       fence.now = Date.now()

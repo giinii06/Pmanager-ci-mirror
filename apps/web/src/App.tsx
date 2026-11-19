@@ -14,6 +14,7 @@ import { EmptyState } from './components/EmptyState'
 import { Spinner } from './components/ui/Spinner'
 import { Button } from './components/ui/Button'
 import { LoginPage, SetupPage } from './pages/AuthPages'
+import { BulkOperationPage, BulkOperationsPage } from './pages/BulkPages'
 import { FolderPage, FoldersPage } from './pages/FolderPages'
 import { VideoTagsPage, VideosPage } from './pages/GalleryPages'
 import { DuplicatesPage } from './pages/DuplicatesPage'
@@ -86,6 +87,8 @@ export function App() {
           <Route path="folders/:folderId" element={<FolderPage />} />
           <Route path="search" element={<SearchRoute />} />
           <Route path="duplicates" element={<DuplicatesPage />} />
+          <Route path="bulk" element={<BulkOperationsPage />} />
+          <Route path="bulk/:id" element={<BulkOperationPage />} />
           <Route path="smart-albums" element={<SmartAlbumsPage />} />
           <Route path="smart-albums/:id" element={<SmartAlbumPage />} />
           <Route path="playlists" element={<PlaylistsPage />} />

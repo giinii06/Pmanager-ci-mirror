@@ -7,6 +7,14 @@ import type {
   AssetQuery,
   AuthStatusDTO,
   BackupRecordDTO,
+  BulkOperationDTO,
+  BulkOperationDetailDTO,
+  BulkOperationItemDTO,
+  BulkOperationKind,
+  BulkOperationListDTO,
+  BulkOperationParams,
+  BulkPreviewDTO,
+  BulkSelection,
   FolderDTO,
   FolderSort,
   FileOperationDTO,
@@ -211,6 +219,61 @@ export const api = {
       headers: { 'Idempotency-Key': requestKey },
     }),
   getFileOperation: (id: string) => request<FileOperationDTO>(`/api/file-operations/${id}`),
+
+  bulkPreview: (body: {
+    kind: BulkOperationKind
+    selection: BulkSelection
+    params?: BulkOperationParams
+  }) =>
+    request<BulkPreviewDTO>('/api/bulk-operations/preview', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  createBulkOperation: (body: {
+    kind: BulkOperationKind
+    selection: BulkSelection
+    params?: BulkOperationParams
+    requestId: string
+    generation: string
+    expectedCount: number
+  }) =>
+    request<{ operationId: string; state: string; statusUrl: string; created: boolean }>(
+      '/api/bulk-operations',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  bulkOperations: () => request<BulkOperationListDTO>('/api/bulk-operations'),
+  bulkOperation: (
+    id: string,
+    opts?: { itemState?: string; itemLimit?: number; itemOffset?: number },
+  ) => {
+    const params = new URLSearchParams()
+    if (opts?.itemState) params.set('itemState', opts.itemState)
+    if (opts?.itemLimit !== undefined) params.set('itemLimit', String(opts.itemLimit))
+    if (opts?.itemOffset !== undefined) params.set('itemOffset', String(opts.itemOffset))
+    const qs = params.toString()
+    return request<BulkOperationDetailDTO>(`/api/bulk-operations/${id}${qs ? `?${qs}` : ''}`)
+  },
+  bulkOperationItems: (
+    id: string,
+    opts?: { state?: string; limit?: number; offset?: number },
+  ) => {
+    const params = new URLSearchParams()
+    if (opts?.state) params.set('state', opts.state)
+    if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
+    if (opts?.offset !== undefined) params.set('offset', String(opts.offset))
+    const qs = params.toString()
+    return request<{ items: BulkOperationItemDTO[] }>(
+      `/api/bulk-operations/${id}/items${qs ? `?${qs}` : ''}`,
+    )
+  },
+  cancelBulkOperation: (id: string) =>
+    request<{ state: string }>(`/api/bulk-operations/${id}/cancel`, { method: 'POST' }),
+  retryBulkOperation: (id: string, itemIds?: string[]) =>
+    request<{ reset: number }>(`/api/bulk-operations/${id}/retry`, {
+      method: 'POST',
+      body: JSON.stringify(itemIds ? { itemIds } : {}),
+    }),
+  bulkExportUrl: (id: string) => `/api/bulk-operations/${id}/export`,
 
   tags: () => request<{ tags: TagSummaryDTO[] }>('/api/tags'),
   createTag: (name: string) =>

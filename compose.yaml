@@ -25,6 +25,8 @@ services:
       SEARCH_FTS_ENABLED: ${SEARCH_FTS_ENABLED:-1}
       # Saved filters; 0 turns the smart-album routes off.
       SMART_ALBUMS_ENABLED: ${SMART_ALBUMS_ENABLED:-1}
+      # Bulk operations; 0 turns the routes off. Delete/move also need the mutation engine.
+      BULK_OPERATIONS_ENABLED: ${BULK_OPERATIONS_ENABLED:-0}
     volumes:
       - type: bind
         source: ${MEDIA_ROOT:?set MEDIA_ROOT to the host media folder}
@@ -57,6 +59,7 @@ services:
       SCAN_DELETE_FORCE: ${SCAN_DELETE_FORCE:-0}
       WATCH_POLLING: ${WATCH_POLLING:-1}
       FILE_MUTATION_ENGINE_ENABLED: ${FILE_MUTATION_ENGINE_ENABLED:-0}
+      BULK_OPERATIONS_ENABLED: ${BULK_OPERATIONS_ENABLED:-0}
     volumes:
       - type: bind
         source: ${MEDIA_ROOT:?set MEDIA_ROOT to the host media folder}

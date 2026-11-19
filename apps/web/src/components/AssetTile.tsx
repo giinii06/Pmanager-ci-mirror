@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
-import { Play, ThumbsUp } from 'lucide-react'
+import { Check, Play, ThumbsUp } from 'lucide-react'
 import type { AssetDTO } from '@mediavault/shared'
+import { cn } from '../lib/cn'
 import { formatCount, formatDuration, formatRate } from '../lib/format'
 import { useHoverPreview } from '../store/hoverPreview'
 import { Thumb } from './Thumb'
@@ -13,6 +14,9 @@ interface AssetTileProps {
   onOpen: () => void
   onVote?: () => void
   voteDisabled?: boolean
+  selectionMode?: boolean
+  selected?: boolean
+  onSelect?: () => void
 }
 
 export function AssetTile({
@@ -23,6 +27,9 @@ export function AssetTile({
   onOpen,
   onVote,
   voteDisabled = false,
+  selectionMode = false,
+  selected = false,
+  onSelect,
 }: AssetTileProps) {
   const duration = asset.kind === 'video' ? formatDuration(asset.durationMs) : ''
   const previewHost = useRef<HTMLDivElement>(null)
@@ -38,6 +45,7 @@ export function AssetTile({
   useEffect(() => stopPreview, [stopPreview])
 
   const beginPreview = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (selectionMode) return
     if (event.pointerType === 'touch') return
     if (asset.kind !== 'video' || asset.playback === 'none') return
     const host = previewHost.current
@@ -55,14 +63,20 @@ export function AssetTile({
     >
       <button
         type="button"
-        onClick={onOpen}
-        aria-label={asset.filename}
+        onClick={selectionMode ? onSelect : onOpen}
+        aria-label={selectionMode ? `${asset.filename} 선택` : asset.filename}
+        aria-pressed={selectionMode ? selected : undefined}
         className="absolute inset-0 z-[1] rounded-tile focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
       >
         <span className="sr-only">{asset.filename}</span>
       </button>
 
-      <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-tile">
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-0 overflow-hidden rounded-tile transition-shadow',
+          selected && 'ring-2 ring-inset ring-accent',
+        )}
+      >
         <Thumb
           src={asset.thumbnails.medium}
           srcSet={`${asset.thumbnails.small} 320w, ${asset.thumbnails.medium} 640w`}
@@ -70,12 +84,17 @@ export function AssetTile({
           alt={asset.filename}
           priority={priority}
           fit="contain"
-          className="h-full w-full"
+          className={cn('h-full w-full transition-opacity', selected && 'opacity-80')}
           imageClassName="transition-[transform,opacity] duration-500 ease-out group-hover:scale-[1.025]"
         />
         <div ref={previewHost} className="pointer-events-none absolute inset-0" />
         <span className="absolute inset-0 rounded-tile ring-1 ring-inset ring-white/0 transition-colors duration-200 group-hover:ring-white/20" />
-        <span className="absolute inset-0 rounded-tile bg-gradient-to-t from-black/50 via-transparent to-black/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+        <span
+          className={cn(
+            'absolute inset-0 rounded-tile bg-gradient-to-t from-black/50 via-transparent to-black/20 transition-opacity duration-200 group-hover:opacity-100',
+            selected ? 'opacity-100' : 'opacity-0',
+          )}
+        />
 
         {asset.kind === 'video' ? (
           <>
@@ -94,7 +113,21 @@ export function AssetTile({
         </span>
       </div>
 
-      {asset.kind === 'video' && onVote ? (
+      {selectionMode ? (
+        <span
+          aria-hidden
+          className={cn(
+            'absolute right-2 top-2 z-[2] flex h-6 w-6 items-center justify-center rounded-full border transition-colors',
+            selected
+              ? 'border-accent bg-accent text-[#0b0c0f]'
+              : 'border-white/60 bg-black/45 text-transparent',
+          )}
+        >
+          <Check size={14} strokeWidth={3} />
+        </span>
+      ) : null}
+
+      {!selectionMode && asset.kind === 'video' && onVote ? (
         <button
           type="button"
           disabled={voteDisabled}

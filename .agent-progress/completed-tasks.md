@@ -233,3 +233,14 @@
 - Live routes with a minted session: smart album create/list/pin/delete and its asset page, playlist create/add/remove/delete, watch later, bookmark create/list/delete, poster `404` for a missing or non-video asset, `401` without a session. All test rows were deleted; watch later remains as the default list.
 - Headless Chrome rendered `/smart-albums`, `/playlists` and the poster dialog; the slider seeked the player to 20 s and the dialog closed without saving. No runtime exception. Screenshots in `/tmp/pr11-*.png`.
 - Not run live: a successful poster capture against a real asset, to avoid changing the operator's posters; covered by the media, database and API tests.
+
+## Spec v1.0 PR 12 — Bulk/Move (2026-11-20)
+
+- `packages/database/src/bulk-operations.ts`: parent/item creation in one immediate transaction with a request-key idempotency check, counts, error groups, item paging, lease claim/heartbeat/release, fenced parent transitions, item claim/finish/attach, inline reset, pending cancel, request-level cancel, retry, target-collision count, and user-scoped reads.
+- `v24` schema: `bulk_operations` (8 kinds, 7 states, snapshot columns, request key, lease) and `bulk_operation_items` (per-file state, mutation id, snapshot); `file_mutations.target_library_id`/`target_rel`. `updateAssetLocation` moves the row without bumping `file_version`; `ensureFolderPath` materializes a destination path; `cancelMutationPreCommit` now releases the claim validation took.
+- API: `routes/bulk-operations.ts` (preview, create, list, detail, items, cancel, retry, CSV export; flag-gated and user-scoped), `asset-filter.ts` (shared filter schema), `target-path.ts` (folder normalization), and `POST /api/assets/:id/move-operations` with an idempotency key.
+- Worker: `bulk/worker.ts` claims one operation per lease and drains items, delegating delete/move/copy to `file_mutations`; `mutations/move.ts` renames or copies with SHA-256 verification, quarantines before the DB commit, and resumes after a crash; `loop.ts` starts the bulk loop beside the mutation loop.
+- Web: `store/selection.ts`, `SelectionBar`, `BulkActionDialog`, `pages/BulkPages.tsx`, selection mode in `AssetGallery`/`JustifiedGrid`/`AssetTile`, API client methods, `/bulk` routes and a sidebar entry.
+- Tests: `652 pass, 0 fail` (74 files, `4296` expect calls); typecheck and web build exit `0`. New coverage: bulk DB 13, API 13, move engine 13, bulk worker 12.
+- Review follow-ups: a cancelled pre-commit mutation releases its claim; a restart with the engine off settles file items; a scan's missing sweep skips a claimed asset; a resumed move verifies the published target before committing; a copy refuses different bytes; a destination symlinked in after validation is refused.
+- Not deployed. Both flags remain off; a fixture-library rehearsal is still required before enabling them.

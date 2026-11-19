@@ -47,6 +47,8 @@ export interface CreateSceneJobInput {
   windowMs: number
   overlapMs: number
   maxAttempts?: number
+  /** Restarts a completed run even when its model fingerprint still matches. */
+  force?: boolean
 }
 
 export interface CompleteSceneJobInput {
@@ -112,7 +114,7 @@ export function createSceneJob(db: Db, input: CreateSceneJobInput, now: number):
     )
     .get(input.assetId, input.fileVersion)
 
-  if (newest && isCurrent(newest, input)) return newest
+  if (newest && !input.force && isCurrent(newest, input)) return newest
 
   if (newest && !ACTIVE.has(newest.state)) {
     db.query<null, Params>(

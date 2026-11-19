@@ -1,4 +1,4 @@
-import type { FilterTree } from './filters'
+import type { AiStage, FilterTree } from './filters'
 
 export type AssetKind = 'image' | 'video'
 
@@ -944,4 +944,125 @@ export interface VideoBookmarkDTO {
   stale: boolean
   createdAt: string
   updatedAt: string
+}
+
+/** The kinds a bulk operation can run. A vote is deliberately not one of them. */
+export type BulkOperationKind =
+  | 'tag_add'
+  | 'tag_remove'
+  | 'reanalyze'
+  | 'poster'
+  | 'move'
+  | 'copy'
+  | 'delete'
+  | 'export'
+
+export type BulkOperationState =
+  | 'queued'
+  | 'running'
+  | 'cancelling'
+  | 'cancelled'
+  | 'completed'
+  | 'completed_with_errors'
+  | 'failed'
+
+export type BulkItemState = 'pending' | 'running' | 'succeeded' | 'failed' | 'held' | 'cancelled'
+
+/**
+ * The frozen target set. `ids` is what the user picked; `query` is the gallery
+ * filter resolved once at preview and again at create, so "all results" cannot
+ * grow between the confirmation and the first item.
+ */
+export type BulkSelection =
+  | { kind: 'ids'; assetIds: string[] }
+  | { kind: 'query'; query: AssetQuery }
+
+export interface BulkOperationParams {
+  tagId?: string
+  targetLibraryId?: string
+  targetFolder?: string
+  stages?: AiStage[]
+  /** Required for delete; the server refuses a delete without it. */
+  confirm?: 'delete'
+}
+
+export interface BulkPreviewSample {
+  assetId: string
+  filename: string
+  relativePath: string
+  libraryId: string
+}
+
+export interface BulkPreviewProblem {
+  code: string
+  count: number
+  message: string
+}
+
+/** What a dry run reports before anything is written. */
+export interface BulkPreviewDTO {
+  kind: BulkOperationKind
+  selectionKind: 'ids' | 'query'
+  count: number
+  totalBytes: number
+  sample: BulkPreviewSample[]
+  problems: BulkPreviewProblem[]
+  availability: { delete: boolean; move: boolean; copy: boolean }
+  /** Passed back to create; a mismatch means the result set moved. */
+  generation: string
+}
+
+export interface BulkOperationCountsDTO {
+  total: number
+  pending: number
+  running: number
+  succeeded: number
+  failed: number
+  held: number
+  cancelled: number
+}
+
+export interface BulkErrorGroupDTO {
+  code: string
+  message: string
+  count: number
+}
+
+export interface BulkOperationDTO {
+  id: string
+  kind: BulkOperationKind
+  state: BulkOperationState
+  selectionKind: 'ids' | 'query'
+  snapshotCount: number
+  counts: BulkOperationCountsDTO
+  errorCode: string | null
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+  statusUrl: string
+  exportUrl: string | null
+}
+
+export interface BulkOperationItemDTO {
+  id: string
+  assetId: string
+  position: number
+  filename: string
+  relativePath: string
+  sizeBytes: number
+  state: BulkItemState
+  errorCode: string | null
+  errorMessage: string | null
+  attempts: number
+  updatedAt: string
+}
+
+export interface BulkOperationDetailDTO extends BulkOperationDTO {
+  errorGroups: BulkErrorGroupDTO[]
+  items: BulkOperationItemDTO[]
+}
+
+export interface BulkOperationListDTO {
+  operations: BulkOperationDTO[]
 }

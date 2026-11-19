@@ -116,6 +116,23 @@ export function getAsrJob(db: Db, id: string): AsrJobRecord | null {
   )
 }
 
+/** The transcript a reanalysis should translate or embed, if one exists. */
+export function currentTranscript(
+  db: Db,
+  assetId: string,
+  fileVersion: number,
+): { id: string; language: string } | null {
+  return (
+    db
+      .query<{ id: string; language: string }, Params>(
+        `SELECT id, language FROM transcripts
+         WHERE asset_id = ? AND file_version = ?
+         ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      )
+      .get(assetId, fileVersion) ?? null
+  )
+}
+
 export function activeAsrJob(db: Db, assetId: string, fileVersion: number): AsrJobRecord | null {
   return (
     db

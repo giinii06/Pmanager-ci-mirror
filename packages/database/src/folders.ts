@@ -95,6 +95,49 @@ export function upsertFolder(db: Db, input: UpsertFolderInput): string {
   return row.id
 }
 
+/**
+ * Materializes a folder path for a file that arrived without a scan. The root
+ * folder is upserted first, then each segment, so a move into a new nested
+ * folder leaves the same rows a scan would have created. `scanId` is only a
+ * provenance marker; the next scan touches the rows with its own id.
+ */
+export function ensureFolderPath(
+  db: Db,
+  input: {
+    libraryId: string
+    libraryName: string
+    relativePath: string
+    scanId: string
+    createdAt?: number
+  },
+): string {
+  const segments = input.relativePath.split('/').filter((segment) => segment !== '')
+  let parentId: string | null = null
+  let relative = ''
+  let depth = 0
+  const upsert = (name: string): string => {
+    const id = upsertFolder(db, {
+      id: newId(),
+      libraryId: input.libraryId,
+      parentId,
+      relativePath: relative,
+      name,
+      depth,
+      scanId: input.scanId,
+      createdAt: input.createdAt,
+    })
+    parentId = id
+    return id
+  }
+  upsert(input.libraryName)
+  for (const segment of segments) {
+    relative = relative === '' ? segment : `${relative}/${segment}`
+    depth += 1
+    upsert(segment)
+  }
+  return parentId!
+}
+
 export function listFolders(db: Db, libraryId: string, sort?: FolderSort): FolderRecord[] {
   return db
     .query<FolderRecord, Params>(

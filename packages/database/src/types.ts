@@ -126,6 +126,8 @@ export interface FileMutationRecord {
   state: FileMutationState
   resumeState: FileMutationState | null
   sourceRel: string | null
+  targetLibraryId: string | null
+  targetRel: string | null
   quarantineRel: string | null
   quarantineRoot: string | null
   manifestJson: string | null
@@ -140,6 +142,84 @@ export interface FileMutationRecord {
   createdAt: number
   updatedAt: number
   completedAt: number | null
+}
+
+export type BulkOperationKind =
+  | 'tag_add'
+  | 'tag_remove'
+  | 'reanalyze'
+  | 'poster'
+  | 'move'
+  | 'copy'
+  | 'delete'
+  | 'export'
+
+export type BulkOperationState =
+  | 'queued'
+  | 'running'
+  | 'cancelling'
+  | 'cancelled'
+  | 'completed'
+  | 'completed_with_errors'
+  | 'failed'
+
+export type BulkItemState = 'pending' | 'running' | 'succeeded' | 'failed' | 'held' | 'cancelled'
+
+export interface BulkOperationRecord {
+  id: string
+  userId: string
+  kind: BulkOperationKind
+  selectionKind: 'ids' | 'query'
+  selectionJson: string
+  snapshotCount: number
+  snapshotHash: string
+  snapshotGeneration: string
+  paramsJson: string
+  state: BulkOperationState
+  requestKey: string
+  attempts: number
+  maxAttempts: number
+  retryAfter: number
+  leaseOwner: string | null
+  leaseEpoch: number
+  leaseExpiresAt: number | null
+  errorCode: string | null
+  errorMessage: string | null
+  createdAt: number
+  updatedAt: number
+  completedAt: number | null
+}
+
+export interface BulkOperationItemRecord {
+  id: string
+  operationId: string
+  assetId: string
+  position: number
+  filename: string
+  relativePath: string
+  sizeBytes: number
+  state: BulkItemState
+  mutationId: string | null
+  errorCode: string | null
+  errorMessage: string | null
+  attempts: number
+  updatedAt: number
+}
+
+export interface BulkOperationCounts {
+  total: number
+  pending: number
+  running: number
+  succeeded: number
+  failed: number
+  held: number
+  cancelled: number
+}
+
+export interface BulkErrorGroup {
+  code: string
+  message: string
+  count: number
 }
 
 export interface MutationEventRecord {

@@ -10,6 +10,10 @@ import type { AssetFileInfo, AssetRecord, AssetRow, ScanAssetRow } from './types
 
 type Params = SQLQueryBindings[]
 
+function placeholders(count: number): string {
+  return new Array(count).fill('?').join(', ')
+}
+
 export interface AssetFilter {
   libraryId?: string
   folderId?: string
@@ -211,16 +215,66 @@ export function listAssets(
   return { records: hydrateAssets(db, rows.slice(0, limit)), total, hasMore }
 }
 
-export function listMatchingAssetIds(db: Db, filter: AssetFilter, limit = 10_000): string[] {
+export interface SelectionAssetRow {
+  assetId: string
+  filename: string
+  relativePath: string
+  sizeBytes: number
+  libraryId: string
+}
+
+/**
+ * The frozen target list a bulk operation stores. It reads the same WHERE and
+ * ORDER as `listAssets`, so "the whole filter result" means exactly the rows
+ * the gallery paged through, and the item snapshot is taken from this one
+ * query rather than a second definition of the filter.
+ */
+export function listMatchingAssetRows(
+  db: Db,
+  filter: AssetFilter,
+  limit = 10_000,
+): SelectionAssetRow[] {
   const sort = resolveAssetSort(filter)
   const where = buildWhere(filter, null)
   const order = buildOrder(sort, filter.seed ?? 1)
   return db
-    .query<{ id: string }, Params>(
-      `SELECT a.id FROM assets a WHERE ${where.sql} ${order.sql} LIMIT ?`,
+    .query<SelectionAssetRow, Params>(
+      `SELECT a.id AS assetId, a.filename, a.relative_path AS relativePath,
+              a.size_bytes AS sizeBytes, a.library_id AS libraryId
+       FROM assets a WHERE ${where.sql} ${order.sql} LIMIT ?`,
     )
     .all(...where.params, ...order.params, limit)
-    .map((row) => row.id)
+}
+
+/** The unfiltered count the preview compares with the frozen list. */
+export function countMatchingAssets(db: Db, filter: AssetFilter): number {
+  const where = buildWhere(filter, null)
+  return (
+    db
+      .query<{ n: number }, Params>(`SELECT COUNT(*) AS n FROM assets a WHERE ${where.sql}`)
+      .get(...where.params)?.n ?? 0
+  )
+}
+
+/** Explicit ids keep the caller's order and drop ids that no longer exist. */
+export function selectionAssetsByIds(db: Db, ids: string[]): SelectionAssetRow[] {
+  if (ids.length === 0) return []
+  const rows = db
+    .query<SelectionAssetRow, Params>(
+      `SELECT a.id AS assetId, a.filename, a.relative_path AS relativePath,
+              a.size_bytes AS sizeBytes, a.library_id AS libraryId
+       FROM assets a WHERE a.deleted_at IS NULL AND a.id IN (${placeholders(ids.length)})`,
+    )
+    .all(...ids)
+  const byId = new Map(rows.map((row) => [row.assetId, row]))
+  return ids.flatMap((id) => {
+    const row = byId.get(id)
+    return row ? [row] : []
+  })
+}
+
+export function listMatchingAssetIds(db: Db, filter: AssetFilter, limit = 10_000): string[] {
+  return listMatchingAssetRows(db, filter, limit).map((row) => row.assetId)
 }
 
 export type AssetNeighborResult =
@@ -698,6 +752,41 @@ export function updateAssetFile(db: Db, id: string, update: AssetFileUpdate): bo
 }
 
 /**
+ * Applies a completed move to the asset row. The content did not change, so
+ * `file_version` stays put and every derived artifact (transcript, scenes,
+ * poster, bookmarks) keeps describing the same bytes. The pending mutation is
+ * cleared in the same statement, and the row must still be the one the move
+ * claimed, or the update matches nothing.
+ */
+export function updateAssetLocation(
+  db: Db,
+  id: string,
+  mutationId: string,
+  expectedFileVersion: number,
+  update: { libraryId: string; folderId: string; relativePath: string; filename: string },
+): boolean {
+  const result = db
+    .query<{ id: string }, Params>(
+      `UPDATE assets SET
+         library_id = ?, folder_id = ?, relative_path = ?, filename = ?,
+         pending_delete_mutation_id = NULL
+       WHERE id = ? AND pending_delete_mutation_id = ? AND deleted_at IS NULL
+         AND file_version = ?
+       RETURNING id`,
+    )
+    .get(
+      update.libraryId,
+      update.folderId,
+      update.relativePath,
+      update.filename,
+      id,
+      mutationId,
+      expectedFileVersion,
+    )
+  return result !== null
+}
+
+/**
  * A delete mutation owns the asset's tombstone. Touching it here would clear
  * `deleted_at` and resurrect an asset whose file is already in quarantine.
  * Returns the ids that were actually touched.
@@ -714,11 +803,17 @@ export function touchAssets(db: Db, ids: string[], scanId: string): Set<string> 
   return touched
 }
 
+/**
+ * Hides the rows a scan did not see. A row claimed by a mutation is skipped:
+ * during a move the file sits in quarantine before the database commit, so its
+ * absence from the old path is not evidence that it was deleted.
+ */
 export function softDeleteMissing(db: Db, libraryId: string, scanId: string, now: number): number {
   const result = db
     .query<null, Params>(
       `UPDATE assets SET deleted_at = ?
        WHERE library_id = ? AND deleted_at IS NULL
+         AND pending_delete_mutation_id IS NULL
          AND (last_seen_scan IS NULL OR last_seen_scan <> ?)`,
     )
     .run(now, libraryId, scanId)
@@ -742,6 +837,7 @@ export function countMissingAssets(db: Db, libraryId: string, scanId: string): n
       .query<{ n: number }, Params>(
         `SELECT COUNT(*) AS n FROM assets
          WHERE library_id = ? AND deleted_at IS NULL
+           AND pending_delete_mutation_id IS NULL
            AND (last_seen_scan IS NULL OR last_seen_scan <> ?)`,
       )
       .get(libraryId, scanId)?.n ?? 0

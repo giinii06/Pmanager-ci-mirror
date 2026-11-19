@@ -22,6 +22,7 @@ interface JustifiedGridProps {
   onOpen: (index: number) => void
   empty: ReactNode
   groupByMonth?: boolean
+  selection?: { ids: Set<string>; onToggle: (id: string) => void }
 }
 
 const GAP = 3
@@ -37,6 +38,7 @@ export function JustifiedGrid({
   onOpen,
   empty,
   groupByMonth,
+  selection,
 }: JustifiedGridProps) {
   const [widthRef, width] = useElementWidth<HTMLDivElement>()
   const headerRef = useRef<HTMLDivElement>(null)
@@ -125,6 +127,9 @@ export function JustifiedGrid({
                             : undefined
                         }
                         voteDisabled={vote.isPending}
+                        selectionMode={selection !== undefined}
+                        selected={selection?.ids.has(placed.item.id) ?? false}
+                        onSelect={() => selection?.onToggle(placed.item.id)}
                       />
                     ))}
                   </div>

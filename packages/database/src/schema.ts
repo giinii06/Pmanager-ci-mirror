@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 23
+export const SCHEMA_VERSION = 24
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -873,6 +873,76 @@ CREATE TABLE IF NOT EXISTS video_bookmarks (
 CREATE INDEX IF NOT EXISTS idx_video_bookmarks_user_asset ON video_bookmarks(user_id, asset_id, position_ms);
 `
 
+// A bulk operation is a frozen target set plus a per-asset outcome. The item
+// rows carry the asset id but no foreign key: a successful delete removes the
+// asset row, and the operation still has to report what it did. Filename and
+// path are snapshots for the same reason. The parent keeps a lease so two
+// workers cannot process the same operation, and a request key so a retried
+// HTTP call returns the original operation.
+//
+// A move needs a destination on the mutation row. Both columns are additive;
+// the existing delete rows keep NULL. `target_rel` is relative to the target
+// library root, exactly like `assets.relative_path`.
+export const V24_BULK_OPERATIONS_SQL = `
+CREATE TABLE IF NOT EXISTS bulk_operations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN (
+    'tag_add','tag_remove','reanalyze','poster','move','copy','delete','export'
+  )),
+  selection_kind TEXT NOT NULL CHECK (selection_kind IN ('ids','query')),
+  selection_json TEXT NOT NULL,
+  snapshot_count INTEGER NOT NULL,
+  snapshot_hash TEXT NOT NULL,
+  snapshot_generation TEXT NOT NULL,
+  params_json TEXT NOT NULL DEFAULT '{}',
+  state TEXT NOT NULL CHECK (state IN (
+    'queued','running','cancelling','cancelled','completed','completed_with_errors','failed'
+  )),
+  request_key TEXT NOT NULL UNIQUE,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  retry_after INTEGER NOT NULL DEFAULT 0,
+  lease_owner TEXT,
+  lease_epoch INTEGER NOT NULL DEFAULT 0,
+  lease_expires_at INTEGER,
+  error_code TEXT,
+  error_message TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  completed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_bulk_operations_state ON bulk_operations(state, retry_after, updated_at);
+CREATE INDEX IF NOT EXISTS idx_bulk_operations_user ON bulk_operations(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS bulk_operation_items (
+  id TEXT PRIMARY KEY,
+  operation_id TEXT NOT NULL REFERENCES bulk_operations(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  filename TEXT NOT NULL,
+  relative_path TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL CHECK (state IN (
+    'pending','running','succeeded','failed','held','cancelled'
+  )),
+  mutation_id TEXT,
+  error_code TEXT,
+  error_message TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_bulk_operation_items_slot
+  ON bulk_operation_items(operation_id, asset_id);
+CREATE INDEX IF NOT EXISTS idx_bulk_operation_items_state
+  ON bulk_operation_items(operation_id, state, position);
+CREATE INDEX IF NOT EXISTS idx_bulk_operation_items_mutation
+  ON bulk_operation_items(mutation_id) WHERE mutation_id IS NOT NULL;
+
+ALTER TABLE file_mutations ADD COLUMN target_library_id TEXT;
+ALTER TABLE file_mutations ADD COLUMN target_rel TEXT;
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -931,4 +1001,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V21_STAGE_CHECKPOINTS_SQL),
   (exec) => exec(V22_DUPLICATES_SQL),
   (exec) => exec(V23_COLLECTIONS_SQL),
+  (exec) => exec(V24_BULK_OPERATIONS_SQL),
 ]

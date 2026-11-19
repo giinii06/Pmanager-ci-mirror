@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import {
   addAssetWatchTime,
@@ -30,7 +30,7 @@ import {
   type AssetFilter,
   type AssetRecord,
 } from '@mediavault/database'
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PRIORITY, VIDEO_SORTS, newId } from '@mediavault/shared'
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PRIORITY, newId } from '@mediavault/shared'
 import {
   PosterPublishRefusedError,
   extractCustomVideoPoster,
@@ -39,25 +39,14 @@ import {
   resolveInside,
 } from '@mediavault/media'
 import { readAssetPage } from '../asset-page'
+import { applyAlbum, assetFilterQuery, toAssetFilter } from '../asset-filter'
 import type { AppContext } from '../context'
 import { toAssetDTO, toEmbeddingJobDTO, toFileOperationDTO, toPlaybackDTO, toReviewDTO } from '../dto'
 import { enqueueEmbedding } from '../embedding-trigger'
 import { parseInput } from '../validate'
-import { resolveAlbumFilter, sendAlbumFilterInvalid } from './smart-albums'
 
 const idParams = z.object({ id: z.string().min(1).max(64) })
 const tagParams = z.object({ id: z.string().min(1).max(64), tagId: z.string().min(1).max(64) })
-
-const assetFilterQuery = z.object({
-  libraryId: z.string().max(64).optional(),
-  folderId: z.string().max(64).optional(),
-  kind: z.enum(['image', 'video']).optional(),
-  tagId: z.string().max(64).optional(),
-  sort: z.enum(VIDEO_SORTS).optional(),
-  seed: z.coerce.number().int().min(0).max(2_147_483_647).optional(),
-  q: z.string().max(200).optional(),
-  albumId: z.string().max(64).optional(),
-})
 
 const assetQuery = assetFilterQuery.extend({
   cursor: z.string().max(200).optional(),
@@ -123,48 +112,6 @@ const reviewBody = z.object({
 const relatedQuery = z.object({
   limit: z.coerce.number().int().min(1).max(20).optional(),
 })
-
-function toAssetFilter(query: z.infer<typeof assetFilterQuery>): AssetFilter {
-  const filter: AssetFilter = {}
-  if (query.libraryId) filter.libraryId = query.libraryId
-  if (query.folderId) filter.folderId = query.folderId
-  if (query.kind) filter.kind = query.kind
-  if (query.tagId) filter.tagId = query.tagId
-  if (query.sort) filter.sort = query.sort
-  if (query.seed !== undefined) filter.seed = query.seed
-  if (query.q) filter.query = query.q
-  return filter
-}
-
-/**
- * Adds a saved album's predicate to the filter. An explicit sort in the request
- * wins over the album's, so the same album can be browsed by another order.
- */
-function applyAlbum(
-  ctx: AppContext,
-  albumId: string | undefined,
-  filter: AssetFilter,
-  userId: string,
-  reply: FastifyReply,
-): boolean {
-  if (!albumId) return true
-  if (!ctx.config.smartAlbumsEnabled) {
-    reply.code(404).send({ error: 'not_available', message: 'Smart albums are turned off.' })
-    return false
-  }
-  const resolved = resolveAlbumFilter(ctx.db, albumId, userId)
-  if (resolved.kind === 'missing') {
-    reply.code(404).send({ error: 'not_found', message: 'Smart album not found.' })
-    return false
-  }
-  if (resolved.kind === 'invalid') {
-    sendAlbumFilterInvalid(reply, resolved.album)
-    return false
-  }
-  filter.where = resolved.where
-  if (!filter.sort && resolved.album.sort) filter.sort = resolved.album.sort
-  return true
-}
 
 export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/assets', async (request, reply) => {

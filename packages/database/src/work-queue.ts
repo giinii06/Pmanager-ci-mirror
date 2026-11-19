@@ -111,7 +111,7 @@ const LANE_STATES: Record<WorkPipeline, { active: string[]; failed: string[] }> 
   },
   backup: { active: [], failed: [] },
   maintenance: { active: ['running'], failed: ['failed'] },
-  bulk: { active: [], failed: [] },
+  bulk: { active: ['queued', 'running', 'cancelling'], failed: ['failed'] },
 }
 
 function median(values: number[]): number | null {
@@ -362,6 +362,39 @@ export function workQueue(
     )
     .all(ITEM_LIMIT)
 
+  // The bulk lane reports the operation, not each item: a 10k delete is one
+  // line with a percentage, and the bulk page owns the per-file detail.
+  const bulk = db
+    .query<RawItem, Params>(
+      `SELECT o.id, 'bulk' AS kind, NULL AS assetId,
+              o.kind || ' · ' || o.snapshot_count || '개' AS assetName,
+              o.state, o.kind AS stage,
+              CASE WHEN o.snapshot_count > 0 THEN
+                CAST((SELECT COUNT(*) FROM bulk_operation_items i
+                      WHERE i.operation_id = o.id
+                        AND i.state IN ('succeeded','failed','held','cancelled')) * 100
+                     / o.snapshot_count AS INTEGER)
+              ELSE 0 END AS progress,
+              0 AS onGpu, o.created_at AS startedAt, o.updated_at AS updatedAt,
+              o.lease_expires_at AS leaseExpiresAt, o.error_message AS errorMessage,
+              o.error_code AS errorCode
+       FROM bulk_operations o
+       WHERE o.state IN ('queued','running','cancelling','failed')
+       ORDER BY CASE o.state WHEN 'failed' THEN 1 ELSE 0 END, o.created_at ASC
+       LIMIT ?`,
+    )
+    .all(ITEM_LIMIT)
+
+  const bulkCounts = counts(
+    db
+      .query<CountRow, []>(
+        `SELECT state, COUNT(*) AS n FROM bulk_operations
+         WHERE state IN ('queued','running','cancelling') GROUP BY state`,
+      )
+      .all(),
+    ['running', 'cancelling'],
+  )
+
   const mediaCounts = counts(
     db
       .query<CountRow, []>(
@@ -436,7 +469,7 @@ export function workQueue(
     mutation: { running: mutationCounts.running, queued: 0 },
     backup: { running: 0, queued: 0 },
     maintenance: maintenanceCounts,
-    bulk: { running: 0, queued: 0 },
+    bulk: bulkCounts,
   }
 
   const toItem = (raw: RawItem, pipeline: WorkPipeline): WorkItemRecord => {
@@ -485,7 +518,7 @@ export function workQueue(
     mutation: mutation.map((raw) => toItem(raw, 'mutation')),
     backup: [],
     maintenance: maintenance.map((raw) => toItem(raw, 'maintenance')),
-    bulk: [],
+    bulk: bulk.map((raw) => toItem(raw, 'bulk')),
   }
 
   const averages: Record<WorkPipeline, number | null> = {

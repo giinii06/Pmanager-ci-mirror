@@ -7,6 +7,7 @@ import {
   Film,
   FolderHeart,
   Images,
+  Layers,
   ListVideo,
   Loader2,
   Monitor,
@@ -48,6 +49,7 @@ export function Sidebar() {
   const inPhotos = location.pathname === '/' || location.pathname.startsWith('/folders')
   const inVideos = location.pathname.startsWith('/videos')
   const inDuplicates = location.pathname.startsWith('/duplicates')
+  const inBulk = location.pathname.startsWith('/bulk')
   const inSmartAlbums = location.pathname.startsWith('/smart-albums')
   const inPlaylists = location.pathname.startsWith('/playlists')
 
@@ -215,6 +217,23 @@ export function Sidebar() {
         >
           <Copy size={16} className={inDuplicates ? 'text-accent' : 'text-faint'} />
           <span className={cn('flex-1', collapsed && 'md:hidden')}>중복 검토</span>
+        </NavLink>
+
+        <NavLink
+          to="/bulk"
+          title="일괄 작업"
+          className={() =>
+            cn(
+              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
+              collapsed && 'md:justify-center md:px-0',
+              inBulk
+                ? 'bg-accent/12 text-accent'
+                : 'text-muted hover:bg-raised/70 hover:text-ink',
+            )
+          }
+        >
+          <Layers size={16} className={inBulk ? 'text-accent' : 'text-faint'} />
+          <span className={cn('flex-1', collapsed && 'md:hidden')}>일괄 작업</span>
         </NavLink>
 
         <NavLink

@@ -2,6 +2,11 @@ import type {
   ArchiveJobDTO,
   AsrJobDTO,
   AssetDTO,
+  BulkErrorGroupDTO,
+  BulkOperationCountsDTO,
+  BulkOperationDTO,
+  BulkOperationDetailDTO,
+  BulkOperationItemDTO,
   DuplicateGroupDTO,
   DuplicateGroupMemberDTO,
   EmbeddingJobDTO,
@@ -34,6 +39,10 @@ import type {
   ArchiveJobRecord,
   AsrJobRecord,
   AssetRecord,
+  BulkErrorGroup,
+  BulkOperationCounts,
+  BulkOperationItemRecord,
+  BulkOperationRecord,
   DuplicateGroupMemberRecord,
   DuplicateGroupRecord,
   EmbeddingJobRecord,
@@ -541,5 +550,63 @@ export function toVideoBookmarkDTO(bookmark: VideoBookmarkRecord): VideoBookmark
     stale: bookmark.stale,
     createdAt: new Date(bookmark.createdAt).toISOString(),
     updatedAt: new Date(bookmark.updatedAt).toISOString(),
+  }
+}
+
+export function toBulkOperationCountsDTO(counts: BulkOperationCounts): BulkOperationCountsDTO {
+  return { ...counts }
+}
+
+export function toBulkOperationDTO(
+  record: BulkOperationRecord,
+  counts: BulkOperationCounts,
+): BulkOperationDTO {
+  return {
+    id: record.id,
+    kind: record.kind,
+    state: record.state,
+    selectionKind: record.selectionKind,
+    snapshotCount: record.snapshotCount,
+    counts: toBulkOperationCountsDTO(counts),
+    errorCode: record.errorCode,
+    errorMessage: record.errorMessage,
+    createdAt: new Date(record.createdAt).toISOString(),
+    updatedAt: new Date(record.updatedAt).toISOString(),
+    completedAt: iso(record.completedAt),
+    statusUrl: `/api/bulk-operations/${record.id}`,
+    exportUrl: record.kind === 'export' ? `/api/bulk-operations/${record.id}/export` : null,
+  }
+}
+
+export function toBulkErrorGroupDTO(group: BulkErrorGroup): BulkErrorGroupDTO {
+  return { code: group.code, message: group.message, count: group.count }
+}
+
+export function toBulkOperationItemDTO(item: BulkOperationItemRecord): BulkOperationItemDTO {
+  return {
+    id: item.id,
+    assetId: item.assetId,
+    position: item.position,
+    filename: item.filename,
+    relativePath: item.relativePath,
+    sizeBytes: item.sizeBytes,
+    state: item.state,
+    errorCode: item.errorCode,
+    errorMessage: item.errorMessage,
+    attempts: item.attempts,
+    updatedAt: new Date(item.updatedAt).toISOString(),
+  }
+}
+
+export function toBulkOperationDetailDTO(
+  record: BulkOperationRecord,
+  counts: BulkOperationCounts,
+  groups: BulkErrorGroup[],
+  items: BulkOperationItemRecord[],
+): BulkOperationDetailDTO {
+  return {
+    ...toBulkOperationDTO(record, counts),
+    errorGroups: groups.map(toBulkErrorGroupDTO),
+    items: items.map(toBulkOperationItemDTO),
   }
 }

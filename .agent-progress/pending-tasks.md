@@ -18,6 +18,8 @@
 
 - [ ] **Turn on the delete engine on the host.** `FILE_MUTATION_ENGINE_ENABLED` is still `0` on `media-server`. Before enabling it, create a throwaway library with fixture files, delete one through the UI, and verify the quarantine file, the `mutation_events` trail, and the cache purge. Never rehearse a delete against a real library asset.
 
+- [ ] **Turn on bulk operations on the host.** `BULK_OPERATIONS_ENABLED` is still `0` on `media-server`. Rehearse in this order on the throwaway library from the previous item: tag add/remove and export first (read-only apart from tags), then poster and reanalyze, then a single move and a copy, and only then a bulk delete. Confirm the dry-run count, the generation `409` when the filter result changes, per-item retry, cancel before the file is touched, and that a completed delete never reports the file as restored.
+
 - [ ] **Turn on HLS generations on the host.** `HLS_GENERATIONS_ENABLED` is still `0` on `media-server`. Before enabling it, play a fixture asset with the flag on, confirm a generation row goes `queued -> running -> ready`, that the served playlist uses generation URLs, that the encode survives a worker restart, and that a superseded generation is collected after the grace window.
 
 ## Spec v1.0 PR Sequence
@@ -36,7 +38,7 @@
 - [ ] **PR 14 must re-measure the scene scan on the host before choosing ANN.** The exact scan is `373 / 417 ms` p95 on the host at 17,439 scenes, close to the 500 ms trigger, and the host is ~2.5x the Mac clone. The 100k-scene numbers in `docs/BENCHMARKS.md` came from the clone.
 - [x] **PR 10 Duplicates:** `v22` fingerprints and duplicate review groups, no automatic deletion. Stage A (hashing, `maintenance` job, four routes) and stage B (lane split, review page) are deployed as `239ef72` + `88017b6`; live schema `v22`, counters unchanged, one real scan found `14` groups over `31` files and wrote no mutation.
 - [x] **PR 11 Collections:** `v23` smart albums, playlists, bookmarks, poster UX. Deployed `9d65229` + `e893780` + `5ed56f1`; live schema `v23`, counters unchanged, all new routes and pages verified.
-- [ ] **PR 12 Bulk/Move:** `v24` dry run, snapshots, per-item operations.
+- [x] **PR 12 Bulk/Move:** `v24` dry run, snapshots, per-item operations. Implemented and locally verified (`652 pass`), not deployed; both flags remain off. See the operator follow-up below before enabling them.
 - [ ] **PR 13 Observability:** `v25` health, diagnostics, notifications, cache policy.
 - [ ] **PR 14 Search Index Metadata:** `v26` index generations, backfill, GC.
 - [ ] **PR 15 Hardening/Release:** docs, CI, Windows boot rehearsal, E2E, performance, release checklist.
