@@ -126,3 +126,25 @@
 - `/health/ready` `200`, `/` `200`, unauthenticated `/api/libraries` `401`. With a minted session: one library `d`, `healthState "ONLINE"`, `assetCount 12,851`, `folderCount 115`, `healthConsecutiveFailures 0`.
 - Engine-off checks on live data: `DELETE /api/assets/000a16w15g43` and `POST /api/assets/000a16w15g43/delete-operations` both returned `503 mutation_engine_disabled`; `file_mutations` and `mutation_events` stayed at `0`. The API log recorded `file mutation engine disabled; refusing a delete request`, and the worker log had no mutation activity, so the loop stayed dormant.
 - Manual scan `9jh5ekqzpers`: `filesSeen 12,851`, added/updated/removed `0`, `readErrors 0`, `missingCount 0`, `authoritativeVerified true`, `healthState "ONLINE"`; active assets stayed `12,851`.
+
+## Spec v1.0 PR 04 Verification (2026-11-19)
+
+- `bun run typecheck`: exit `0` across all 6 workspaces plus the root scripts project.
+- `bun test`: **`376 pass, 0 fail`**, `1436` expect calls, 46 files, `8.58s` (PR 03: `352`/43 files).
+- `bun run --cwd apps/web build`: exit `0`, `184ms`. The served bundle `Lightbox-Dq4AUOyj.js` on the host contains the new `source_offline` branch and the offline message, so the deployed player is the new one.
+- v18 rehearsal on a `VACUUM INTO` clone of the live v17 database (`/tmp/pmanager-v17-live.db`, 259 MB): `user_version 17 -> 18`; before and after counters identical at assets `12,851` live / `12,852` total, folders `115`, tags `63`, `asset_tags` `331`, `asset_reviews` `0`, playback `191`, `watch_time_ms` `908,884`, libraries `1`, jobs `13,431`, `file_mutations` `0`; `integrity_check = ok`; foreign-key violations `0`; `hls_generations`, `hls_active`, and `trg_assets_version_clears_hls_active` present.
+- v18 tests cover the migration, one pending generation and one job per request, dead-job re-enqueue, publication fencing on an expired lease, a version change that refuses publication, `request_seq` freshness so a late older publish cannot displace a newer active one, GC protection for the active generation, and orphan reconciliation.
+- Media tests use a fake ffmpeg binary (`FFMPEG_PATH`) that writes structurally valid MPEG-TS segments and a VOD playlist, and covers progress parsing, the NVENC-unavailable fallback, abort, `canPublish = false`, a bad segment, and a bad playlist.
+- API tests cover a queued request, a ready playlist and segment, a missing segment, a foreign generation id, a ready cache while the library is offline, no cache while offline (`503 source_offline`), a failed generation plus retry, the legacy playlist pinned to the active generation, and the flag-off legacy path.
+- Player behaviour: status polling is bounded at 30s with an `AbortController`; the retry button only calls the API when the failure is not `source_offline`; hls.js recovery is capped at 3 network and 2 media attempts per mount.
+
+### PR 04 Live Host Verification (`media-server`, 2026-11-19)
+
+- Shipped `deb605c` (with `5b2fa8c`) by bundle from host `55e7549`; `git merge --ff-only` fast-forwarded cleanly.
+- Pre-migration read-only check: `user_version = 17`, assets `12,851` live (`12,852` rows), folders `115`, tags `63`, libraries `1`, `integrity_check = ok`, FK `0`.
+- Took a pre-v18 backup with `VACUUM INTO` into `~/Pmanager-backups/pre-v18-20261119-220112/` (`mediavault.db` 259 MB, `secret.key`, and snapshots of `.env`, `.env.asr`, `.env.translation`, `.env.embedding`, `.env.scene`). Backup counters match the live DB.
+- Rebuilt `api`, `worker`, `web`, started them, and restarted `nginx`; `api` reached `healthy` within 11s.
+- Live schema is `v18`; counters unchanged at `12,851` live assets, `115` folders, `63` tags, `1` library; `hls_generations` and `hls_active` are `0` because the flag is off; library health is `ONLINE`.
+- `/health/ready` `200`, `/` `200`, unauthenticated `/api/libraries` `401`, authenticated `200`.
+- With the flag off, a cached video reports `{"state":"ready","playlistUrl":"/api/assets/<id>/hls/master.m3u8","progressPercent":100}`, the legacy `master.m3u8` returns `200`, and the generation route returns `404`. The asset DTO carries the new `hlsStatusUrl`.
+- Worker logs contain no `worker.hls.gc` or `worker.hls.gc_failed` lines: the GC pass ran with nothing to reconcile or collect.
