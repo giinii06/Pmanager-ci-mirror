@@ -1,4 +1,5 @@
 export * from './domain'
+export * from './filters'
 export * from './media'
 export * from './constants'
 export * from './id'

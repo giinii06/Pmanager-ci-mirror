@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 22
+export const SCHEMA_VERSION = 23
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -817,6 +817,62 @@ CREATE TABLE IF NOT EXISTS duplicate_group_members (
 CREATE INDEX IF NOT EXISTS idx_duplicate_group_members_asset ON duplicate_group_members(asset_id);
 `
 
+// A smart album is a saved filter, never a copy of a file: the tree is data the
+// server compiles, so a corrupt or outdated filter can only fail to parse, and
+// nothing here can express a broad match. Playlists, playlist items and
+// timestamp bookmarks are ordinary per-user lists and arrive in the same
+// migration because they share the collections surface.
+export const V23_COLLECTIONS_SQL = `
+CREATE TABLE IF NOT EXISTS smart_albums (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT,
+  filter_version INTEGER NOT NULL DEFAULT 1,
+  filter_json TEXT NOT NULL,
+  sort TEXT,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_smart_albums_user_name ON smart_albums(user_id, name COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_smart_albums_user ON smart_albums(user_id, pinned DESC, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS playlists (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT,
+  kind TEXT NOT NULL DEFAULT 'custom' CHECK (kind IN ('custom','watch_later')),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_playlists_user_name ON playlists(user_id, name COLLATE NOCASE);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_playlists_watch_later ON playlists(user_id) WHERE kind = 'watch_later';
+
+CREATE TABLE IF NOT EXISTS playlist_items (
+  id TEXT PRIMARY KEY,
+  playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  added_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist ON playlist_items(playlist_id, position, added_at);
+
+CREATE TABLE IF NOT EXISTS video_bookmarks (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  position_ms INTEGER NOT NULL CHECK (position_ms >= 0),
+  title TEXT,
+  note TEXT,
+  file_version INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_video_bookmarks_user_asset ON video_bookmarks(user_id, asset_id, position_ms);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -874,4 +930,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V20_PLAY_SESSIONS_SQL),
   (exec) => exec(V21_STAGE_CHECKPOINTS_SQL),
   (exec) => exec(V22_DUPLICATES_SQL),
+  (exec) => exec(V23_COLLECTIONS_SQL),
 ]

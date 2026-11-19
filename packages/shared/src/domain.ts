@@ -12,7 +12,8 @@ export type JobState = 'queued' | 'running' | 'paused' | 'cancelled' | 'done' | 
 
 export type ScanState = 'idle' | 'queued' | 'scanning'
 
-export type LibraryHealthState = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNVERIFIED'
+export const LIBRARY_HEALTH_STATES = ['ONLINE', 'DEGRADED', 'OFFLINE', 'UNVERIFIED'] as const
+export type LibraryHealthState = (typeof LIBRARY_HEALTH_STATES)[number]
 
 export type PlaybackMode = 'direct' | 'hls' | 'none'
 

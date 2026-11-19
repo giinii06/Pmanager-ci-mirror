@@ -3,6 +3,7 @@ import type { AssetKind, StatsDTO, VideoSort } from '@mediavault/shared'
 import { newId } from '@mediavault/shared'
 import { deleteAssetVoteEvents, recordVoteEvent } from './contributions'
 import type { Db } from './db'
+import { likePattern, RATE_RANKED_SQL, type CompiledFilter } from './filter'
 import { recomputeFolderCounts } from './folders'
 import { listTagsForAssets } from './tags'
 import type { AssetFileInfo, AssetRecord, AssetRow, ScanAssetRow } from './types'
@@ -17,6 +18,8 @@ export interface AssetFilter {
   sort?: VideoSort
   seed?: number
   query?: string
+  /** A compiled filter tree. The caller compiles once and shares it with the count. */
+  where?: CompiledFilter
 }
 
 export interface TimelineCursor {
@@ -46,10 +49,6 @@ const SEEDED_ORDER_SQL = `
     * (16807 + (a.rowid % 97) * 131)) % 2147483647)
 `
 
-function likePattern(query: string): string {
-  return `%${query.replace(/[\\%_]/g, (match) => `\\${match}`)}%`
-}
-
 function isTimelineCursor(cursor: AssetCursor | null): cursor is TimelineCursor {
   return cursor !== null && 'takenAt' in cursor && 'id' in cursor
 }
@@ -69,21 +68,7 @@ export function computeAssetRates(db: Db, assetIds: string[]): Map<string, numbe
   const placeholders = assetIds.map(() => '?').join(', ')
   const rows = db
     .query<{ id: string; rate: number }, Params>(
-      `WITH rated AS (
-         SELECT id, CAST(watch_time_ms AS REAL) / view_count AS avg_watch
-         FROM assets
-         WHERE deleted_at IS NULL AND kind = 'video' AND view_count > 0 AND watch_time_ms > 0
-       ),
-       ranked AS (
-         SELECT id,
-                ROUND(
-                  ((RANK() OVER (ORDER BY avg_watch ASC) - 1
-                    + 0.5 * COUNT(*) OVER (PARTITION BY avg_watch)) * 100.0)
-                  / COUNT(*) OVER (),
-                  1
-                ) AS rate
-         FROM rated
-       )
+      `${RATE_RANKED_SQL}
        SELECT id, rate FROM ranked WHERE id IN (${placeholders})`,
     )
     .all(...assetIds)
@@ -131,6 +116,10 @@ function buildWhere(
   if (filter.query) {
     clauses.push("a.filename LIKE ? ESCAPE '\\'")
     params.push(likePattern(filter.query))
+  }
+  if (filter.where) {
+    clauses.push(`(${filter.where.sql})`)
+    params.push(...filter.where.params)
   }
   if (cursor) {
     clauses.push('(a.taken_at < ? OR (a.taken_at = ? AND a.id < ?))')
