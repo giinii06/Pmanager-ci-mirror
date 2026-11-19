@@ -301,3 +301,17 @@ The Win11 host was unreachable (`ssh: connect to host 192.168.0.27 port 22: No r
 - `kept` set after scan 2 survives scan 3 with the same group id.
 - Data safety: `file_mutations`, `jobs` and pending deletes unchanged by all three scans; `integrity_check` still `ok`; the `12,852` real assets untouched.
 - Not verified: the live migration and the host deploy. Nothing from PR 10 has run against the host. The rehearsal proves the migration and the scan on real-shaped data, not on the host's live database.
+
+## Spec v1.0 PR 10 Deploy (2026-11-20)
+
+- Backup: `VACUUM INTO /data/backup-pre-v22.db` on the host, `276,238,336` bytes, `v21`, `integrity ok`, `12,852` assets. The pre-PR-10 backup is kept alongside the earlier `backup-pre-v21`.
+- Shipped `239ef72` + `88017b6` (`8dc8597 -> 88017b6`, 30 files, `+2664/-29`); the host checkout fast-forwarded with no conflicts.
+- Rehearsal with the built `mediavault-worker` image, before the deploy, against a **fresh** `VACUUM INTO` clone of the live database (`v21`, `12,852` assets, `13,444` job rows): migration `21 -> 22`, counters identical, `integrity ok`, FK `0`, all three tables and indexes present. The fixture scan reported `candidates 4, scanned 4, hashed 4, groups 1, members 3, hardlinked 2` in `177 ms`; the rescan `hashed 0, reused 4` in `88 ms`; the `kept` decision survived a third scan; no mutation, job or pending delete. The clone and fixtures were removed afterwards.
+- Rebuilt and recreated `api`, `worker` and `web` with `--no-deps`; restarted `nginx` so it resolves the new web container.
+- `search.fts` on the first start: `enabled: true`, assets `12,852`, segments `23,067`, setup `197.3 ms`, verify `194.9 ms`.
+- Live schema is `v22`; `integrity ok`; counters unchanged (`12,852` total / `12,851` active assets, `115` folders, `63` tags, `220` transcripts, `23,067` segments, `17,439` scenes, `191` playback rows, `1` vote); `file_fingerprints`, `duplicate_groups` and `duplicate_group_members` start empty.
+- **One real scan on the live library** (`POST /api/duplicates/scans`, `202`, job `15726`, dedupe key `duplicates:all`): `candidates 67, hashed 67, reused 0, groups 14, members 31, hardlinked 0`, `3,652 ms`. Result: `67` fingerprints, `14` open groups, `31` members; `file_mutations`, `mutation_events` and pending deletes all `0`; `integrity ok`. A second scan reused all `67` (`hashed 0`) in `534 ms` and rebuilt the same `14` groups.
+- Lane split observed live: immediately after a third `POST`, the queue reported `maintenance queued 1` and `media queued 0`. The job completed as `kind: maintenance`.
+- Review routes live: `GET /api/duplicates/groups` `200` with members, paths, `libraryName` and thumbnail URLs; `POST .../decisions {"action":"delete"}` `409 delete_not_available` with the Korean message; unauthenticated `401`; `/duplicates` serves the SPA `200`.
+- Headless Chrome (CDP, session cookie set for the host) rendered the page: heading `14개 그룹 · 18.6 MB`, the four filter tabs, the review-only notice, group cards with thumbnails, joined paths, `3332×5000`-style dimensions, `N KB 절약 가능`, and `무시`/`모두 유지` on every open group. No runtime exception was raised. The screenshot is at `/tmp/pr10-duplicates.png` (not committed).
+- Not verified: a `keep`/`ignore` decision was not written to the live database, so the live decision route is covered by the API tests and the clone rehearsal only. The delete refusal was exercised live and changed nothing.

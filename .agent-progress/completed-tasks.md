@@ -206,3 +206,10 @@
 - `apps/web/src/App.tsx`: `duplicates` route. `apps/web/src/components/Sidebar.tsx`: `중복 검토` entry with the `Copy` icon above settings.
 - Verification: `bun run typecheck` exit `0`; `bun test` **`526 pass, 0 fail`**, `2843` expect calls, 61 files (stage A: `525`); `bun run --cwd apps/web build` exit `0` (only the existing chunk-size warning).
 - `docs/ARCHITECTURE.md` section 7 gained the page and lane-split notes.
+
+## Spec v1.0 PR 10 — Deploy (2026-11-20)
+
+- Backed up the live `v21` database (`276,238,336` bytes, `integrity ok`) and rehearsed `v21 -> v22` twice: on the Mac with the PR 08b clone, and on the host with the built worker image against a fresh clone. Both runs kept every counter, passed the integrity and FK checks, produced one group of three fixtures with `hardlinked 2`, reused all fingerprints on a rescan, and left `file_mutations`/`jobs`/pending deletes untouched.
+- Deployed `239ef72` + `88017b6`; rebuilt `api`, `worker` and `web`; restarted `nginx`. Live schema `v22`, counters unchanged, `search.fts` enabled.
+- Ran one real scan (`job 15726`): `67` candidates, `14` exact groups, `31` members in `3.65 s`, then a rescan that reused all `67` in `534 ms`. No file was written, moved or queued for deletion.
+- Confirmed the lane split live (`maintenance queued 1`, `media queued 0`), the `409 delete_not_available` refusal, the unauthenticated `401`, and the rendered page in headless Chrome with no runtime exception.
