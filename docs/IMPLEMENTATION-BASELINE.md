@@ -101,7 +101,7 @@ docker exec mediavault-api-1 bun -e '
 
 ## 마이그레이션 번호
 
-`PR 02 -> v16`, `PR 03 -> v17`, `PR 04 -> v18`, `PR 05 -> v19`, `PR 06 -> v20` 순으로 적용했다. 명세 I-01이 Auth에 배정한 `v18`은 PR 04가 HLS 테이블을 먼저 가져가면서 `v19`로 밀렸고, 이후 PR도 한 단계씩 올라간다(따라서 Playback은 `v20`). 각 마이그레이션의 의미와 순서는 `.agent-progress/decisions.md`의 9번, 15번에 기록한다.
+`PR 02 -> v16`, `PR 03 -> v17`, `PR 04 -> v18`, `PR 05 -> v19`, `PR 06 -> v20` 순으로 적용했다. 명세 I-01이 Auth에 배정한 `v18`은 PR 04가 HLS 테이블을 먼저 가져가면서 `v19`로 밀렸고, 이후 PR도 한 단계씩 올라간다(따라서 Playback은 `v20`). PR 07과 PR 08은 스키마를 바꾸지 않는다. D-04의 공통 `stage_checkpoint`는 PR 08에서 분리해 `v21` 슬라이스로 적용하고, 그 뒤 Duplicates는 `v22`부터 시작한다(결정 32). 각 마이그레이션의 의미와 순서는 `.agent-progress/decisions.md`의 9번, 15번, 32번에 기록한다.
 
 ## 롤백 기준
 

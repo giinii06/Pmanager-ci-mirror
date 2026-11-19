@@ -1,4 +1,4 @@
-# MediaVault 시스템 아키텍처 (Schema v14)
+# MediaVault 시스템 아키텍처 (Schema v20)
 
 MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engine)에서 상시 운영되며, macOS를 비롯한 LAN 브라우저에서 접속하는 셀프 호스팅 사진·동영상 라이브러리 서버입니다.
 
@@ -28,6 +28,23 @@ MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engin
 - `vote_events`: 폴더 및 동영상 Vote 활동을 기여(`contribution_events`)와 분리 추적.
 - `recovery_logs`, `backup_logs`: 크래시 복구 및 `VACUUM INTO` 무결성 검증 백업 이력.
 
+이후 PR 02–06이 `v16`–`v20`을 추가했다: `library_health`와 `scan_runs` 확장(`v16`), `file_mutations`/`mutation_events`(`v17`), `hls_generations`/`hls_active`(`v18`), `user_sessions`/`auth_login_attempts`/`auth_events`(`v19`), `play_sessions`/`play_events`와 `playback_progress` 확장(`v20`). PR 07과 PR 08은 스키마를 바꾸지 않았다.
+
 ## 3. 호스트 드라이브 노출 구조
 
 `compose.yaml`은 기존 `/media` 및 `/media/extra`를 보존한 채 호스트의 Windows 드라이브를 `/media/drives/c`, `/media/drives/d`, `/media/drives/e`로 마운트합니다. 기본 샘플 미디어 경로와 분리되므로 기존 라이브러리 ID(`npgghj7vxgn4`, `extra/d`)와 데이터가 그대로 유지됩니다.
+
+## 4. 통합 작업 큐와 GPU 정책
+
+- `packages/database/src/work-queue.ts`의 `workQueue`는 `jobs`(미디어·스캔), `asr_jobs`, `translation_jobs`, `embedding_jobs`, `scene_jobs`, `file_mutations`를 하나의 읽기 모델로 합칩니다. 표시용 파이프라인은 `media|asr|translation|embedding|scene|mutation|backup|maintenance|bulk` 아홉 개이며, 저장 테이블은 그대로 유지됩니다.
+- GPU 작업(ASR·번역·임베딩·장면)은 `gpu_leases`의 단일 카드 리스를 공유합니다. `runningGpu`(리스 보유)와 `waitingGpu`(실행 중이지만 리스 대기)를 분리해 표시하고, 대기 중인 작업의 ETA에는 현재 리스 보유 작업의 남은 시간과 자기 작업의 최근 중앙값을 더합니다. 각 단계가 리스를 잡은 뒤 모델을 올리므로 그 중앙값에는 모델 로딩이 이미 포함됩니다.
+- `claimNextJob`은 2분마다 우선순위를 한 단계 승격해 오래 기다린 작업이 굶지 않게 합니다. 유효 우선순위가 같으면 원래 우선순위가 앞섭니다.
+- 장면 작업은 `scene_jobs.window_ms`/`overlap_ms`와 `SCENE_MAX_WINDOWS`로 계획된 구간 수를 계산해 전체 구간 수와 함께 표시합니다(`coverage`). 자동 챕터가 아니라 검색 색인의 샘플링 범위입니다.
+- ETA는 최근 7일 완료 작업의 중앙값(최소 3개)만 사용합니다. 표본이 부족하면 숫자 대신 `basis: 'insufficient_data'`를 반환합니다.
+
+## 5. 작업 오류 코드와 프로세스 수명
+
+- 실패 코드는 `packages/shared/src/domain.ts`의 `JOB_ERROR_CODES` 14종이며, 기존 오류 컬럼에 `[CODE] 메시지` 형태로 저장됩니다. 접두사가 없는 과거 행은 코드 없이 원래 메시지를 유지합니다.
+- `SOURCE_OFFLINE`과 `DISK_FULL`은 재시도 횟수를 소모하지 않고 즉시 `failed`로 주차됩니다. `recovery.ts`는 라이브러리가 `ONLINE`이 된 뒤 `[SOURCE_OFFLINE]` 행을 최대 100개까지 재큐합니다(활성 중복 키가 있으면 건너뜀).
+- Node ffmpeg는 자체 프로세스 그룹에서 실행되며 벽시계 상한과 진행 정지 감시를 가집니다. 취소·타임아웃 시 그룹 전체에 SIGKILL을 보내고, stderr는 8KB 꼬리만 보관합니다.
+- Python 장면 워커는 모든 외부 프로세스를 `run_checked`로 실행합니다. 자체 세션 그룹에 TERM → 10초 → KILL 순서로 종료하고, 단계 전체에도 `SCENE_STAGE_TIMEOUT_SECONDS`(기본 3600초) 상한이 있습니다.

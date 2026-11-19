@@ -24,11 +24,12 @@
 - [x] **PR 05 Auth:** `v19` Argon2id migration, server sessions, login rate limit, trusted proxy. Deployed as `be9071f`; live schema `v19`, old HMAC cookies rejected, sessions revocable.
 - [x] **PR 06 Playback:** `v20` `play_sessions`/`play_events`, per-session contiguous `seq`, idempotent session create, fenced legacy progress, resume state machine, idempotent votes. Deployed as `845d81a`; live schema `v20`, counters unchanged.
 - [x] **PR 07 Viewer/Search UI:** `GET /api/assets/:id/neighbor`, `POST /api/assets/random`, viewer session/request guards, removal of the 10k/20k shuffle cap, virtualization retained. `453 pass`; neighbour p95 `12.84 ms` at 12.8k. Deployed as `3881e44`; live schema `v20`, counters unchanged.
-- [ ] **PR 08 Job Engine:** unified scene queue, GPU ETA, checkpoints, error codes, timeouts.
+- [x] **PR 08 Job Engine:** nine-lane unified queue (scene + mutation included), `runningGpu`/`waitingGpu`, waiting-job ETA, scene sampling coverage, priority aging, 14 stable error codes with environment parking and offline requeue, bounded ffmpeg (wall clock, stall, process group) and bounded scene subprocesses. `470 pass`; deployed `fb8e525` + `9d994c4`; live schema `v20`, counters unchanged. The common `stage_checkpoint` table is split out below (decision 32).
+- [ ] **PR 08b Stage Checkpoint (`v21`):** common `stage_checkpoints` (jobId/assetId/fileVersion/modelFingerprint/pipelineVersion/stageName/completedUnits/totalUnits/artifactManifest/hash), write → fsync → manifest → DB checkpoint ordering, restart reconciliation, and persisted scene coverage for completed indexes. Must land before PR 10 so Duplicates starts at `v22`.
 - [ ] **PR 09 Search:** SQLite profiling, FTS5 fallback, optional FAISS index.
-- [ ] **PR 10 Duplicates:** `v21` fingerprints and duplicate review groups, no automatic deletion.
-- [ ] **PR 11 Collections:** `v22` smart albums, playlists, bookmarks, poster UX.
-- [ ] **PR 12 Bulk/Move:** `v23` dry run, snapshots, per-item operations.
-- [ ] **PR 13 Observability:** `v24` health, diagnostics, notifications, cache policy.
-- [ ] **PR 14 Search Index Metadata:** `v25` index generations, backfill, GC.
+- [ ] **PR 10 Duplicates:** `v22` fingerprints and duplicate review groups, no automatic deletion.
+- [ ] **PR 11 Collections:** `v23` smart albums, playlists, bookmarks, poster UX.
+- [ ] **PR 12 Bulk/Move:** `v24` dry run, snapshots, per-item operations.
+- [ ] **PR 13 Observability:** `v25` health, diagnostics, notifications, cache policy.
+- [ ] **PR 14 Search Index Metadata:** `v26` index generations, backfill, GC.
 - [ ] **PR 15 Hardening/Release:** docs, CI, Windows boot rehearsal, E2E, performance, release checklist.

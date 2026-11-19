@@ -37,8 +37,13 @@ services:
       # Reuses the cut clip for the thumbnail, which saves a second seek into
       # the original file. Off by default because the clip is padded square.
       SCENE_THUMBNAIL_FROM_CLIP: ${SCENE_THUMBNAIL_FROM_CLIP:-0}
-      # Bounds how long one scene job can hold the shared GPU, so ASR is not starved.
+      # Caps the windows one job plans, so a long film cannot hold the card for
+      # hours and starve ASR. The queue shows the sampled/total coverage.
       SCENE_MAX_WINDOWS: ${SCENE_MAX_WINDOWS:-120}
+      # A stage that ignores cancellation cannot outlive this wall clock.
+      SCENE_STAGE_TIMEOUT_SECONDS: ${SCENE_STAGE_TIMEOUT_SECONDS:-3600}
+      # A single ffprobe/ffmpeg call inside a stage is bounded separately.
+      SCENE_FFMPEG_TIMEOUT_SECONDS: ${SCENE_FFMPEG_TIMEOUT_SECONDS:-300}
       # The card is shared with ASR, translation and embedding, and the kind that
       # just released it lets another kind take the next turn. A scene job can
       # therefore wait for one ASR stage, which is longer than the default 15
