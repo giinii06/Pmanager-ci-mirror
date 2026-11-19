@@ -42,6 +42,7 @@ function apiConfig(dir: string, trustProxy: string[]): ApiConfig {
     trustProxy,
     publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },
+    search: { ftsEnabled: false },
     asr: {
       enabled: false,
       workerToken: WORKER_TOKEN,

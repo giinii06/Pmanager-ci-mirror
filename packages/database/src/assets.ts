@@ -527,8 +527,12 @@ export function commitPermanentDelete(
     }
     deleteAssetVoteEvents(db, id)
     db.query<null, Params>('DELETE FROM jobs WHERE asset_id = ?').run(id)
-    const result = db.query<null, Params>('DELETE FROM assets WHERE id = ?').run(id)
-    return result.changes === 1
+    // `changes` counts rows the triggers wrote too, and the search index writes
+    // two of them per deleted asset. RETURNING names the row that matched.
+    const result = db
+      .query<{ id: string }, Params>('DELETE FROM assets WHERE id = ? RETURNING id')
+      .get(id)
+    return result !== null
   }).immediate()
   if (removed) recomputeFolderCounts(db, libraryId)
   return removed
@@ -660,14 +664,17 @@ export interface AssetFileUpdate {
 }
 
 export function updateAssetFile(db: Db, id: string, update: AssetFileUpdate): boolean {
-  const result = db.query<null, Params>(
+  // `changes` counts rows the triggers wrote too, and renaming an asset updates
+  // the search index. RETURNING names the row that matched.
+  const result = db.query<{ id: string }, Params>(
     `UPDATE assets SET
        folder_id = ?, filename = ?, mime_type = ?, size_bytes = ?, mtime_ms = ?,
        width = ?, height = ?, duration_ms = ?, taken_at = ?,
        video_codec = ?, audio_codec = ?, container = ?, indexed_at = ?,
        file_version = file_version + 1, deleted_at = NULL, last_seen_scan = ?
-     WHERE id = ? AND pending_delete_mutation_id IS NULL`,
-  ).run(
+     WHERE id = ? AND pending_delete_mutation_id IS NULL
+     RETURNING id`,
+  ).get(
     update.folderId,
     update.filename,
     update.mimeType,
@@ -684,7 +691,7 @@ export function updateAssetFile(db: Db, id: string, update: AssetFileUpdate): bo
     update.scanId,
     id,
   )
-  return result.changes === 1
+  return result !== null
 }
 
 /**

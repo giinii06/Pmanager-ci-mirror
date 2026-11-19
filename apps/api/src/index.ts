@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { openDatabase } from '@mediavault/database'
+import { configureSearchFts, openDatabase } from '@mediavault/database'
 import { buildApp } from './app'
 import { loadConfig } from './config'
 import type { AppContext } from './context'
@@ -8,6 +8,20 @@ import { Semaphore } from './semaphore'
 
 const config = await loadConfig()
 const db = openDatabase(path.join(config.dataDir, 'mediavault.db'))
+
+// Unconditional, because the two directions differ: enabling proves the index is
+// complete before search trusts it, and disabling has to disarm the triggers so a
+// build without FTS5 can still write to the tables they watch.
+try {
+  console.info(
+    JSON.stringify({
+      event: 'search.fts',
+      ...configureSearchFts(db, config.search.ftsEnabled),
+    }),
+  )
+} catch (error) {
+  console.error(JSON.stringify({ event: 'search.fts', enabled: false, reason: String(error) }))
+}
 
 const ctx: AppContext = {
   config,

@@ -136,6 +136,7 @@ async function harness(options: { transcripts?: boolean } = {}): Promise<Harness
     trustProxy: [],
     publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },
+    search: { ftsEnabled: false },
     asr: {
       enabled: false,
       workerToken: '',

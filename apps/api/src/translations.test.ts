@@ -152,6 +152,7 @@ async function harness(language = 'ja'): Promise<Harness> {
     trustProxy: [],
     publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },
+    search: { ftsEnabled: false },
     asr: {
       enabled: true,
       workerToken: ASR_TOKEN,

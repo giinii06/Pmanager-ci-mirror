@@ -30,6 +30,11 @@ export interface GpuConfig {
   resourceId: string
 }
 
+export interface SearchConfig {
+  /** Keeps the trigram index in step with the content tables. Off falls back to LIKE. */
+  ftsEnabled: boolean
+}
+
 export interface EmbeddingConfig {
   enabled: boolean
   workerToken: string
@@ -77,6 +82,7 @@ export interface ApiConfig {
   /** Exact origins allowed to send state-changing requests; empty compares against the request host. */
   publicOrigins: string[]
   gpu: GpuConfig
+  search: SearchConfig
   asr: AsrConfig
   translation: TranslationConfig
   embedding: EmbeddingConfig
@@ -249,6 +255,7 @@ export async function loadConfig(
     trustProxy: resolveList(env.TRUSTED_PROXIES, ['127.0.0.1', '::1', '172.16.0.0/12']),
     publicOrigins: resolveOrigins(env.PUBLIC_ORIGINS),
     gpu: { resourceId: env.GPU_RESOURCE?.trim() || 'gpu:0' },
+    search: { ftsEnabled: env.SEARCH_FTS_ENABLED !== '0' },
     asr,
     translation,
     embedding,

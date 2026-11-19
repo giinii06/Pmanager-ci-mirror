@@ -95,6 +95,7 @@ async function createHarness(options: { enabled: boolean; online?: boolean } = {
     trustProxy: [],
     publicOrigins: [],
     gpu: { resourceId: 'gpu:0' },
+    search: { ftsEnabled: false },
     asr: {
       enabled: false,
       workerToken: 't',
