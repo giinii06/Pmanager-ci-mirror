@@ -6,7 +6,7 @@
 - [x] **Wave 5:** Windows 11 single-owner boot-without-login service/watchdog/management scripts (`scripts/windows/`), macOS SSH public-key + `ssh media-server` alias, live host deploy & verification on `192.168.0.27` + commit.
 - [x] **Wave 6:** Documentation suite (`docs/{ARCHITECTURE,BENCHMARKS,RECOVERY,WINDOWS-OPERATIONS,MACOS-SSH,TEST-REPORT}.md`), `/no-comments` (`comment-sicko`) + independent `research` audits + fixes across `packages/*`, `apps/*`, `scripts/windows/*.ps1`, full regression test verification, `.agent-progress/` sync, and Wave 6 bundle deploy to `media-server`.
 
-- [ ] **PR 09 post-deploy equality check.** Before the deploy, the live search responses for ten queries were saved as `/tmp/pr09-search-before.jsonl` and `/tmp/pr09-search-before.sha` on `media-server`. After deploying, re-run the same ten queries and compare the response digests; any difference means the FTS path and the oracle disagree on real data.
+- [x] **PR 09 post-deploy equality check.** Ten live queries were saved as `/tmp/pr09-search-before.jsonl`/`.sha` before the deploy and re-run after it: all ten response bodies are byte-identical. The `search.fts` startup line reports `enabled: true` with the full document counts.
 
 ## Operator Follow-ups
 
@@ -29,6 +29,7 @@
 - [x] **PR 08 Job Engine:** nine-lane unified queue (scene + mutation included), `runningGpu`/`waitingGpu`, waiting-job ETA, scene sampling coverage, priority aging, 14 stable error codes with environment parking and offline requeue, bounded ffmpeg (wall clock, stall, process group) and bounded scene subprocesses. `470 pass`; deployed `fb8e525` + `9d994c4`; live schema `v20`, counters unchanged. The common `stage_checkpoint` table is split out below (decision 32).
 - [x] **PR 08b Stage Checkpoint (`v21`):** common `stage_checkpoints` (jobId/assetId/fileVersion/modelFingerprint/pipelineVersion/stageName/completedUnits/totalUnits/artifactManifest/hash), write → fsync → manifest → DB checkpoint ordering, restart reconciliation, and persisted scene coverage for completed indexes. Deployed as `dede96c`; live schema `v21`, counters unchanged. Duplicates now starts at `v22`.
 - [x] **PR 09 Search:** no-schema-change FTS5 trigram candidate generator with the LIKE oracle kept as the answer, bounded per-corpus fan-out, integrity-proof readiness, `RETURNING`-based mutation reporting, `scripts/bench-search.ts` and `scripts/exp-scene.ts`. `499 pass`; live-clone dialogue `1.86 -> 0.09 ms`, scene scan `158 ms` p95. FAISS deferred to PR 14 with the 100k-scene measurements.
+- [ ] **PR 14 must re-measure the scene scan on the host before choosing ANN.** The exact scan is `373 / 417 ms` p95 on the host at 17,439 scenes, close to the 500 ms trigger, and the host is ~2.5x the Mac clone. The 100k-scene numbers in `docs/BENCHMARKS.md` came from the clone.
 - [ ] **PR 10 Duplicates:** `v22` fingerprints and duplicate review groups, no automatic deletion.
 - [ ] **PR 11 Collections:** `v23` smart albums, playlists, bookmarks, poster UX.
 - [ ] **PR 12 Bulk/Move:** `v24` dry run, snapshots, per-item operations.

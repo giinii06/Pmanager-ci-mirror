@@ -253,3 +253,13 @@
   - A deliberately deleted index entry made the run print `equal=false` and exit `1`, proving the equality check is load-bearing.
 - Scene scan: live clone `147.51 / 158.34 ms` p50/p95 with the real fingerprint and 30 hits. At 100k scenes `827.63 / 995.25 ms`; two exact-scan rewrites measured at `720-821 ms` (variant A, 9% faster to 7% slower across runs) and `737-753 ms` (variant B, different tie order), so the current implementation stays. The 500 ms ANN trigger is crossed only at 100k scenes and is deferred to PR 14.
 - Concurrency: four pipelines back to back take `644 ms` at the live shape and `3,896 ms` at spec scale, equal to serial execution because the scans are CPU-bound on one event loop.
+
+### PR 09 deploy (2026-11-20)
+
+- Shipped `ed2c152` + `470e6ff` (`dede96c -> 470e6ff`, 30 files, `+1752/-37`) after a fresh `VACUUM INTO` backup of the v21 database (`271,560,704` bytes, `integrity: ok`, `12,852` assets).
+- Rebuilt `api` and `worker` (the worker needed the `RETURNING` change too, or its next rename would have reported failure) and recreated both with `--no-deps`.
+- `search.fts` on the first start: `enabled: true`, `assets 12,852`, `segments 23,067`, setup `201.2 ms` (includes the backfill), verify `74.1 ms`. Six triggers exist (`asset_search_ad/ai/au`, `segment_search_ad/ai/au`), and both `%_docsize` tables hold exactly the content counts.
+- `/health/ready` `200` with `synchronousMode FULL` and SQLite `3.54.1`; schema stays `v21`; counters unchanged at `12,852` assets, `23,067` segments, `220` transcripts, `17,439` scenes; `integrity_check = ok`; `stage_checkpoints` still empty.
+- **Live equality: all ten saved queries (`바다`, `바다로`, `학교`, `축제`, `coast`, `5%`, `드라이브`, `해변`, `노을`, `서울`) returned byte-identical response bodies** (same SHA-256 of the sorted JSON) to the pre-deploy snapshot taken before the FTS tables existed.
+- Component timings inside the api container on the host with the index armed: dialogue FTS `0.04 ms` (LIKE `3.01 ms`), filename FTS `0.05 ms` (LIKE `4.21 ms`), 2-character dialogue `2.93 ms` (LIKE by design), scene scan `373.19 / 417.41 ms`. The endpoint is about `0.5 s` end to end, dominated by the unchanged scene scan; PR 09 does not touch that path.
+- Not verified live: an asset rename or a permanent delete on real data (the `RETURNING` path). Both need a real library mutation; the unit test covers the trigger-inflated `changes()` case.
