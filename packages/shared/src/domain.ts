@@ -1,6 +1,6 @@
 export type AssetKind = 'image' | 'video'
 
-export type JobKind = 'scan_library' | 'thumbnail' | 'preview' | 'hls' | 'process_archive'
+export type JobKind = 'scan_library' | 'thumbnail' | 'preview' | 'hls' | 'process_archive' | 'maintenance'
 
 export const VIDEO_SORTS = ['rate', 'views', 'latest', 'name', 'watch_time', 'votes'] as const
 export type VideoSort = (typeof VIDEO_SORTS)[number]
@@ -813,4 +813,49 @@ export interface FileOperationDTO {
   updatedAt: string
   completedAt: string | null
   statusUrl: string
+}
+
+export type DuplicateGroupKind = 'exact' | 'similar'
+
+export type DuplicateGroupState = 'open' | 'ignored' | 'kept'
+
+/**
+ * One file inside a duplicate group. `sameInode` marks a member that shares a
+ * body of bytes with another member through a hardlink, so deleting it would
+ * delete both.
+ */
+export interface DuplicateGroupMemberDTO {
+  assetId: string
+  filename: string
+  kind: string
+  sizeBytes: number
+  width: number | null
+  height: number | null
+  durationMs: number | null
+  takenAt: string
+  libraryName: string
+  rootPath: string
+  relativePath: string
+  fileVersion: number
+  confidence: number
+  sameInode: boolean
+  thumbnailUrl: string
+}
+
+/** A group of files with identical bytes. It is review material, never a delete order. */
+export interface DuplicateGroupDTO {
+  id: string
+  kind: DuplicateGroupKind
+  fingerprint: string
+  state: DuplicateGroupState
+  createdAt: string
+  updatedAt: string
+  memberCount: number
+  totalBytes: number
+  members: DuplicateGroupMemberDTO[]
+}
+
+export interface DuplicateGroupListDTO {
+  groups: DuplicateGroupDTO[]
+  nextCursor: string | null
 }

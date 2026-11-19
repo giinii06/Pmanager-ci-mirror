@@ -77,7 +77,7 @@ describe('schema v21 stage checkpoints', () => {
     expect(db.query<{ user_version: number }, []>('PRAGMA user_version').get()!.user_version).toBe(
       SCHEMA_VERSION,
     )
-    expect(SCHEMA_VERSION).toBe(21)
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(21)
     const row = db
       .query<
         {

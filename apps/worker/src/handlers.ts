@@ -31,17 +31,13 @@ import {
   waitForArchiveStability,
 } from '@mediavault/media'
 import type { WorkerConfig } from './config'
+import { scanDuplicates } from './duplicates/scan'
 import { withGpuLease } from './gpu'
-import { ScanInterruptedError, scanLibrary, type ScanFenceContext } from './scan'
+import { ScanInterruptedError, interruptionReason, scanLibrary, type ScanFenceContext } from './scan'
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (!signal?.aborted) return
-  const reason =
-    signal.reason === 'paused' ||
-    signal.reason === 'cancelled' ||
-    signal.reason === 'lease_lost'
-      ? signal.reason
-      : 'shutdown'
+  const reason = interruptionReason(signal)
   throw new ScanInterruptedError(reason, `job interrupted (${reason})`)
 }
 
@@ -336,6 +332,20 @@ export async function executeJob(
 
   if (job.kind === 'process_archive') {
     await runArchiveJob(db, config, job, execCtx.signal)
+    return
+  }
+
+  if (job.kind === 'maintenance') {
+    const payload = job.payload ? (JSON.parse(job.payload) as { task?: string }) : {}
+    if (payload.task !== 'duplicates') throw new Error('unknown maintenance task')
+    throwIfAborted(execCtx.signal)
+    const summary = await scanDuplicates(db, config, {
+      libraryId: job.libraryId ?? undefined,
+      signal: execCtx.signal,
+    })
+    console.log(
+      `[duplicates] candidates=${summary.candidates} hashed=${summary.hashed} reused=${summary.reused} groups=${summary.groups} members=${summary.members} hardlinked=${summary.hardlinked}`,
+    )
     return
   }
 

@@ -642,6 +642,19 @@ export function hasActiveJob(db: Db, dedupeKey: string): boolean {
   )
 }
 
+/** The job a repeat request would have joined, so the caller can report its id. */
+export function findActiveJobByDedupe(db: Db, dedupeKey: string): JobRecord | null {
+  return (
+    db
+      .query<JobRecord, Params>(
+        `SELECT ${JOB_SELECT} FROM jobs
+         WHERE dedupe_key = ? AND state IN ('queued','running','paused')
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(dedupeKey) ?? null
+  )
+}
+
 export function pruneOldJobs(db: Db, olderThanMs: number): number {
   return db
     .query<null, Params>(

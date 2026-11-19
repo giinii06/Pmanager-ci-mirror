@@ -2,6 +2,8 @@ import type {
   ArchiveJobDTO,
   AsrJobDTO,
   AssetDTO,
+  DuplicateGroupDTO,
+  DuplicateGroupMemberDTO,
   EmbeddingJobDTO,
   FolderDTO,
   FileOperationDTO,
@@ -28,6 +30,8 @@ import type {
   ArchiveJobRecord,
   AsrJobRecord,
   AssetRecord,
+  DuplicateGroupMemberRecord,
+  DuplicateGroupRecord,
   EmbeddingJobRecord,
   FileMutationRecord,
   FolderRecord,
@@ -445,5 +449,39 @@ export function toFileOperationDTO(record: FileMutationRecord): FileOperationDTO
     updatedAt: new Date(record.updatedAt).toISOString(),
     completedAt: iso(record.completedAt),
     statusUrl: `/api/file-operations/${record.id}`,
+  }
+}
+
+export function toDuplicateGroupDTO(record: DuplicateGroupRecord): DuplicateGroupDTO {
+  return {
+    id: record.id,
+    kind: record.kind,
+    fingerprint: record.fingerprint,
+    state: record.state,
+    createdAt: new Date(record.createdAt).toISOString(),
+    updatedAt: new Date(record.updatedAt).toISOString(),
+    memberCount: record.memberCount,
+    totalBytes: record.totalBytes,
+    members: record.members.map(toDuplicateGroupMemberDTO),
+  }
+}
+
+function toDuplicateGroupMemberDTO(member: DuplicateGroupMemberRecord): DuplicateGroupMemberDTO {
+  return {
+    assetId: member.assetId,
+    filename: member.filename,
+    kind: member.kind,
+    sizeBytes: member.sizeBytes,
+    width: member.width,
+    height: member.height,
+    durationMs: member.durationMs,
+    takenAt: new Date(member.takenAt).toISOString(),
+    libraryName: member.libraryName,
+    rootPath: member.rootPath,
+    relativePath: member.relativePath,
+    fileVersion: member.fileVersion,
+    confidence: member.confidence,
+    sameInode: member.sameInode,
+    thumbnailUrl: `/api/assets/${member.assetId}/thumbnail?size=320&v=${member.fileVersion}&pv=${member.posterVersion}`,
   }
 }

@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 21
+export const SCHEMA_VERSION = 22
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -776,6 +776,47 @@ ALTER TABLE scene_jobs ADD COLUMN analyzed_windows INTEGER;
 ALTER TABLE scene_jobs ADD COLUMN total_windows INTEGER;
 `
 
+// A fingerprint is a reading of one file version, so it dies with the asset and
+// is replaced when the version changes. The quick hash narrows candidates and
+// the full hash decides a group; a group is review material only, and nothing
+// in this schema can express a deletion. `device_id`/`inode` and `same_inode`
+// separate two hardlinks, which share one body of bytes on disk, from two real
+// copies, because deleting either half of a hardlink pair destroys both.
+export const V22_DUPLICATES_SQL = `
+CREATE TABLE IF NOT EXISTS file_fingerprints (
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  file_version INTEGER NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  quick_hash TEXT,
+  full_hash TEXT,
+  algo TEXT NOT NULL DEFAULT 'sha256',
+  device_id INTEGER,
+  inode INTEGER,
+  calculated_at INTEGER NOT NULL,
+  PRIMARY KEY (asset_id, file_version)
+);
+CREATE INDEX IF NOT EXISTS idx_file_fingerprints_full ON file_fingerprints(size_bytes, full_hash);
+
+CREATE TABLE IF NOT EXISTS duplicate_groups (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('exact','similar')),
+  fingerprint TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open','ignored','kept')),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_duplicate_groups_fingerprint ON duplicate_groups(kind, fingerprint);
+
+CREATE TABLE IF NOT EXISTS duplicate_group_members (
+  group_id TEXT NOT NULL REFERENCES duplicate_groups(id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  confidence REAL NOT NULL,
+  same_inode INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (group_id, asset_id)
+);
+CREATE INDEX IF NOT EXISTS idx_duplicate_group_members_asset ON duplicate_group_members(asset_id);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -832,4 +873,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V19_AUTH_SESSIONS_SQL),
   (exec) => exec(V20_PLAY_SESSIONS_SQL),
   (exec) => exec(V21_STAGE_CHECKPOINTS_SQL),
+  (exec) => exec(V22_DUPLICATES_SQL),
 ]

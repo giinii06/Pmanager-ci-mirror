@@ -160,3 +160,18 @@ bun scripts/bench-search.ts run /tmp/live-clone.db \
 - `GET /api/search/semantic`은 `0.5 s` 안팎이며, 그 대부분은 PR 09가 건드리지 않은 장면 스캔입니다.
 - 배포 직후 첫 시작은 인덱스 백필을 포함해 `201.2 ms`(구축) + `74.1 ms`(검증)가 걸렸고, 이후 시작은 `67.6 ms` + `66.9 ms`입니다.
 - 배포 전후 같은 10개 질의의 응답 본문이 바이트 단위로 동일했습니다.
+
+## 7. 중복 해시 처리량 (PR 10)
+
+`apps/worker/src/duplicates/hash.ts`의 `quickHash`와 `fullHash`를 macOS에서 직접 측정했습니다. 하드웨어는 Apple M5 / 24 GiB / APFS이고, 측정 시각의 load average는 3.74였습니다. 각 파일을 워밍업 1회 + 본 측정 3회 해싱하고 중앙값을 썼습니다.
+
+| 파일 크기 | quick hash | quick 처리량 | full hash | full 처리량 |
+| ---: | ---: | ---: | ---: | ---: |
+| 2 MiB | 0.78 ms | 2,581 MiB/s | 0.76 ms | 2,616 MiB/s |
+| 64 MiB | 1.39 ms | 46,103 MiB/s | 23.18 ms | 2,762 MiB/s |
+| 512 MiB | 1.38 ms | 371,744 MiB/s | 183.87 ms | 2,785 MiB/s |
+
+- quick hash는 파일 크기와 무관하게 정확히 3 MiB(앞·중간·끝 1 MiB씩)만 읽습니다. 그래서 위 표의 quick 처리량은 "샘플 3 MiB를 1.4 ms에 읽었다"는 뜻이고, 실제 읽기 속도로 환산하면 약 2.2 GiB/s입니다. 2 MiB 행은 `quickCoversWhole`이 참이라 quick hash가 곧 full hash입니다.
+- full hash는 1 MiB 청크 스트리밍 SHA-256으로 2.7–2.8 GiB/s에 포화됩니다. 64 MiB와 512 MiB가 같은 값이므로 이 수치는 크기가 아니라 SHA-256 연산이 한계입니다.
+- 페이지 캐시가 더워진 상태의 측정입니다. 즉 이 표는 디스크가 아니라 CPU 상한입니다. Win11 호스트의 DrvFS(9P)에서는 §3.1의 이미지 헤더 프로브처럼 파일 열기 지연이 지배하므로 실효 처리량은 이보다 낮습니다.
+- 실질적인 결론은 처리량이 아니라 읽는 양입니다. 같은 크기를 공유하는 후보라도 quick hash 버킷에 혼자 남으면 3 MiB만 읽고 끝나고, 재스캔은 `stat`만으로 지문을 재사용합니다(해시 0회).

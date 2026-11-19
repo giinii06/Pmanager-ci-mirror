@@ -2,6 +2,7 @@ import Fastify, { type FastifyError, type FastifyInstance, type FastifyRequest }
 import { SESSION_COOKIE, parseCookies, resolveSession } from './auth'
 import type { AppContext } from './context'
 import { registerAssetRoutes } from './routes/assets'
+import { registerDuplicateRoutes } from './routes/duplicates'
 import { registerFileOperationRoutes } from './routes/file-operations'
 import { registerAuthRoutes } from './routes/auth'
 import { registerFsRoutes } from './routes/fs'
@@ -128,6 +129,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerAssetRoutes(app, ctx)
   registerPlaybackRoutes(app, ctx)
   registerFileOperationRoutes(app, ctx)
+  registerDuplicateRoutes(app, ctx)
   registerTagRoutes(app, ctx)
   registerMediaRoutes(app, ctx)
   registerTranscriptionRoutes(app, ctx)

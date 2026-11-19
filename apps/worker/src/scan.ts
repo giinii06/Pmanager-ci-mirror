@@ -84,6 +84,16 @@ export class ScanInterruptedError extends Error {
   }
 }
 
+/** The one place that reads an abort signal's reason, so every long job agrees. */
+export function interruptionReason(
+  signal: AbortSignal,
+): 'paused' | 'cancelled' | 'shutdown' | 'lease_lost' {
+  const reason = signal.reason
+  return reason === 'paused' || reason === 'cancelled' || reason === 'lease_lost'
+    ? reason
+    : 'shutdown'
+}
+
 export class ScanBlockedError extends Error {
   constructor(
     public readonly healthState: Exclude<LibraryHealthState, 'ONLINE'>,
@@ -441,13 +451,7 @@ export async function scanLibrary(
 
   const checkInterrupted = (): void => {
     if (!options.signal?.aborted) return
-    const reason =
-      options.signal.reason === 'paused' ||
-      options.signal.reason === 'cancelled' ||
-      options.signal.reason === 'lease_lost'
-        ? options.signal.reason
-        : 'shutdown'
-    throw new ScanInterruptedError(reason)
+    throw new ScanInterruptedError(interruptionReason(options.signal))
   }
 
   const shouldSkipCrossMountChild = (relative: string, childName: string): boolean => {

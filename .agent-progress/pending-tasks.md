@@ -7,6 +7,10 @@
 - [x] **Wave 6:** Documentation suite (`docs/{ARCHITECTURE,BENCHMARKS,RECOVERY,WINDOWS-OPERATIONS,MACOS-SSH,TEST-REPORT}.md`), `/no-comments` (`comment-sicko`) + independent `research` audits + fixes across `packages/*`, `apps/*`, `scripts/windows/*.ps1`, full regression test verification, `.agent-progress/` sync, and Wave 6 bundle deploy to `media-server`.
 
 - [x] **PR 09 post-deploy equality check.** Ten live queries were saved as `/tmp/pr09-search-before.jsonl`/`.sha` before the deploy and re-run after it: all ten response bodies are byte-identical. The `search.fts` startup line reports `enabled: true` with the full document counts.
+- [ ] **PR 10 stage B (Duplicates UI).** The API, the scan and the schema exist; the page does not. It needs a group list with the member thumbnails, the `sameInode` warning ("하드링크: 한쪽을 지우면 둘 다 사라집니다"), the keep/ignore actions, and a scan trigger. `GET /api/duplicates/groups` already returns `nextCursor`, `memberCount`, `totalBytes` and a `/api/assets/:id/thumbnail` URL per member.
+- [ ] **`similar` groups (pHash).** `duplicate_groups.kind` already allows `similar` and the list route short-circuits it to an empty page. A perceptual hash stage would need a fourth fingerprint column or a second table, plus a threshold decision that only a human can sign off on.
+- [ ] **Give the maintenance lane its own queue query.** The `media` lane query in `packages/database/src/work-queue.ts` selects every `jobs` row, so a duplicate scan is listed under `media` (decision 49). Cosmetic today because no UI shows it; fix it when stage B adds the scan button.
+
 
 ## Operator Follow-ups
 
@@ -30,7 +34,7 @@
 - [x] **PR 08b Stage Checkpoint (`v21`):** common `stage_checkpoints` (jobId/assetId/fileVersion/modelFingerprint/pipelineVersion/stageName/completedUnits/totalUnits/artifactManifest/hash), write → fsync → manifest → DB checkpoint ordering, restart reconciliation, and persisted scene coverage for completed indexes. Deployed as `dede96c`; live schema `v21`, counters unchanged. Duplicates now starts at `v22`.
 - [x] **PR 09 Search:** no-schema-change FTS5 trigram candidate generator with the LIKE oracle kept as the answer, bounded per-corpus fan-out, integrity-proof readiness, `RETURNING`-based mutation reporting, `scripts/bench-search.ts` and `scripts/exp-scene.ts`. `499 pass`; live-clone dialogue `1.86 -> 0.09 ms`, scene scan `158 ms` p95. FAISS deferred to PR 14 with the 100k-scene measurements.
 - [ ] **PR 14 must re-measure the scene scan on the host before choosing ANN.** The exact scan is `373 / 417 ms` p95 on the host at 17,439 scenes, close to the 500 ms trigger, and the host is ~2.5x the Mac clone. The 100k-scene numbers in `docs/BENCHMARKS.md` came from the clone.
-- [ ] **PR 10 Duplicates:** `v22` fingerprints and duplicate review groups, no automatic deletion.
+- [ ] **PR 10 Duplicates:** `v22` fingerprints and duplicate review groups, no automatic deletion. **Stage A done** (`v22`, hashing, `maintenance` job, four routes, 26 new tests, `525 pass`). Stage B is the UI page.
 - [ ] **PR 11 Collections:** `v23` smart albums, playlists, bookmarks, poster UX.
 - [ ] **PR 12 Bulk/Move:** `v24` dry run, snapshots, per-item operations.
 - [ ] **PR 13 Observability:** `v25` health, diagnostics, notifications, cache policy.

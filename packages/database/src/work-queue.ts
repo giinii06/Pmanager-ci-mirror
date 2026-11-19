@@ -110,7 +110,7 @@ const LANE_STATES: Record<WorkPipeline, { active: string[]; failed: string[] }> 
     failed: ['failed_retryable', 'blocked'],
   },
   backup: { active: [], failed: [] },
-  maintenance: { active: [], failed: [] },
+  maintenance: { active: ['running'], failed: ['failed'] },
   bulk: { active: [], failed: [] },
 }
 

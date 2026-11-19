@@ -1,4 +1,4 @@
-# MediaVault 시스템 아키텍처 (Schema v21)
+# MediaVault 시스템 아키텍처 (Schema v22)
 
 MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engine)에서 상시 운영되며, macOS를 비롯한 LAN 브라우저에서 접속하는 셀프 호스팅 사진·동영상 라이브러리 서버입니다.
 
@@ -28,7 +28,7 @@ MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engin
 - `vote_events`: 폴더 및 동영상 Vote 활동을 기여(`contribution_events`)와 분리 추적.
 - `recovery_logs`, `backup_logs`: 크래시 복구 및 `VACUUM INTO` 무결성 검증 백업 이력.
 
-이후 PR 02–06이 `v16`–`v20`을 추가했다: `library_health`와 `scan_runs` 확장(`v16`), `file_mutations`/`mutation_events`(`v17`), `hls_generations`/`hls_active`(`v18`), `user_sessions`/`auth_login_attempts`/`auth_events`(`v19`), `play_sessions`/`play_events`와 `playback_progress` 확장(`v20`). PR 07과 PR 08은 스키마를 바꾸지 않았고, PR 08b가 `stage_checkpoints`와 `scene_jobs.analyzed_windows`/`total_windows`(`v21`)를 추가했다.
+이후 PR 02–06이 `v16`–`v20`을 추가했다: `library_health`와 `scan_runs` 확장(`v16`), `file_mutations`/`mutation_events`(`v17`), `hls_generations`/`hls_active`(`v18`), `user_sessions`/`auth_login_attempts`/`auth_events`(`v19`), `play_sessions`/`play_events`와 `playback_progress` 확장(`v20`). PR 07과 PR 08은 스키마를 바꾸지 않았고, PR 08b가 `stage_checkpoints`와 `scene_jobs.analyzed_windows`/`total_windows`(`v21`)를 추가했다. PR 10은 `file_fingerprints`/`duplicate_groups`/`duplicate_group_members`(`v22`)를 추가했다.
 
 ## 3. 호스트 드라이브 노출 구조
 
@@ -55,3 +55,12 @@ MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engin
 - `stage_checkpoints` 행은 job/stage 단위 포인터일 뿐입니다. 재개할 때는 로그를 먼저 읽고, 매니페스트의 `meta`(asset, fileVersion, 모델 SHA, 파이프라인 버전, 차원, 윈도우 계획)가 현재 계획과 같을 때만 prefix를 재사용합니다. 중간에 잘린 줄, seq 불연속, 사라진 썸네일을 만나면 그 지점에서 prefix를 자르고 이후 윈도우만 다시 처리합니다.
 - 로그가 매니페스트보다 앞서면 로그가 이깁니다(매니페스트 재작성). 매니페스트가 없거나 meta가 다르면 로그를 폐기하고 처음부터 처리합니다. API는 모델 fingerprint나 pipelineVersion이 다른 행을 발견하면 삭제하고 `checkpoint: null`을 반환합니다.
 - 완료 시 `completeSceneJob`이 `analyzed_windows`/`total_windows`를 기록하고 체크포인트 행을 지웁니다. 워커도 완료 응답을 받은 뒤 디렉터리를 정리합니다. `GET /api/assets/:id/scenes`는 이 값으로 샘플링 커버리지(`N/M 구간`)를 돌려주며, PR 08b 이전에 완료된 작업은 `null`입니다.
+
+## 7. 중복 검토
+
+- **정책**: 정확히 같은 바이트의 파일 후보는 강하게 판별하지만 자동 삭제하지 않습니다. 이 PR의 어떤 경로도 파일을 쓰기용으로 열지 않고, `file_mutations` 행을 만들지 않으며, 삭제·격리·이동 잡을 큐에 넣지 않습니다. `POST /api/duplicates/groups/:id/decisions`의 `action: "delete"`는 `409 delete_not_available`로 거절합니다.
+- **해시 파이프라인** (`apps/worker/src/duplicates/hash.ts`): 크기 히스토그램으로 같은 크기를 공유하는 자산만 후보로 뽑고(`duplicateCandidates`), 후보의 앞·중간·끝 1 MiB씩(총 3 MiB)을 읽어 quick hash를 만듭니다. 3 MiB 이하 파일은 통째로 읽히므로 quick hash가 곧 full hash입니다(`quickCoversWhole`). 같은 `(크기, quick hash)` 버킷에 2개 이상이 있을 때만 1 MiB 청크 스트리밍으로 full SHA-256을 계산합니다. 읽기 전후 `stat`이 size/mtime/ino/dev 중 하나라도 다르면 `UnstableFileError`로 해시를 버립니다.
+- **그룹**: 그룹 키는 `(size_bytes, full_hash)`이고 fingerprint는 `sha256:<bytes>:<hex>`입니다. 그룹 id는 `dup_` + `sha256('exact:' + fingerprint)` 앞 16 hex라서 같은 바이트는 몇 번을 스캔해도 같은 행에 떨어지고, 검토자가 남긴 `kept`/`ignored`가 다음 스캔에서도 유지됩니다(`ON CONFLICT DO UPDATE SET updated_at`만 갱신).
+- **하드링크**: `file_fingerprints`의 `device_id`/`inode`와 `duplicate_group_members.same_inode`로 같은 바이트를 공유하는 두 경로를 구분합니다. 하드링크 쌍은 진짜 중복이지만 한쪽을 지우면 둘 다 사라지므로 UI가 경고할 수 있어야 합니다. inode를 모르는 행은 절대 하드링크로 취급하지 않습니다.
+- **읽기 경로**: 살아 있는 멤버가 2개 미만인 그룹은 목록에도 상세에도 나오지 않습니다. 에셋이 소프트 삭제되면 다음 스캔이 그룹을 정리할 때까지 그 그룹은 사라진 것으로 보입니다.
+- **유사 중복은 미구현**: 지각 해시(pHash) 기반 `similar` 그룹은 스펙의 후속 항목입니다. `kind=similar` 목록은 DB를 읽지 않고 `{groups: [], nextCursor: null}`을 반환합니다.
