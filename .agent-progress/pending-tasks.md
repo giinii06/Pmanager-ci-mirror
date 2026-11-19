@@ -7,9 +7,9 @@
 - [x] **Wave 6:** Documentation suite (`docs/{ARCHITECTURE,BENCHMARKS,RECOVERY,WINDOWS-OPERATIONS,MACOS-SSH,TEST-REPORT}.md`), `/no-comments` (`comment-sicko`) + independent `research` audits + fixes across `packages/*`, `apps/*`, `scripts/windows/*.ps1`, full regression test verification, `.agent-progress/` sync, and Wave 6 bundle deploy to `media-server`.
 
 - [x] **PR 09 post-deploy equality check.** Ten live queries were saved as `/tmp/pr09-search-before.jsonl`/`.sha` before the deploy and re-run after it: all ten response bodies are byte-identical. The `search.fts` startup line reports `enabled: true` with the full document counts.
-- [ ] **PR 10 stage B (Duplicates UI).** The API, the scan and the schema exist; the page does not. It needs a group list with the member thumbnails, the `sameInode` warning ("하드링크: 한쪽을 지우면 둘 다 사라집니다"), the keep/ignore actions, and a scan trigger. `GET /api/duplicates/groups` already returns `nextCursor`, `memberCount`, `totalBytes` and a `/api/assets/:id/thumbnail` URL per member.
+- [x] **PR 10 stage B (Duplicates UI).** The API, the scan and the schema exist; the page does not. It needs a group list with the member thumbnails, the `sameInode` warning ("하드링크: 한쪽을 지우면 둘 다 사라집니다"), the keep/ignore actions, and a scan trigger. `GET /api/duplicates/groups` already returns `nextCursor`, `memberCount`, `totalBytes` and a `/api/assets/:id/thumbnail` URL per member.
 - [ ] **`similar` groups (pHash).** `duplicate_groups.kind` already allows `similar` and the list route short-circuits it to an empty page. A perceptual hash stage would need a fourth fingerprint column or a second table, plus a threshold decision that only a human can sign off on.
-- [ ] **Give the maintenance lane its own queue query.** The `media` lane query in `packages/database/src/work-queue.ts` selects every `jobs` row, so a duplicate scan is listed under `media` (decision 49). Cosmetic today because no UI shows it; fix it when stage B adds the scan button.
+- [x] **Give the maintenance lane its own queue query.** The `media` lane query in `packages/database/src/work-queue.ts` selects every `jobs` row, so a duplicate scan is listed under `media` (decision 49). Cosmetic today because no UI shows it; fix it when stage B adds the scan button.
 
 
 ## Operator Follow-ups
