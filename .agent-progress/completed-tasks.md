@@ -196,3 +196,13 @@
 - API: `apps/api/src/routes/duplicates.ts` — `POST /api/duplicates/scans` (202 with the job id, a repeat joins the active job, unknown library 404), `GET /api/duplicates/groups` (kind/state/limit/cursor, `similar` short-circuits to an empty page), `GET /api/duplicates/groups/:id` (404), `POST /api/duplicates/groups/:id/decisions` (keep/ignore, `delete` → `409 delete_not_available` with the Korean message, unknown action 400, missing group 404). `findActiveJobByDedupe` added to `jobs.ts`; `toDuplicateGroupDTO` in `dto.ts`; registered in `app.ts`.
 - Tests: 3 v22 migration/group tests, 10 hash tests, 8 scan tests, 5 API tests. `bun test` `525 pass, 0 fail` (61 files, 2839 expect calls); typecheck and web build exit `0`. Mutation-checked: disabling `sameInode`, fingerprint reuse, or the live-member rule each fails a different test.
 - `docs/ARCHITECTURE.md` section 7 and `docs/BENCHMARKS.md` section 7 (hash throughput on the Mac).
+
+## Spec v1.0 PR 10 Stage B — Duplicates review page and the lane split
+
+- `packages/database/src/work-queue.ts`: `media` and `mediaCounts` now exclude `kind = 'maintenance'`; a new `maintenance` query and `maintenanceCounts` feed the ninth lane from the `jobs` table; `countsByPipeline.maintenance` and `itemsByPipeline.maintenance` are populated. Closes the gap recorded in decision 49.
+- `packages/database/src/work-queue.test.ts`: `a maintenance job is counted once, in its own lane` inserts one media job and one maintenance job, asserts `media` reports `1`/`1` and `maintenance` reports `1`/`1` (and the reverse for the items), so a scan cannot reappear under `media`.
+- `apps/web/src/lib/api.ts`: `duplicateGroups` (kind/state/limit/cursor), `duplicateGroup`, `scanDuplicates`, `decideDuplicateGroup`, plus the DTO imports.
+- `apps/web/src/pages/DuplicatesPage.tsx` (261 lines): infinite query on `['duplicates', filter]` with a 6 s refetch, `검토 전/유지/무시/전체` filters, a scan button that invalidates the queue, per-member thumbnail (click opens the existing viewer), filename, joined path, resolution/duration, library name and a hardlink badge, `모두 유지`/`무시` mutations, and a notice that the page only reviews. No delete control exists in the UI.
+- `apps/web/src/App.tsx`: `duplicates` route. `apps/web/src/components/Sidebar.tsx`: `중복 검토` entry with the `Copy` icon above settings.
+- Verification: `bun run typecheck` exit `0`; `bun test` **`526 pass, 0 fail`**, `2843` expect calls, 61 files (stage A: `525`); `bun run --cwd apps/web build` exit `0` (only the existing chunk-size warning).
+- `docs/ARCHITECTURE.md` section 7 gained the page and lane-split notes.

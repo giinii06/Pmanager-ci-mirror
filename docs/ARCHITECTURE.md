@@ -36,7 +36,7 @@ MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engin
 
 ## 4. 통합 작업 큐와 GPU 정책
 
-- `packages/database/src/work-queue.ts`의 `workQueue`는 `jobs`(미디어·스캔), `asr_jobs`, `translation_jobs`, `embedding_jobs`, `scene_jobs`, `file_mutations`를 하나의 읽기 모델로 합칩니다. 표시용 파이프라인은 `media|asr|translation|embedding|scene|mutation|backup|maintenance|bulk` 아홉 개이며, 저장 테이블은 그대로 유지됩니다.
+- `packages/database/src/work-queue.ts`의 `workQueue`는 `jobs`(미디어·스캔), `asr_jobs`, `translation_jobs`, `embedding_jobs`, `scene_jobs`, `file_mutations`를 하나의 읽기 모델로 합칩니다. 표시용 파이프라인은 `media|asr|translation|embedding|scene|mutation|backup|maintenance|bulk` 아홉 개이며, 저장 테이블은 그대로 유지됩니다. `jobs` 테이블을 쓰는 두 레인은 `kind`로 갈립니다: `media`는 `kind <> 'maintenance'`, `maintenance`(중복 스캔 등)는 `kind = 'maintenance'`만 조회하므로 한 작업이 두 레인에 중복 집계되지 않습니다.
 - GPU 작업(ASR·번역·임베딩·장면)은 `gpu_leases`의 단일 카드 리스를 공유합니다. `runningGpu`(리스 보유)와 `waitingGpu`(실행 중이지만 리스 대기)를 분리해 표시하고, 대기 중인 작업의 ETA에는 현재 리스 보유 작업의 남은 시간과 자기 작업의 최근 중앙값을 더합니다. 각 단계가 리스를 잡은 뒤 모델을 올리므로 그 중앙값에는 모델 로딩이 이미 포함됩니다.
 - `claimNextJob`은 2분마다 우선순위를 한 단계 승격해 오래 기다린 작업이 굶지 않게 합니다. 유효 우선순위가 같으면 원래 우선순위가 앞섭니다.
 - 장면 작업은 `scene_jobs.window_ms`/`overlap_ms`와 `SCENE_MAX_WINDOWS`로 계획된 구간 수를 계산해 전체 구간 수와 함께 표시합니다(`coverage`). 자동 챕터가 아니라 검색 색인의 샘플링 범위입니다.
@@ -64,3 +64,4 @@ MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engin
 - **하드링크**: `file_fingerprints`의 `device_id`/`inode`와 `duplicate_group_members.same_inode`로 같은 바이트를 공유하는 두 경로를 구분합니다. 하드링크 쌍은 진짜 중복이지만 한쪽을 지우면 둘 다 사라지므로 UI가 경고할 수 있어야 합니다. inode를 모르는 행은 절대 하드링크로 취급하지 않습니다.
 - **읽기 경로**: 살아 있는 멤버가 2개 미만인 그룹은 목록에도 상세에도 나오지 않습니다. 에셋이 소프트 삭제되면 다음 스캔이 그룹을 정리할 때까지 그 그룹은 사라진 것으로 보입니다.
 - **유사 중복은 미구현**: 지각 해시(pHash) 기반 `similar` 그룹은 스펙의 후속 항목입니다. `kind=similar` 목록은 DB를 읽지 않고 `{groups: [], nextCursor: null}`을 반환합니다.
+- **화면** (`apps/web/src/pages/DuplicatesPage.tsx`, 사이드바 `중복 검토`): `검토 전/유지/무시/전체` 필터, 6초 폴링 무한 스크롤, `스캔 시작`(202 응답의 잡 id만 받고 큐 화면을 무효화), 멤버별 썸네일·경로·해상도/길이·라이브러리, 하드링크 배지, 그룹 단위 `모두 유지`/`무시`. 절약 가능 용량은 그룹 총량에서 가장 큰 멤버를 뺀 값이며, 특정 멤버를 지목하지 않습니다. 삭제 버튼은 UI에 존재하지 않습니다.

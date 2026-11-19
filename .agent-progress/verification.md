@@ -279,3 +279,12 @@
 - The tests are load-bearing, checked by mutation: returning `false` from `sharesInode` fails the hardlink test; disabling fingerprint reuse fails the rescan test; replacing the live-member count with a constant fails the single-member test. Each mutation was reverted before the run above.
 - Hash throughput (macOS, Apple M5, 24 GiB, APFS, load average 3.74, warm page cache, median of 3 rounds after a discarded warm-up): full SHA-256 saturates at `2,762` MiB/s (64 MiB) and `2,785` MiB/s (512 MiB); quick reads exactly 3 MiB in `1.38-1.39 ms` regardless of file size; a 2 MiB file is read whole, so quick and full both measure about `2.6` GiB/s. This is a CPU ceiling, not a disk number; the host's DrvFS file-open latency dominates there (see `BENCHMARKS.md` §3.1).
 - Not verified live: nothing is deployed. No migration, route or job has run against the host, and stage B (the UI page) does not exist yet.
+
+## Spec v1.0 PR 10 Stage B Verification (2026-11-20)
+
+- `bun run typecheck`: exit `0` across all six workspaces and the root scripts project, after `DuplicatesPage.tsx`, the `api.ts` additions, the route and the sidebar entry.
+- `bun test`: **`526 pass, 0 fail`**, `2843` expect calls, 61 files. The one new test is the lane split; stage A's 525 still pass unchanged.
+- `bun run --cwd apps/web build`: exit `0` (only the existing chunk-size warning); `DuplicatesPage` is part of the main `index` chunk, so the route needed no lazy boundary.
+- Lane split: `media` reports exactly the media job and `maintenance` exactly the maintenance job, in both counts and items. Before the change the same fixture showed the maintenance job in both lanes.
+- The page was not exercised in a browser against the host; it is not deployed yet. Stage B is a client over routes stage A already tested, and the render path is covered only by typecheck and the production build.
+- Not verified live: nothing from PR 10 is deployed. The `v21 -> v22` clone rehearsal and one scan against that clone are still required before the host deploy.
