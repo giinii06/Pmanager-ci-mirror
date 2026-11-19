@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test'
-import { access, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import sharp from 'sharp'
@@ -41,10 +41,13 @@ function crc32(buf: Uint8Array): number {
 
 function buildRar4(
   files: Array<{ name: string; data: Uint8Array; encrypted?: boolean }>,
+  options: { mainFlags?: number; endFlags?: number } = {},
 ): Uint8Array {
   const chunks: Uint8Array[] = [Uint8Array.from([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00])]
   const mhd = new Uint8Array(13)
+  const mhdView = new DataView(mhd.buffer)
   mhd[2] = 0x73
+  mhdView.setUint16(3, options.mainFlags ?? 0, true)
   mhd[5] = 13
   const mcrc = crc32(mhd.subarray(2)) & 0xffff
   mhd[0] = mcrc & 0xff
@@ -69,8 +72,20 @@ function buildRar4(
     dv.setUint16(0, crc32(hdr.subarray(2)) & 0xffff, true)
     chunks.push(hdr, f.data)
   }
-  chunks.push(Uint8Array.from([0xc4, 0x3d, 0x7b, 0x00, 0x40, 0x07, 0x00]))
+
+  const end = new Uint8Array(7)
+  const endView = new DataView(end.buffer)
+  end[2] = 0x7b
+  endView.setUint16(3, options.endFlags ?? 0x4000, true)
+  endView.setUint16(5, 7, true)
+  endView.setUint16(0, crc32(end.subarray(2)) & 0xffff, true)
+  chunks.push(end)
   return Buffer.concat(chunks)
+}
+
+async function backdate(targets: string[]): Promise<void> {
+  const oneHourAgo = new Date(Date.now() - 60 * 60_000)
+  for (const target of targets) await utimes(target, oneHourAgo, oneHourAgo)
 }
 
 describe('image JPEG 95 conversion', () => {
@@ -283,9 +298,76 @@ describe('RAR archive discovery, security, and extraction', () => {
     await rm(p2Temp)
     const p2 = path.join(dir, 'Pack.part2.rar')
     await writeFile(p2, 'stub2')
+    expect(await discoverArchiveSetsInDir(dir)).toEqual([])
+
+    await backdate([p1, p2])
     const sets = await discoverArchiveSetsInDir(dir)
     expect(sets).toHaveLength(1)
     expect(sets[0]?.primaryPath).toBe(p1)
     expect(sets[0]?.volumes).toEqual([p1, p2])
+  })
+
+  test('waits for the rest of a multi-volume set before extracting the first part', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'mv-rar-first-part-'))
+    dirs.push(dir)
+    const p1 = path.join(dir, 'Pack.part1.rar')
+    await writeFile(p1, 'stub')
+
+    const retries: number[] = []
+    const fresh = await discoverArchiveSetsInDir(dir, {
+      onDeferred: (retryInMs) => retries.push(retryInMs),
+    })
+    expect(fresh).toEqual([])
+    expect(retries).toHaveLength(1)
+    expect(retries[0]!).toBeGreaterThan(60_000)
+
+    await backdate([p1])
+    const sets = await discoverArchiveSetsInDir(dir)
+    expect(sets).toHaveLength(1)
+    expect(sets[0]?.volumes).toEqual([p1])
+  })
+
+  test('reports a retry delay while the final volume is still settling', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'mv-rar-settle-'))
+    dirs.push(dir)
+    const p1 = path.join(dir, 'Pack.part1.rar')
+    const p2 = path.join(dir, 'Pack.part2.rar')
+    await writeFile(p1, Buffer.alloc(4_096, 1))
+    await writeFile(p2, Buffer.alloc(1_024, 2))
+
+    const retries: number[] = []
+    const fresh = await discoverArchiveSetsInDir(dir, {
+      onDeferred: (retryInMs) => retries.push(retryInMs),
+    })
+    expect(fresh).toEqual([])
+    expect(retries).toHaveLength(1)
+    expect(retries[0]!).toBeLessThan(11_000)
+
+    await backdate([p1, p2])
+    const sets = await discoverArchiveSetsInDir(dir)
+    expect(sets).toHaveLength(1)
+    expect(sets[0]?.volumes).toEqual([p1, p2])
+  })
+
+  test('defers a lone .rar that carries the RAR volume flag', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'mv-rar-volume-flag-'))
+    dirs.push(dir)
+    const rarPath = path.join(dir, 'Lone.rar')
+    await writeFile(
+      rarPath,
+      buildRar4([{ name: '001.png', data: Buffer.alloc(8, 3) }], { mainFlags: 0x0111 }),
+    )
+
+    const retries: number[] = []
+    const fresh = await discoverArchiveSetsInDir(dir, {
+      onDeferred: (retryInMs) => retries.push(retryInMs),
+    })
+    expect(fresh).toEqual([])
+    expect(retries).toHaveLength(1)
+
+    await backdate([rarPath])
+    const sets = await discoverArchiveSetsInDir(dir)
+    expect(sets).toHaveLength(1)
+    expect(sets[0]?.volumes).toEqual([rarPath])
   })
 })

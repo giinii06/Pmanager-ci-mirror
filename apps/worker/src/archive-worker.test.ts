@@ -7,12 +7,17 @@ import {
   claimNextJob,
   completeJob,
   createLibrary,
+  enqueueArchiveJobIfNeeded,
+  enqueueJob,
   getActivityStats,
+  getArchiveJob,
   listArchiveJobs,
   listAssets,
   openDatabase,
+  updateArchiveJob,
   type Db,
 } from '@mediavault/database'
+import { PRIORITY } from '@mediavault/shared'
 import type { WorkerConfig } from './config'
 import { executeJob } from './handlers'
 import { scanLibrary } from './scan'
@@ -148,5 +153,79 @@ describe('worker archive pipeline end-to-end', () => {
 
     await scanLibrary(db, config, 'lib1')
     expect(getActivityStats(db).totalCount).toBe(1)
+  })
+
+  test('retried job leaves an already completed archive row completed', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'mv-worker-retry-'))
+    dirs.push(dir)
+    const mediaRoot = path.join(dir, 'media')
+    const setDir = path.join(mediaRoot, 'ModelA', 'Set1')
+    await mkdir(setDir, { recursive: true })
+
+    const db = openDatabase(':memory:')
+    dbs.push(db)
+    createLibrary(db, { id: 'lib1', name: 'ModelA', rootPath: 'ModelA', createdAt: 1 })
+    const config: WorkerConfig = {
+      dataDir: dir,
+      cacheDir: path.join(dir, 'cache'),
+      mediaRoot,
+      hwaccel: null,
+      pollMs: 50,
+      once: true,
+      gpuResource: 'gpu:0',
+      workerId: 'w-test',
+      scanDeleteGuardRatio: 0.2,
+      scanDeleteForce: false,
+      archiveStableMs: 20,
+    }
+
+    const { record } = enqueueArchiveJobIfNeeded(
+      db,
+      {
+        id: 'aj-done',
+        libraryId: 'lib1',
+        archivePath: 'ModelA/Set1/Set1.part1.rar',
+        signature: 'Set1.part1.rar:4096:1',
+      },
+      1,
+    )
+    updateArchiveJob(
+      db,
+      record.id,
+      { state: 'completed', extractedFiles: 67, errorMessage: null },
+      2,
+    )
+
+    const volumes = [
+      path.join(setDir, 'Set1.part1.rar'),
+      path.join(setDir, 'Set1.part2.rar'),
+    ]
+    enqueueJob(
+      db,
+      {
+        dedupeKey: `archive:${record.id}`,
+        kind: 'process_archive',
+        priority: PRIORITY.visible,
+        libraryId: 'lib1',
+        payload: {
+          archiveJobId: record.id,
+          libraryId: 'lib1',
+          primaryPath: volumes[0],
+          volumes,
+        },
+      },
+      Date.now(),
+    )
+
+    const job = claimNextJob(db, Date.now())
+    expect(job?.kind).toBe('process_archive')
+
+    await executeJob(db, config, job!)
+
+    expect(getArchiveJob(db, record.id)).toMatchObject({
+      state: 'completed',
+      extractedFiles: 67,
+      errorMessage: null,
+    })
   })
 })
