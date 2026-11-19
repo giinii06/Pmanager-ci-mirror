@@ -5,11 +5,13 @@ import { registerAssetRoutes } from './routes/assets'
 import { registerDuplicateRoutes } from './routes/duplicates'
 import { registerFileOperationRoutes } from './routes/file-operations'
 import { registerAuthRoutes } from './routes/auth'
+import { registerBookmarkRoutes } from './routes/bookmarks'
 import { registerFsRoutes } from './routes/fs'
 import { registerIndexRoutes } from './routes/index-run'
 import { registerLibraryRoutes } from './routes/libraries'
 import { registerMediaRoutes } from './routes/media'
 import { registerPlaybackRoutes } from './routes/playback'
+import { registerPlaylistRoutes } from './routes/playlists'
 import { registerSceneRoutes } from './routes/scenes'
 import { registerSmartAlbumRoutes } from './routes/smart-albums'
 import { registerSystemRoutes } from './routes/system'
@@ -132,6 +134,8 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerFileOperationRoutes(app, ctx)
   registerDuplicateRoutes(app, ctx)
   registerSmartAlbumRoutes(app, ctx)
+  registerPlaylistRoutes(app, ctx)
+  registerBookmarkRoutes(app, ctx)
   registerTagRoutes(app, ctx)
   registerMediaRoutes(app, ctx)
   registerTranscriptionRoutes(app, ctx)

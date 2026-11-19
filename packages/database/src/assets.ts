@@ -33,7 +33,8 @@ export interface OffsetCursor {
 
 export type AssetCursor = TimelineCursor | OffsetCursor
 
-const COLUMNS = `
+/** Callers outside this module must alias `assets` as `a`, as every query here does. */
+export const ASSET_COLUMNS = `
   a.id, a.library_id AS libraryId, a.folder_id AS folderId, a.relative_path AS relativePath,
   a.filename, a.kind, a.mime_type AS mimeType, a.size_bytes AS sizeBytes, a.mtime_ms AS mtimeMs,
   a.width, a.height, a.duration_ms AS durationMs, a.taken_at AS takenAt, a.file_version AS fileVersion,
@@ -76,7 +77,8 @@ export function computeAssetRates(db: Db, assetIds: string[]): Map<string, numbe
   return rates
 }
 
-function hydrateAssets(db: Db, rows: AssetRow[]): AssetRecord[] {
+/** Adds tags and watch-time rates to rows a caller already selected. */
+export function hydrateAssets(db: Db, rows: AssetRow[]): AssetRecord[] {
   if (rows.length === 0) return []
   const ids = rows.map((row) => row.id)
   const tagsByAsset = listTagsForAssets(db, ids)
@@ -191,7 +193,7 @@ export function listAssets(
 
   const rows = db
     .query<AssetRow, Params>(
-      `SELECT ${COLUMNS}
+      `SELECT ${ASSET_COLUMNS}
        FROM assets a
        WHERE ${where.sql}
        ${order.sql}
@@ -342,7 +344,7 @@ export function pickRandomAsset(
 export function getAsset(db: Db, id: string): AssetRecord | null {
   const row = db
     .query<AssetRow, Params>(
-      `SELECT ${COLUMNS}
+      `SELECT ${ASSET_COLUMNS}
        FROM assets a
        WHERE a.id = ? AND a.deleted_at IS NULL`,
     )
@@ -355,7 +357,7 @@ export function getAsset(db: Db, id: string): AssetRecord | null {
 export function relatedAssets(db: Db, assetId: string, limit: number): AssetRecord[] {
   const rows = db
     .query<AssetRow, Params>(
-      `SELECT ${COLUMNS}
+      `SELECT ${ASSET_COLUMNS}
        FROM assets a
        JOIN assets current ON current.id = ?
        WHERE a.id != current.id
@@ -379,7 +381,7 @@ export function assetsByIds(db: Db, ids: string[]): AssetRecord[] {
   const placeholders = ids.map(() => '?').join(', ')
   const rows = db
     .query<AssetRow, Params>(
-      `SELECT ${COLUMNS}
+      `SELECT ${ASSET_COLUMNS}
        FROM assets a
        WHERE a.id IN (${placeholders}) AND a.deleted_at IS NULL`,
     )

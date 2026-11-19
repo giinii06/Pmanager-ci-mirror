@@ -887,3 +887,61 @@ export interface SmartAlbumDTO {
 }
 
 export type SmartAlbumPage = Page<AssetDTO> & { album: SmartAlbumDTO }
+
+/**
+ * `watch_later` is the one list every user gets without asking for it. It is a
+ * kind rather than a flag so a caller must handle the default list explicitly,
+ * and the database holds at most one per user.
+ */
+export type PlaylistKind = 'custom' | 'watch_later'
+
+/** A named, ordered list of assets. It references them; it copies nothing. */
+export interface PlaylistDTO {
+  id: string
+  name: string
+  description: string | null
+  kind: PlaylistKind
+  itemCount: number
+  /** Items whose asset still exists. The rest render as broken links. */
+  availableCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * One slot in a playlist. `available: false` means the asset was soft-deleted;
+ * the row stays so the user decides when to clear the broken link.
+ */
+export interface PlaylistItemDTO {
+  id: string
+  assetId: string
+  position: number
+  addedAt: string
+  available: boolean
+}
+
+export interface PlaylistDetailDTO {
+  playlist: PlaylistDTO
+  items: PlaylistItemDTO[]
+}
+
+export interface PlaylistAssetsDTO {
+  playlist: PlaylistDTO
+  items: AssetDTO[]
+}
+
+/**
+ * A mark at a timestamp. `fileVersion` records the file it was made against, so
+ * `stale` is a comparison at read time rather than a flag every scan rewrites.
+ */
+export interface VideoBookmarkDTO {
+  id: string
+  assetId: string
+  positionMs: number
+  title: string | null
+  note: string | null
+  fileVersion: number
+  stale: boolean
+  createdAt: string
+  updatedAt: string
+}

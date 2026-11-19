@@ -11,6 +11,8 @@ import type {
   LibraryDTO,
   LibraryHealthDetailDTO,
   PlaybackProgressDTO,
+  PlaylistDTO,
+  PlaylistItemDTO,
   ReviewDTO,
   SceneJobDTO,
   ScanRunDTO,
@@ -23,6 +25,7 @@ import type {
   TranslationJobDTO,
   TranslationSummaryDTO,
   UserDTO,
+  VideoBookmarkDTO,
   WorkItemDTO,
   WorkQueueDTO,
 } from '@mediavault/shared'
@@ -40,6 +43,8 @@ import type {
   LibraryHealthRecord,
   LibraryRecord,
   PlaybackRecord,
+  PlaylistItemRecord,
+  PlaylistRecord,
   ReviewRecord,
   ScanRunRecord,
   SceneJobRecord,
@@ -52,6 +57,7 @@ import type {
   TranslationRecord,
   TranslationWithSegments,
   UserRecord,
+  VideoBookmarkRecord,
   WorkItemRecord,
   WorkQueueRecord,
 } from '@mediavault/database'
@@ -498,5 +504,42 @@ export function toSmartAlbumDTO(album: SmartAlbumRecord): SmartAlbumDTO {
     pinned: album.pinned,
     createdAt: new Date(album.createdAt).toISOString(),
     updatedAt: new Date(album.updatedAt).toISOString(),
+  }
+}
+
+export function toPlaylistDTO(playlist: PlaylistRecord): PlaylistDTO {
+  return {
+    id: playlist.id,
+    name: playlist.name,
+    description: playlist.description,
+    kind: playlist.kind,
+    itemCount: playlist.itemCount,
+    availableCount: playlist.availableCount,
+    createdAt: new Date(playlist.createdAt).toISOString(),
+    updatedAt: new Date(playlist.updatedAt).toISOString(),
+  }
+}
+
+export function toPlaylistItemDTO(item: PlaylistItemRecord): PlaylistItemDTO {
+  return {
+    id: item.id,
+    assetId: item.assetId,
+    position: item.position,
+    addedAt: new Date(item.addedAt).toISOString(),
+    available: item.available,
+  }
+}
+
+export function toVideoBookmarkDTO(bookmark: VideoBookmarkRecord): VideoBookmarkDTO {
+  return {
+    id: bookmark.id,
+    assetId: bookmark.assetId,
+    positionMs: bookmark.positionMs,
+    title: bookmark.title,
+    note: bookmark.note,
+    fileVersion: bookmark.fileVersion,
+    stale: bookmark.stale,
+    createdAt: new Date(bookmark.createdAt).toISOString(),
+    updatedAt: new Date(bookmark.updatedAt).toISOString(),
   }
 }
