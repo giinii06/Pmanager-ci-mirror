@@ -1,9 +1,9 @@
 # Current Task
 
-- **Active Phase / Wave:** Spec v1.0 PR 02 deployed and verified on the live host -> PR 03 (Mutation Engine)
+- **Active Phase / Wave:** Spec v1.0 PR 03 deployed and verified on the live host -> PR 04 (Cache/HLS generations)
 - **Repository Root:** `/Users/xo/cod/Pmanager` (`branch: main`)
 - **Baseline Commit:** `aceb0ade51f464c94e8f148d6a9da3445e7a6d37`
-- **Live Win11 Host:** `media-server` (`192.168.0.27`, `~/Pmanager`), now schema `v16`, `12,851` active assets, `115` folders, `63` tags, `1` library, health `ONLINE`, `rootIdentity 73:4503599627428555`.
-- **PR 02 Status:** Committed as `28cd1eb`, migrated live, endpoints and Settings badge verified. A blocked-scan event on live data proved the deletion guard.
-- **Next Action:** Start PR 03. Read spec sections C (media mutation), D (jobs) and I (migration v17) for `file_mutations` and `mutation_events`, then implement the quarantine delete state machine behind `FILE_MUTATION_ENGINE_ENABLED`, with fixtures-only tests and SIGKILL reconciliation coverage.
-- **Operator Follow-up:** the staged Windows supervisor scripts still lack `compose.drives.yaml`; the elevated `install-service.ps1` run is pending (see `pending-tasks.md`).
+- **Live Win11 Host:** `media-server` (`192.168.0.27`, `~/Pmanager`), now schema `v17`, `12,851` active assets, `115` folders, `63` tags, `1` library, health `ONLINE`.
+- **PR 03 Status:** Committed as `55e7549`, migrated live (`16 -> 17`), and verified with the engine off: both delete routes return `503`, `file_mutations` is empty, the worker mutation loop is dormant, and a manual scan removed nothing.
+- **Next Action:** Start PR 04. Read spec sections E (cache/HLS) and I-01 (`v18` `hls_generations` / `hls_active` after the PR 03 shift) for immutable generation publishing, then implement behind `HLS_GENERATIONS_ENABLED` with cache-miss and partial-generation tests.
+- **Operator Follow-up:** the staged Windows supervisor scripts still lack `compose.drives.yaml`; the elevated `install-service.ps1` run is pending (see `pending-tasks.md`). Do not enable `FILE_MUTATION_ENGINE_ENABLED` on the host until a fixture-library delete rehearsal is recorded.

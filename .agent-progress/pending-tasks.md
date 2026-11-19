@@ -10,13 +10,15 @@
 
 - [ ] **Refresh the staged Windows supervisor scripts.** The `MediaVault-Supervisor` task runs `C:\ProgramData\MediaVault\bin\service-runner.ps1`, a staged copy created by an elevated install. That copy predates PR 01 and still lacks `compose.drives.yaml` in its compose arguments. The repo copy under `scripts/windows/` is correct; the staged copy cannot be overwritten without elevation. Run `install-service.ps1` from an elevated PowerShell to refresh it, otherwise a supervisor-triggered restart recreates `api` and `worker` without the drive mounts and takes the library `OFFLINE` until the next manual `up`.
 
+- [ ] **Turn on the delete engine on the host.** `FILE_MUTATION_ENGINE_ENABLED` is still `0` on `media-server`. Before enabling it, create a throwaway library with fixture files, delete one through the UI, and verify the quarantine file, the `mutation_events` trail, and the cache purge. Never rehearse a delete against a real library asset.
+
 ## Spec v1.0 PR Sequence
 
 - [x] **PR 00 Baseline/Backup:** `docs/IMPLEMENTATION-BASELINE.md`, v15 backup verification, restore rehearsal, baseline test counts.
 - [x] **PR 01 Ignore/Compose:** `.env*` ignore rules, long-syntax binds with `create_host_path: false`, required drive roots, ASR/scene read-only mounts, preflight script and tests.
 - [x] **PR 02 Library Health:** `ONLINE/OFFLINE/DEGRADED/UNVERIFIED` health, scanner finalize guard, small-library deletion policy, health API/UI, zero-deletion regression tests, live v16 migration.
-- [ ] **PR 03 Mutation Engine:** `v17` `file_mutations`, `mutation_events`, quarantine delete state machine, idempotent delete API, dedicated mutation worker, SIGKILL reconciliation tests.
-- [ ] **PR 04 Cache/HLS:** `v17` `hls_generations`, `hls_active`, immutable generation publishing and routes.
+- [x] **PR 03 Mutation Engine:** `v17` `file_mutations`, `mutation_events`, quarantine delete state machine, idempotent delete API, dedicated mutation worker, SIGKILL reconciliation tests. Deployed as `55e7549`; live schema `v17`, engine off, `12,851` assets intact.
+- [ ] **PR 04 Cache/HLS:** `v18` `hls_generations`, `hls_active`, immutable generation publishing and routes.
 - [ ] **PR 05 Auth:** `v18` Argon2id migration, server sessions, login rate limit, trusted proxy.
 - [ ] **PR 06 Playback:** `v19` play sessions and idempotent play events, resume race fix.
 - [ ] **PR 07 Viewer/Search UI:** server neighbor cursor, random endpoint, list virtualization.
