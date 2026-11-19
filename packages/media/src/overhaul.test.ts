@@ -1,9 +1,10 @@
 import { afterAll, describe, expect, test } from 'bun:test'
-import { access, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import sharp from 'sharp'
 import {
+  PosterPublishRefusedError,
   convertImageToJpeg95,
   discoverArchiveSetsInDir,
   ensureWebCompatibleVideo,
@@ -123,6 +124,33 @@ describe('image JPEG 95 conversion', () => {
 })
 
 describe('video conversion and custom poster capture', () => {
+  function makeBlackThenRedVideo(target: string): void {
+    const gen = Bun.spawnSync([
+      'ffmpeg',
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=black:s=160x120:r=10:d=2',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:s=160x120:r=10:d=2',
+      '-filter_complex',
+      '[0:v][1:v]concat=n=2:v=1:a=0,format=yuv420p[v]',
+      '-map',
+      '[v]',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      target,
+    ])
+    if (gen.exitCode !== 0) throw new Error(gen.stderr.toString())
+  }
+
   test('transcodes non-H264 MKV to verified H.264/AAC MP4 and removes source', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'mv-vid-'))
     dirs.push(dir)
@@ -170,31 +198,7 @@ describe('video conversion and custom poster capture', () => {
     dirs.push(dir)
     const video = path.join(dir, 'fade.mp4')
     const cacheDir = path.join(dir, 'cache')
-
-    const gen = Bun.spawnSync([
-      'ffmpeg',
-      '-v',
-      'error',
-      '-y',
-      '-f',
-      'lavfi',
-      '-i',
-      'color=c=black:s=160x120:r=10:d=2',
-      '-f',
-      'lavfi',
-      '-i',
-      'color=c=red:s=160x120:r=10:d=2',
-      '-filter_complex',
-      '[0:v][1:v]concat=n=2:v=1:a=0,format=yuv420p[v]',
-      '-map',
-      '[v]',
-      '-c:v',
-      'libx264',
-      '-preset',
-      'ultrafast',
-      video,
-    ])
-    if (gen.exitCode !== 0) throw new Error(gen.stderr.toString())
+    makeBlackThenRedVideo(video)
 
     const beforeStat = await stat(video)
     await extractCustomVideoPoster(video, cacheDir, 'customvid1', 1, 3_000)
@@ -205,6 +209,34 @@ describe('video conversion and custom poster capture', () => {
     const { data } = await sharp(poster320).raw().toBuffer({ resolveWithObject: true })
     expect(data[0]!).toBeGreaterThan(180)
     expect(data[1]!).toBeLessThan(60)
+  })
+
+  test('a refused capture leaves the previous poster at every size', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'mv-custom-poster-refused-'))
+    dirs.push(dir)
+    const video = path.join(dir, 'fade.mp4')
+    const cacheDir = path.join(dir, 'cache')
+    makeBlackThenRedVideo(video)
+
+    await extractCustomVideoPoster(video, cacheDir, 'customvid2', 1, 3_000)
+    const before = new Map<number, Buffer>()
+    for (const size of [320, 640]) {
+      before.set(size, await readFile(posterPath(cacheDir, 'customvid2', 1, size)))
+    }
+
+    const refused = extractCustomVideoPoster(video, cacheDir, 'customvid2', 1, 500, {
+      canPublish: () => false,
+    })
+    await expect(refused).rejects.toBeInstanceOf(PosterPublishRefusedError)
+
+    for (const size of [320, 640]) {
+      const after = await readFile(posterPath(cacheDir, 'customvid2', 1, size))
+      expect(after.equals(before.get(size)!)).toBe(true)
+    }
+    const leftovers = (await readdir(path.dirname(posterPath(cacheDir, 'customvid2', 1, 320)))).filter(
+      (name) => name.endsWith('.tmp'),
+    )
+    expect(leftovers).toEqual([])
   })
 })
 

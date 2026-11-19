@@ -34,6 +34,7 @@ import { randomToken } from '../lib/random'
 import { useUi } from '../store/ui'
 import { AddToPlaylistDialog } from './AddToPlaylistDialog'
 import { BookmarkDialog } from './BookmarkDialog'
+import { PosterDialog } from './PosterDialog'
 import { Dialog } from './ui/Dialog'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
@@ -89,10 +90,10 @@ export function WatchPage({
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
   const [copied, setCopied] = useState(false)
-  const [paused, setPaused] = useState(true)
   const [tagInput, setTagInput] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [bookmarkOpen, setBookmarkOpen] = useState(false)
+  const [posterOpen, setPosterOpen] = useState(false)
   const [playlistOpen, setPlaylistOpen] = useState(false)
   const copyTimer = useRef<number | null>(null)
   const descriptionRef = useRef<HTMLDivElement>(null)
@@ -117,21 +118,6 @@ export function WatchPage({
       queryClient.invalidateQueries({ queryKey: ['stats'] })
     },
     onError: () => toast('투표하지 못했습니다.', 'error'),
-  })
-
-  const capturePoster = useMutation({
-    mutationFn: () => {
-      const el = videoRef.current
-      const positionMs = el && Number.isFinite(el.currentTime) ? Math.round(el.currentTime * 1000) : 0
-      return api.captureThumbnail(asset.id, positionMs)
-    },
-    onSuccess: ({ asset: updated }) => {
-      patchAssetInCaches(queryClient, updated)
-      queryClient.invalidateQueries({ queryKey: ['tags'] })
-      toast('현재 프레임을 썸네일로 저장했습니다.', 'success')
-    },
-    onError: (err) =>
-      toast(err instanceof Error ? err.message : '썸네일을 변경하지 못했습니다.', 'error'),
   })
 
   const attachTag = useMutation({
@@ -290,7 +276,6 @@ export function WatchPage({
                 onSelectLanguage={onSelectLanguage}
                 videoRef={videoRef}
                 startMs={startMs}
-                onPausedChange={setPaused}
               />
             </div>
 
@@ -330,17 +315,12 @@ export function WatchPage({
 
               <button
                 type="button"
-                disabled={!paused || capturePoster.isPending}
-                onClick={() => capturePoster.mutate()}
-                title={
-                  paused
-                    ? '일시정지된 현재 프레임을 썸네일로 저장합니다.'
-                    : '재생 중에는 사용할 수 없습니다. 먼저 일시정지하세요.'
-                }
+                onClick={() => setPosterOpen(true)}
+                title="타임라인에서 포스터로 사용할 프레임을 고릅니다."
                 className={PILL}
               >
                 <Camera size={16} />
-                {capturePoster.isPending ? '저장 중...' : '이 부분을 썸네일로 쓰기'}
+                포스터 선택
               </button>
 
               <button type="button" onClick={() => void share()} className={PILL}>
@@ -556,6 +536,13 @@ export function WatchPage({
       <BookmarkDialog
         open={bookmarkOpen}
         onClose={() => setBookmarkOpen(false)}
+        asset={asset}
+        videoRef={videoRef}
+      />
+
+      <PosterDialog
+        open={posterOpen}
+        onClose={() => setPosterOpen(false)}
         asset={asset}
         videoRef={videoRef}
       />

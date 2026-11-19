@@ -31,7 +31,13 @@ import {
   type AssetRecord,
 } from '@mediavault/database'
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PRIORITY, VIDEO_SORTS, newId } from '@mediavault/shared'
-import { extractCustomVideoPoster, fileExists, posterPath, resolveInside } from '@mediavault/media'
+import {
+  PosterPublishRefusedError,
+  extractCustomVideoPoster,
+  fileExists,
+  posterPath,
+  resolveInside,
+} from '@mediavault/media'
 import { readAssetPage } from '../asset-page'
 import type { AppContext } from '../context'
 import { toAssetDTO, toEmbeddingJobDTO, toFileOperationDTO, toPlaybackDTO, toReviewDTO } from '../dto'
@@ -334,16 +340,47 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
       return
     }
 
-    await extractCustomVideoPoster(
-      source,
-      ctx.config.cacheDir,
-      info.id,
-      info.fileVersion,
-      body.positionMs,
-    )
-    const updated = bumpPosterVersion(ctx.db, info.id)
+    const canPublish = () => {
+      const fresh = getAssetFileInfo(ctx.db, info.id)
+      return Boolean(fresh && fresh.deletedAt === null && fresh.fileVersion === info.fileVersion)
+    }
+
+    try {
+      await extractCustomVideoPoster(
+        source,
+        ctx.config.cacheDir,
+        info.id,
+        info.fileVersion,
+        body.positionMs,
+        { canPublish },
+      )
+    } catch (error) {
+      if (error instanceof PosterPublishRefusedError) {
+        reply.code(409).send({
+          error: 'file_changed',
+          message: 'The file changed while the frame was captured. Try again.',
+        })
+        return
+      }
+      request.log.warn({ err: error, assetId: info.id }, 'poster capture failed')
+      reply.code(422).send({
+        error: 'poster_capture_failed',
+        message: 'Could not read a frame at that position.',
+      })
+      return
+    }
+
+    const updated = bumpPosterVersion(ctx.db, info.id, info.fileVersion)
     if (!updated) {
-      reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
+      const current = getAssetFileInfo(ctx.db, info.id)
+      if (!current || current.deletedAt !== null) {
+        reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
+      } else {
+        reply.code(409).send({
+          error: 'file_changed',
+          message: 'The file changed while the frame was captured. Try again.',
+        })
+      }
       return
     }
     reply.send({ asset: toAssetDTO(updated) })

@@ -192,6 +192,18 @@ describe('views, watch time, rate, and sorting', () => {
     }
   })
 
+  test('a poster bump with an expected file version refuses a changed file', () => {
+    const db = setupVideoDb()
+    insertAsset(db, makeVideo('v1'))
+
+    expect(bumpPosterVersion(db, 'v1', 2)).toBeNull()
+    expect(getAsset(db, 'v1')?.posterVersion).toBe(1)
+
+    const bumped = bumpPosterVersion(db, 'v1', 1)
+    expect(bumped?.posterVersion).toBe(2)
+    db.close()
+  })
+
   test('computes relative Rate percentiles, null for missing data, and sorts unrated last by seed', () => {
     const db = setupVideoDb()
     for (const id of ['v1', 'v2', 'v3', 'v4', 'u1', 'u2', 'u3', 'u4', 'u5', 'u6']) {

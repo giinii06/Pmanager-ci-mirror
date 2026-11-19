@@ -438,12 +438,24 @@ export function voteAsset(
   return getAsset(db, id)
 }
 
-export function bumpPosterVersion(db: Db, id: string): AssetRecord | null {
-  const res = db
-    .query<null, Params>(
-      'UPDATE assets SET poster_version = poster_version + 1 WHERE id = ? AND deleted_at IS NULL',
-    )
-    .run(id)
+export function bumpPosterVersion(
+  db: Db,
+  id: string,
+  expectedFileVersion?: number,
+): AssetRecord | null {
+  const res =
+    expectedFileVersion === undefined
+      ? db
+          .query<null, Params>(
+            'UPDATE assets SET poster_version = poster_version + 1 WHERE id = ? AND deleted_at IS NULL',
+          )
+          .run(id)
+      : db
+          .query<null, Params>(
+            `UPDATE assets SET poster_version = poster_version + 1
+             WHERE id = ? AND deleted_at IS NULL AND file_version = ?`,
+          )
+          .run(id, expectedFileVersion)
   if (res.changes === 0) return null
   return getAsset(db, id)
 }

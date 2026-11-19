@@ -411,6 +411,21 @@ describe('API overhaul routes', () => {
     expect(thumbV3.headers['content-type']).toMatch(/^image\//)
     expect(thumbV3.rawPayload.length).toBeGreaterThan(0)
 
+    const unreadable = await h.app.inject({
+      method: 'POST',
+      url: '/api/assets/vid0002/thumbnail',
+      headers: h.headers,
+      payload: { positionMs: 500 },
+    })
+    expect(unreadable.statusCode).toBe(422)
+    expect((unreadable.json() as { error: string }).error).toBe('poster_capture_failed')
+    const untouched = await h.app.inject({
+      method: 'GET',
+      url: '/api/assets/vid0002',
+      headers: h.headers,
+    })
+    expect((untouched.json() as { posterVersion: number }).posterVersion).toBe(1)
+
     const deleted = await h.app.inject({
       method: 'DELETE',
       url: '/api/assets/vid0001',
