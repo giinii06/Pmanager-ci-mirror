@@ -35,7 +35,7 @@
 - [x] **PR 09 Search:** no-schema-change FTS5 trigram candidate generator with the LIKE oracle kept as the answer, bounded per-corpus fan-out, integrity-proof readiness, `RETURNING`-based mutation reporting, `scripts/bench-search.ts` and `scripts/exp-scene.ts`. `499 pass`; live-clone dialogue `1.86 -> 0.09 ms`, scene scan `158 ms` p95. FAISS deferred to PR 14 with the 100k-scene measurements.
 - [ ] **PR 14 must re-measure the scene scan on the host before choosing ANN.** The exact scan is `373 / 417 ms` p95 on the host at 17,439 scenes, close to the 500 ms trigger, and the host is ~2.5x the Mac clone. The 100k-scene numbers in `docs/BENCHMARKS.md` came from the clone.
 - [x] **PR 10 Duplicates:** `v22` fingerprints and duplicate review groups, no automatic deletion. Stage A (hashing, `maintenance` job, four routes) and stage B (lane split, review page) are deployed as `239ef72` + `88017b6`; live schema `v22`, counters unchanged, one real scan found `14` groups over `31` files and wrote no mutation.
-- [ ] **PR 11 Collections:** `v23` smart albums, playlists, bookmarks, poster UX.
+- [x] **PR 11 Collections:** `v23` smart albums, playlists, bookmarks, poster UX. Deployed `9d65229` + `e893780` + `5ed56f1`; live schema `v23`, counters unchanged, all new routes and pages verified.
 - [ ] **PR 12 Bulk/Move:** `v24` dry run, snapshots, per-item operations.
 - [ ] **PR 13 Observability:** `v25` health, diagnostics, notifications, cache policy.
 - [ ] **PR 14 Search Index Metadata:** `v26` index generations, backfill, GC.

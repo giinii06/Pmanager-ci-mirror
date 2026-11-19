@@ -213,3 +213,23 @@
 - Deployed `239ef72` + `88017b6`; rebuilt `api`, `worker` and `web`; restarted `nginx`. Live schema `v22`, counters unchanged, `search.fts` enabled.
 - Ran one real scan (`job 15726`): `67` candidates, `14` exact groups, `31` members in `3.65 s`, then a rescan that reused all `67` in `534 ms`. No file was written, moved or queued for deletion.
 - Confirmed the lane split live (`maintenance queued 1`, `media queued 0`), the `409 delete_not_available` refusal, the unauthenticated `401`, and the rendered page in headless Chrome with no runtime exception.
+
+## Spec v1.0 PR 11 Collections — Smart albums, playlists, bookmarks (`v23`)
+
+- Schema `v23` (`V23_COLLECTIONS_SQL`, additive): `smart_albums` (filter JSON, version, sort, pinned, per-user unique name), `playlists` (`custom|watch_later`, per-user unique name, partial unique watch-later index), `playlist_items` (own id, plain position, no unique pair), `video_bookmarks` (position, title, note, `file_version`). `v23.test.ts` covers the tables and indexes.
+- `packages/shared/src/filters.ts`: 20-field registry with operators, value shapes and limits (depth 5, 50 nodes, 100-element lists, 200-character text), `parseFilterTree` as the only structural validator.
+- `packages/database/src/filter.ts`: one compiler from a parsed tree to a parenthesized predicate over `assets a`, every value bound, column names only from maps, `RATE_RANKED_SQL` shared with `computeAssetRates`. `AssetFilter.where` carries the compiled predicate so the page, count, id list, neighbour and random pick agree.
+- `packages/database/src/smart-albums.ts`, `playlists.ts`, `bookmarks.ts`: CRUD, per-user scoping, idempotent watch later (`ensureWatchLater` with name retries), slot reorder in one immediate transaction, bookmark `stale` computed at read time.
+- API: `routes/smart-albums.ts` (flag-gated, invalid stored filter `409 album_filter_invalid`, DTO `filter: {valid,error}`), `routes/playlists.ts`, `routes/bookmarks.ts`; `apps/api/src/filters.ts` validates a request body with the same parser and returns the parser path as `400 invalid_request`. `albumId` narrows the gallery, ids, neighbour and random routes.
+- Web: `SmartAlbumsPage` + `FilterBuilder` + `AlbumDialog`, `PlaylistsPage` with drag ordering, `AddToPlaylistDialog`, `BookmarkDialog` in the player, sidebar entries. The builder edits `and([and|or(rules), not(or(none))])` and refuses to silently drop a more complex stored tree.
+- Poster stage D: `extractCustomVideoPoster` stages every size, runs the `file_version` fence once, then renames; `bumpPosterVersion(db, id, expectedFileVersion)` refuses a changed file; the route answers `409 file_changed` or `422 poster_capture_failed` without moving `poster_version`. `PosterDialog` offers the full timeline, `-10초`/`+10초`, the live play position, stops half a second short of EOF, and keeps the previous poster on failure.
+- Also fixed a pre-existing viewer crash on the LAN origin: `WatchPage` used `crypto.randomUUID` (undefined outside a secure context) for the delete key and now uses `randomToken()`.
+- Tests: filter parser/compiler conformance, the four tables, every route's unauthorized path, user isolation, duplicate names, an invalid stored filter, stale bookmarks, slot duplicates, the refused poster publish and the unreadable-video `422`. `bun test` **`600 pass, 0 fail`** (69 files, `4027` expect calls); typecheck and web build exit `0`.
+
+## Spec v1.0 PR 11 — Deploy (2026-11-20)
+
+- Backed up the live `v22` database (`280,444,928` bytes, `integrity ok`, `14,368` active assets) and rehearsed `v22 -> v23` on the host with the newly built worker image against a copy of the backup: version moved, every counter identical, integrity and FK checks clean, all four tables and their indexes present.
+- Deployed `9d65229`, then the review fix `e893780` and the viewer fix `5ed56f1`; rebuilt `api`/`worker`/`web` and restarted `nginx`. Live schema `v23`, counters unchanged, `search.fts` enabled.
+- Live routes with a minted session: smart album create/list/pin/delete and its asset page, playlist create/add/remove/delete, watch later, bookmark create/list/delete, poster `404` for a missing or non-video asset, `401` without a session. All test rows were deleted; watch later remains as the default list.
+- Headless Chrome rendered `/smart-albums`, `/playlists` and the poster dialog; the slider seeked the player to 20 s and the dialog closed without saving. No runtime exception. Screenshots in `/tmp/pr11-*.png`.
+- Not run live: a successful poster capture against a real asset, to avoid changing the operator's posters; covered by the media, database and API tests.

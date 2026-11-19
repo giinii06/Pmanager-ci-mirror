@@ -353,3 +353,10 @@ The Win11 host was unreachable (`ssh: connect to host 192.168.0.27 port 22: No r
 - Headless Chrome (CDP, cookie for the host): `/smart-albums` renders the heading, the copy that files are not moved, the empty state and `새 앨범`; `/playlists` renders `재생목록`, `나중에 보기`, `1개 목록`. Screenshots at `/tmp/pr11-smart-albums.png` and `/tmp/pr11-playlists.png` (not committed).
 - The first viewer attempt over `http://192.168.0.27:8080` threw `TypeError: crypto.randomUUID is not a function` from `Lightbox`, because the LAN origin is not a secure context. `WatchPage` was the only remaining caller of `crypto.randomUUID`; it now uses `randomToken()`, the same CSPRNG helper the rest of the client uses. This is a pre-existing viewer defect, not part of PR 11's feature code.
 - Not verified live: a successful poster capture was not run against a real asset, to avoid changing the operator's posters. The 409/422 paths and the staged publish are covered by the media, database and API tests; the dialog is exercised in the browser without saving.
+
+## Spec v1.0 PR 11 Viewer Fix and Poster Dialog Check (2026-11-20)
+
+- After shipping `5ed56f1` and rebuilding only `web`, headless Chrome on the live host opened `/videos`, clicked a video tile and rendered the watch page with no exception.
+- The `포스터 선택` button opened the dialog: title, filename, the note that the previous poster is kept until the save finishes, `선택한 지점 0:00`, a slider with max `170,780 ms` (the 2:51 file minus the half-second margin), `-10초`, `+10초`, `재생 위치`, `취소` and `이 지점을 포스터로`.
+- Moving the slider to `20,000 ms` set the player's `currentTime` to `20`. `취소` closed the dialog. No request was sent and no poster changed. Screenshot `/tmp/pr11-poster-dialog.png`.
+- Smoke after the deploy: `/health/ready` `200`, `/api/assets?limit=2` `200` (`14,368` total), `/api/duplicates/groups?limit=3` `200` with groups, `/api/assets?q=MissKON` `200` in `8 ms`, `/api/search/semantic` `200`.
