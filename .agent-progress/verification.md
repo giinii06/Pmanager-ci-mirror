@@ -288,3 +288,16 @@
 - Lane split: `media` reports exactly the media job and `maintenance` exactly the maintenance job, in both counts and items. Before the change the same fixture showed the maintenance job in both lanes.
 - The page was not exercised in a browser against the host; it is not deployed yet. Stage B is a client over routes stage A already tested, and the render path is covered only by typecheck and the production build.
 - Not verified live: nothing from PR 10 is deployed. The `v21 -> v22` clone rehearsal and one scan against that clone are still required before the host deploy.
+
+## Spec v1.0 PR 10 Clone Rehearsal (2026-11-20)
+
+The Win11 host was unreachable (`ssh: connect to host 192.168.0.27 port 22: No route to host`, and the `media-server` alias resolves to the same address), so this rehearsal ran on the v21 clone of the live database that PR 08b produced (`/tmp/pr08b-rehearsal.db`), not on a fresh clone.
+
+- Base: `v21`, `12,852` assets, `115` folders, `63` tags, `220` transcripts, `23,067` segments, `17,439` scenes, `191` playback rows, `1` vote event, `13,438` job rows. Copied to `/tmp/pr10-rehearsal.db` and opened through `openDatabase`, which ran the `v21 -> v22` migration.
+- Migration: `user_version` `21 -> 22`; every counter above identical before and after; `integrity_check = ok`; `PRAGMA foreign_key_check` empty; `file_fingerprints`, `duplicate_groups`, `duplicate_group_members`, `idx_file_fingerprints_full`, `ux_duplicate_groups_fingerprint` and `idx_duplicate_group_members_asset` all present.
+- Fixture library (`rehearsal`, root `/tmp/pr10-media/rehearsal`, never the real library): two identical 4 MiB files, a third file of the same size with one byte flipped inside the middle sampling window, a hardlink to the first file, and a unique 1 MiB file. Assets inserted with the real `stat` size and rounded mtime.
+- Scan 1: `candidates 4, scanned 4, hashed 4, reused 0, missing 0, changed 0, refused 0, groups 1, members 3, hardlinked 2`, `22 ms`. The lone quick-hash bucket stored `rc` with `full_hash IS NULL`; the three shared-bucket rows (`ra`, `rb`, `rd`) all carry a full hash. This is the first measurement of the quick-hash filter on a multi-MiB fixture: the odd file cost one 3 MiB read and no full hash.
+- Scan 2: `hashed 0, reused 4`, the same group and the same three members — a rescan reads no bytes.
+- `kept` set after scan 2 survives scan 3 with the same group id.
+- Data safety: `file_mutations`, `jobs` and pending deletes unchanged by all three scans; `integrity_check` still `ok`; the `12,852` real assets untouched.
+- Not verified: the live migration and the host deploy. Nothing from PR 10 has run against the host. The rehearsal proves the migration and the scan on real-shaped data, not on the host's live database.
