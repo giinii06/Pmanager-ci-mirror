@@ -5,6 +5,7 @@ import path from 'node:path'
 import sharp from 'sharp'
 import {
   createLibrary,
+  getLibraryHealth,
   insertAsset,
   openDatabase,
   upsertFolder,
@@ -302,14 +303,96 @@ describe('delete guard', () => {
     h.db.close()
   })
 
-  test('the force flag allows an intentional deletion', async () => {
+  test('the force flag cannot bypass a total root loss', async () => {
     const h = await harness()
     h.config.scanDeleteForce = true
+    seedMissing(h, 100)
+
+    await expect(scanLibrary(h.db, h.config, 'lib1')).rejects.toThrow(
+      'the root is empty or replaced',
+    )
+
+    expect(deletedCount(h)).toBe(0)
+    expect(getLibraryHealth(h.db, 'lib1')?.state).toBe('DEGRADED')
+    expect(getLibraryHealth(h.db, 'lib1')?.lastErrorCode).toBe('root_total_loss')
+    h.db.close()
+  })
+
+  test('the force flag allows a partial deletion on a healthy root', async () => {
+    const h = await harness()
+    h.config.scanDeleteForce = true
+    await seedUnchanged(h, 100)
     seedMissing(h, 100)
 
     const summary = await scanLibrary(h.db, h.config, 'lib1')
 
     expect(summary.removed).toBe(100)
+    h.db.close()
+  })
+
+  test('a small library applies the ratio guard instead of a 50-asset floor', async () => {
+    const h = await harness()
+    await seedUnchanged(h, 5)
+    seedMissing(h, 5)
+
+    await expect(scanLibrary(h.db, h.config, 'lib1')).rejects.toThrow(
+      'refusing to soft-delete 5 of 10 assets',
+    )
+
+    expect(deletedCount(h)).toBe(0)
+    expect(getLibraryHealth(h.db, 'lib1')?.lastErrorCode).toBe('delete_guard')
+    h.db.close()
+  })
+
+  test('a disconnected root blocks before any deletion', async () => {
+    const h = await harness()
+    seedMissing(h, 100)
+    await rm(h.root, { recursive: true, force: true })
+
+    await expect(scanLibrary(h.db, h.config, 'lib1')).rejects.toThrow('drive_unavailable')
+
+    expect(deletedCount(h)).toBe(0)
+    const health = getLibraryHealth(h.db, 'lib1')
+    expect(health?.state).toBe('OFFLINE')
+    expect(health?.lastErrorCode).toBe('root_unreadable')
+    expect(health?.consecutiveFailures).toBe(1)
+    h.db.close()
+  })
+
+  test('an empty mount boundary root is reported as offline', async () => {
+    const h = await harness()
+    h.db.query("UPDATE libraries SET root_path = '' WHERE id = 'lib1'").run()
+    await rm(h.root, { recursive: true, force: true })
+    seedMissing(h, 10)
+
+    await expect(scanLibrary(h.db, h.config, 'lib1')).rejects.toThrow('mountpoint')
+
+    expect(deletedCount(h)).toBe(0)
+    expect(getLibraryHealth(h.db, 'lib1')?.lastErrorCode).toBe('root_empty')
+    h.db.close()
+  })
+
+  test('a changed root identity blocks deletion', async () => {
+    const h = await harness()
+    await seedUnchanged(h, 10)
+    await scanLibrary(h.db, h.config, 'lib1')
+
+    const rootFolder = h.db
+      .query<{ id: string }, []>(
+        "SELECT id FROM folders WHERE library_id = 'lib1' AND relative_path = ''",
+      )
+      .get()
+    if (!rootFolder) throw new Error('scan did not create a root folder')
+    h.folderId = rootFolder.id
+    h.db.query("UPDATE library_health SET root_identity = '0:0' WHERE library_id = 'lib1'").run()
+    seedMissing(h, 5)
+
+    await expect(scanLibrary(h.db, h.config, 'lib1')).rejects.toThrow('drive_identity_changed')
+
+    expect(deletedCount(h)).toBe(0)
+    const health = getLibraryHealth(h.db, 'lib1')
+    expect(health?.state).toBe('DEGRADED')
+    expect(health?.lastErrorCode).toBe('root_identity_changed')
     h.db.close()
   })
 })

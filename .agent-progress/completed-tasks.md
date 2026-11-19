@@ -72,3 +72,13 @@
 - Added `Test-MvPreflight` to the Windows supervisor and start script, and added `compose.drives.yaml` to the shared compose arguments. The API image now copies `scripts/` so preflight runs inside the container view.
 - `package.json` typecheck now includes the root `tsconfig.json` that covers `scripts/**/*.ts`.
 - Deployed to `media-server`: backed up the host `.env`, set `MEDIA_ROOT=/mnt/e`, rebuilt `api`, `worker`, and `nginx`. Container preflight passed (5 paths, 0 failed), `/health/ready` returned `200`, and the live library stayed stable at `12,851` assets with `0` removed and `0` read errors across the latest three scans.
+
+## Spec v1.0 PR 02 — Library Health and Scanner Guard
+
+- Schema `v16`: added `library_health` and extended `scan_runs` with `mount_identity`, `missing_count`, `missing_ratio`, `authoritative_verified`, and `health_state`. Existing v15 libraries are backfilled to `ONLINE` from their latest completed scan.
+- Added `packages/database/src/library-health.ts` with healthy, verified, and failure transitions. Failures increment `consecutive_failures`; a successful scan resets it; a read-only verify keeps `last_success_at`.
+- Scanner now records the root device identity (`dev:ino`) and blocks deletion when the root is missing, unreadable, a symlink, outside the media root, empty with existing assets, or has a changed identity. A full root loss (`missing >= total`) blocks even with `SCAN_DELETE_FORCE=1`.
+- Removed the 50-asset floor from the deletion guard. Small libraries now use the configured ratio, and `SCAN_DELETE_MAX_ABSOLUTE` is available as an optional absolute cap.
+- Added `GET /api/libraries/:id/health`, `POST /api/libraries/:id/verify`, and health fields on `GET /api/libraries`.
+- Settings library rows show `정상`, `확인 필요`, `원본 저장소 연결 끊김`, or `검증 전`, with the error code and a read-only `연결 확인` action for degraded or offline libraries.
+- Added 11 scanner tests, 3 v16 migration and health tests, and 1 API health test. The v15-to-v16 migration rehearsal on a clone of the real host backup preserved `12,756` assets, `113` folders, `63` tags, `1` library, `191` playback rows, and `1` vote event, with `integrity_check = ok` and `0` foreign-key violations.

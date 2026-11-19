@@ -23,7 +23,7 @@ import {
   Tag,
   Trash2,
 } from 'lucide-react'
-import type { ArchiveJobState, LibraryDTO } from '@mediavault/shared'
+import type { ArchiveJobState, LibraryDTO, LibraryHealthState } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatAgo, formatBytes, formatCount, formatDate } from '../lib/format'
@@ -44,6 +44,17 @@ const CALENDAR_THEME = {
 const ORANGE_CALENDAR_THEME = {
   light: ['#f1ece6', '#fed7aa', '#fb923c', '#f97316', '#c2410c'],
   dark: ['#1c1917', '#5c280e', '#9a3412', '#ea580c', '#fb923c'],
+}
+
+const LIBRARY_HEALTH_LABEL: Record<LibraryHealthState, { text: string; tone: string }> = {
+  ONLINE: { text: '정상', tone: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/30' },
+  DEGRADED: { text: '확인 필요', tone: 'text-amber-600 bg-amber-500/10 border-amber-500/30' },
+  OFFLINE: { text: '원본 저장소 연결 끊김', tone: 'text-rose-600 bg-rose-500/10 border-rose-500/30' },
+  UNVERIFIED: { text: '검증 전', tone: 'text-muted bg-panel-2 border-line' },
+}
+
+function libraryHealthInfo(state: LibraryHealthState | undefined) {
+  return (state ? LIBRARY_HEALTH_LABEL[state] : undefined) ?? LIBRARY_HEALTH_LABEL.UNVERIFIED
 }
 
 const ARCHIVE_STATE_LABEL: Record<ArchiveJobState, { text: string; tone: string }> = {
@@ -181,6 +192,21 @@ export function SettingsPage() {
     },
     onError: (error) =>
       toast(error instanceof Error ? error.message : '스캔을 시작하지 못했습니다.', 'error'),
+  })
+
+  const verify = useMutation({
+    mutationFn: (id: string) => api.verifyLibrary(id),
+    onSuccess: (health) => {
+      toast(
+        health.state === 'ONLINE'
+          ? '원본 저장소 연결을 확인했습니다.'
+          : '원본 저장소에 연결할 수 없습니다.',
+        health.state === 'ONLINE' ? 'success' : 'error',
+      )
+      invalidateLibraryData()
+    },
+    onError: (error) =>
+      toast(error instanceof Error ? error.message : '연결을 확인하지 못했습니다.', 'error'),
   })
 
   const create = useMutation({
@@ -696,6 +722,7 @@ export function SettingsPage() {
         ) : libraries.data?.length ? (
           libraries.data.map((library) => {
             const busy = library.scanState !== 'idle'
+            const health = libraryHealthInfo(library.healthState)
             return (
               <div
                 key={library.id}
@@ -706,19 +733,42 @@ export function SettingsPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium text-ink">{library.name}</p>
-                  <p className="mt-0.5 truncate text-[11.5px] text-muted">
-                    {library.rootPath || '(미디어 루트)'} · {formatCount(library.assetCount)}개
-                    {busy
-                      ? ` · ${formatCount(library.scannedFiles)}개 확인 중`
-                      : library.lastScanAt
-                        ? ` · ${formatDate(library.lastScanAt)} 스캔`
-                        : ' · 스캔 전'}
+                  <p className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-[11.5px] text-muted">
+                    <span
+                      className={cn(
+                        'rounded border px-1.5 py-0.5 text-[10px] font-semibold',
+                        health.tone,
+                      )}
+                    >
+                      {health.text}
+                    </span>
+                    <span className="truncate">
+                      {library.rootPath || '(미디어 루트)'} · {formatCount(library.assetCount)}개
+                      {busy
+                        ? ` · ${formatCount(library.scannedFiles)}개 확인 중`
+                        : library.lastScanAt
+                          ? ` · ${formatDate(library.lastScanAt)} 스캔`
+                          : ' · 스캔 전'}
+                      {library.healthState === 'OFFLINE' && library.healthErrorCode
+                        ? ` · ${library.healthErrorCode}`
+                        : ''}
+                    </span>
                   </p>
                 </div>
                 {busy ? (
                   <div className="h-1 w-24 overflow-hidden rounded-full bg-line">
                     <div className="h-full w-1/3 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-accent" />
                   </div>
+                ) : null}
+                {library.healthState === 'OFFLINE' || library.healthState === 'DEGRADED' ? (
+                  <Button
+                    size="sm"
+                    onClick={() => verify.mutate(library.id)}
+                    disabled={verify.isPending}
+                  >
+                    <ShieldCheck size={12} />
+                    연결 확인
+                  </Button>
                 ) : null}
                 <Button
                   size="sm"

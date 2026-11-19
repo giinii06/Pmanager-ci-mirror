@@ -12,6 +12,7 @@ import type {
   JobDTO,
   JobSummaryDTO,
   LibraryDTO,
+  LibraryHealthDetailDTO,
   Page,
   PlaybackProgressDTO,
   ReviewDTO,
@@ -115,6 +116,8 @@ export const api = {
       body: JSON.stringify({ name, rootPath }),
     }),
   scanLibrary: (id: string) => request<{ ok: boolean }>(`/api/libraries/${id}/scan`, { method: 'POST' }),
+  verifyLibrary: (id: string) =>
+    request<LibraryHealthDetailDTO>(`/api/libraries/${id}/verify`, { method: 'POST' }),
   deleteLibrary: (id: string) => request<void>(`/api/libraries/${id}`, { method: 'DELETE' }),
 
   folders: (opts?: { libraryId?: string; sort?: FolderSort }) => {

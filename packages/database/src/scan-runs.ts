@@ -13,13 +13,15 @@ export function createScanRun(
     phase: string
     status: string
     resumedFromRunId?: string | null
+    mountIdentity?: string | null
     startedAt: number
   },
 ): void {
   db.query<null, Params>(
     `INSERT INTO scan_runs (
-       id, library_id, root_path, phase, status, resumed_from_run_id, started_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       id, library_id, root_path, phase, status, resumed_from_run_id,
+       mount_identity, started_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     input.id,
     input.libraryId,
@@ -27,6 +29,7 @@ export function createScanRun(
     input.phase,
     input.status,
     input.resumedFromRunId ?? null,
+    input.mountIdentity ?? null,
     input.startedAt,
     input.startedAt,
   )
@@ -45,6 +48,11 @@ export function updateScanRun(
     filesRemoved?: number
     readErrors?: number
     errorMessage?: string | null
+    mountIdentity?: string | null
+    missingCount?: number
+    missingRatio?: number
+    authoritativeVerified?: number
+    healthState?: string | null
     completedAt?: number | null
     updatedAt: number
   },
@@ -87,6 +95,26 @@ export function updateScanRun(
     sets.push('error_message = ?')
     params.push(patch.errorMessage)
   }
+  if (patch.mountIdentity !== undefined) {
+    sets.push('mount_identity = ?')
+    params.push(patch.mountIdentity)
+  }
+  if (patch.missingCount !== undefined) {
+    sets.push('missing_count = ?')
+    params.push(patch.missingCount)
+  }
+  if (patch.missingRatio !== undefined) {
+    sets.push('missing_ratio = ?')
+    params.push(patch.missingRatio)
+  }
+  if (patch.authoritativeVerified !== undefined) {
+    sets.push('authoritative_verified = ?')
+    params.push(patch.authoritativeVerified)
+  }
+  if (patch.healthState !== undefined) {
+    sets.push('health_state = ?')
+    params.push(patch.healthState)
+  }
   if (patch.completedAt !== undefined) {
     sets.push('completed_at = ?')
     params.push(patch.completedAt)
@@ -103,6 +131,9 @@ export function getLatestScanRun(db: Db, libraryId: string): ScanRunRecord | nul
                 files_added AS filesAdded, files_updated AS filesUpdated,
                 files_skipped AS filesSkipped, files_removed AS filesRemoved,
                 read_errors AS readErrors, error_message AS errorMessage,
+                mount_identity AS mountIdentity, missing_count AS missingCount,
+                missing_ratio AS missingRatio, authoritative_verified AS authoritativeVerified,
+                health_state AS healthState,
                 started_at AS startedAt, updated_at AS updatedAt, completed_at AS completedAt
          FROM scan_runs WHERE library_id = ? ORDER BY started_at DESC LIMIT 1`,
       )

@@ -6,9 +6,11 @@ import type {
   FolderDTO,
   JobDTO,
   LibraryDTO,
+  LibraryHealthDetailDTO,
   PlaybackProgressDTO,
   ReviewDTO,
   SceneJobDTO,
+  ScanRunDTO,
   TagDTO,
   TagSummaryDTO,
   TranscriptDTO,
@@ -28,9 +30,11 @@ import type {
   EmbeddingJobRecord,
   FolderRecord,
   JobRecord,
+  LibraryHealthRecord,
   LibraryRecord,
   PlaybackRecord,
   ReviewRecord,
+  ScanRunRecord,
   SceneJobRecord,
   TagRecord,
   TagSummaryRecord,
@@ -52,7 +56,10 @@ export function toUserDTO(user: UserRecord): UserDTO {
   return { id: user.id, username: user.username }
 }
 
-export function toLibraryDTO(library: LibraryRecord): LibraryDTO {
+export function toLibraryDTO(
+  library: LibraryRecord,
+  health?: LibraryHealthRecord | null,
+): LibraryDTO {
   return {
     id: library.id,
     name: library.name,
@@ -63,6 +70,48 @@ export function toLibraryDTO(library: LibraryRecord): LibraryDTO {
     scannedFiles: library.scannedFiles,
     assetCount: library.assetCount,
     folderCount: library.folderCount,
+    healthState: health?.state ?? 'UNVERIFIED',
+    healthErrorCode: health?.lastErrorCode ?? null,
+    healthCheckedAt: iso(health?.checkedAt ?? null),
+    healthConsecutiveFailures: health?.consecutiveFailures ?? 0,
+  }
+}
+
+export function toScanRunDTO(scan: ScanRunRecord): ScanRunDTO {
+  return {
+    id: scan.id,
+    phase: scan.phase,
+    status: scan.status,
+    filesSeen: scan.filesSeen,
+    filesAdded: scan.filesAdded,
+    filesUpdated: scan.filesUpdated,
+    filesSkipped: scan.filesSkipped,
+    filesRemoved: scan.filesRemoved,
+    readErrors: scan.readErrors,
+    missingCount: scan.missingCount,
+    missingRatio: scan.missingRatio,
+    authoritativeVerified: scan.authoritativeVerified === 1,
+    healthState: scan.healthState,
+    errorMessage: scan.errorMessage,
+    startedAt: new Date(scan.startedAt).toISOString(),
+    completedAt: iso(scan.completedAt),
+  }
+}
+
+export function toLibraryHealthDetailDTO(
+  libraryId: string,
+  health: LibraryHealthRecord | null,
+  scan: ScanRunRecord | null,
+): LibraryHealthDetailDTO {
+  return {
+    libraryId,
+    state: health?.state ?? 'UNVERIFIED',
+    rootIdentity: health?.rootIdentity ?? null,
+    lastSuccessAt: iso(health?.lastSuccessAt ?? null),
+    lastErrorCode: health?.lastErrorCode ?? null,
+    checkedAt: iso(health?.checkedAt ?? null),
+    consecutiveFailures: health?.consecutiveFailures ?? 0,
+    scan: scan ? toScanRunDTO(scan) : null,
   }
 }
 

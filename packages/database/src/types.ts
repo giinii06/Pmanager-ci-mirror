@@ -126,6 +126,18 @@ export interface JobRecord {
   updatedAt: number
 }
 
+export type LibraryHealthState = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNVERIFIED'
+
+export interface LibraryHealthRecord {
+  libraryId: string
+  state: LibraryHealthState
+  rootIdentity: string | null
+  lastSuccessAt: number | null
+  lastErrorCode: string | null
+  checkedAt: number
+  consecutiveFailures: number
+}
+
 export interface ScanRunRecord {
   id: string
   libraryId: string
@@ -140,6 +152,11 @@ export interface ScanRunRecord {
   filesRemoved: number
   readErrors: number
   errorMessage: string | null
+  mountIdentity: string | null
+  missingCount: number
+  missingRatio: number
+  authoritativeVerified: number
+  healthState: LibraryHealthState | null
   startedAt: number
   updatedAt: number
   completedAt: number | null

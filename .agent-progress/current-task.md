@@ -1,8 +1,8 @@
 # Current Task
 
-- **Active Phase / Wave:** Spec v1.0 PR 01 complete and live -> PR 02 (Library Health)
+- **Active Phase / Wave:** Spec v1.0 PR 02 committed -> live v16 migration, then PR 03 (Mutation Engine)
 - **Repository Root:** `/Users/xo/cod/Pmanager` (`branch: main`)
-- **Baseline Commit:** `aceb0ade51f464c94e8f148d6a9da3445e7a6d37` (Schema `v15`)
-- **Live Win11 Host:** `media-server` (`192.168.0.27`, `~/Pmanager`), schema `v15`, `12,851` active assets, `115` folders, `63` tags, `1` library.
-- **PR 01 Status:** Committed `e3714d5` and deployed. `/media` now binds `/mnt/e`, preflight passed (5 paths, 0 failed), `/health/ready` `200`, latest scans `0` removed and `0` read errors.
-- **Next Action:** PR 02. Add `ONLINE/DEGRADED/OFFLINE/UNVERIFIED` health, make the scanner finalize guard refuse deletion on offline, empty, unreadable, or boundary-changed roots, remove the 50-asset floor, and add regression tests that prove zero deletions on a disconnected drive.
+- **Baseline Commit:** `aceb0ade51f464c94e8f148d6a9da3445e7a6d37`
+- **Live Win11 Host:** `media-server` (`192.168.0.27`, `~/Pmanager`), currently schema `v15`, `12,851` active assets, `115` folders, `63` tags, `1` library.
+- **PR 02 Status:** Schema `v16` library health and scanner guards committed after `318 pass / 0 fail`, web build `0`, and a v15-to-v16 rehearsal on a real backup clone with identical counts and `integrity_check = ok`.
+- **Next Action:** Deploy PR 02. Stop `api` and `worker`, create a pre-v16 backup, run the single migrator, compare counts, start `api` and `worker`, then verify `/api/libraries/:id/health` and the Settings health badge on the live host.

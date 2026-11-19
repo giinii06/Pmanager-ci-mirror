@@ -80,3 +80,14 @@
 - Live mounts: `/mnt/e -> /media`, `/mnt/e -> /media/extra`, `/mnt/c -> /media/drives/c`, `/mnt/d -> /media/drives/d`, `/mnt/e -> /media/drives/e`.
 - DB after restart: schema `v15`, `12,851` active assets, `115` folders, `63` tags, `1` library. The latest three scans each saw `12,851`, `files_added: 0`, `files_removed: 0`, `read_errors: 0`.
 - Baseline at PR 00 was `12,756` assets and `113` folders. The increase of 95 assets and 2 folders happened before the latest scans and is not a deletion. The exact scan that added them was not captured; later scans are stable at `12,851`.
+
+## Spec v1.0 PR 02 Verification (2026-11-19)
+
+- `bun run typecheck`: exit `0` across all 6 workspaces plus the root scripts project.
+- `bun test`: **`318 pass, 0 fail`**, `1195` expect calls, 38 files, `7.95s`.
+- `bun run --cwd apps/web build`: exit `0`, `249ms`.
+- New scanner tests cover a disconnected root, an empty mount boundary, a small library with 5 missing of 10 (the old 50-asset floor would have allowed it), a total root loss with `SCAN_DELETE_FORCE=1`, a force-allowed partial deletion on a healthy root, and a changed root identity. Every blocking case leaves `deleted_at` unchanged.
+- New v16 tests cover migration from a v15 database, health backfill from the latest completed scan, failure counting and reset, verify preserving `last_success_at`, and scan-run mount and deletion fields.
+- API test covers `UNVERIFIED`, `ONLINE`, `root_missing`, and `root_empty` through `GET /api/libraries`, `GET /api/libraries/:id/health`, and `POST /api/libraries/:id/verify`.
+- Migration rehearsal on `/tmp/pm-v15-clone.db` (copy of `mediavault-2026-11-19T03-25-54-233Z-r777ns.db`): `user_version 15 -> 16`; before and after counts identical at assets `12,756`, folders `113`, tags `63`, libraries `1`, `playback_progress` `191`, `vote_events` `1`; `integrity_check = ok`; foreign-key violations `0`; `library_health` backfilled `ONLINE` with `last_success_at` matching the latest completed scan; all five new `scan_runs` columns present.
+- Not yet verified: live host migration to v16. The deploy sequence is pre-migration backup, single migrator, count check, then `api` and `worker` start.

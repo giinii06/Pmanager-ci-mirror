@@ -479,3 +479,102 @@ describe('FS explorer, security guards, health, backups, votes activity, and job
     h.db.close()
   })
 })
+
+describe('library health', () => {
+  test('reports unverified, online, missing, and empty states', async () => {
+    const h = await createHarness()
+    const libraryRoot = path.join(h.mediaRoot, 'Media')
+    await mkdir(libraryRoot, { recursive: true })
+    await writeFile(path.join(libraryRoot, 'photo.jpg'), 'x')
+    createLibrary(h.db, { id: 'lib1', name: 'Media', rootPath: 'Media', createdAt: Date.now() })
+    const folderId = upsertFolder(h.db, {
+      id: 'f1',
+      libraryId: 'lib1',
+      parentId: null,
+      relativePath: '',
+      name: 'Media',
+      depth: 0,
+      scanId: 'seed',
+    })
+    insertAsset(h.db, {
+      id: 'a1',
+      libraryId: 'lib1',
+      folderId,
+      relativePath: 'photo.jpg',
+      filename: 'photo.jpg',
+      kind: 'image',
+      mimeType: 'image/jpeg',
+      sizeBytes: 1,
+      mtimeMs: 1,
+      width: 4,
+      height: 4,
+      durationMs: null,
+      takenAt: 1,
+      videoCodec: null,
+      audioCodec: null,
+      container: null,
+      indexedAt: 1,
+      scanId: 'seed',
+    })
+
+    const initial = await h.app.inject({
+      method: 'GET',
+      url: '/api/libraries',
+      headers: { cookie: h.cookie },
+    })
+    expect(initial.json()[0].healthState).toBe('UNVERIFIED')
+
+    const online = await h.app.inject({
+      method: 'POST',
+      url: '/api/libraries/lib1/verify',
+      headers: { cookie: h.cookie },
+    })
+    expect(online.statusCode).toBe(200)
+    expect(online.json()).toMatchObject({ state: 'ONLINE', lastSuccessAt: null })
+    expect(online.json().rootIdentity).toBeTruthy()
+
+    await rm(libraryRoot, { recursive: true, force: true })
+    const missing = await h.app.inject({
+      method: 'POST',
+      url: '/api/libraries/lib1/verify',
+      headers: { cookie: h.cookie },
+    })
+    expect(missing.json()).toMatchObject({ state: 'OFFLINE', lastErrorCode: 'root_missing' })
+
+    await mkdir(libraryRoot, { recursive: true })
+    const empty = await h.app.inject({
+      method: 'POST',
+      url: '/api/libraries/lib1/verify',
+      headers: { cookie: h.cookie },
+    })
+    expect(empty.json()).toMatchObject({ state: 'OFFLINE', lastErrorCode: 'root_empty' })
+
+    const health = await h.app.inject({
+      method: 'GET',
+      url: '/api/libraries/lib1/health',
+      headers: { cookie: h.cookie },
+    })
+    expect(health.statusCode).toBe(200)
+    expect(health.json()).toMatchObject({
+      libraryId: 'lib1',
+      state: 'OFFLINE',
+      lastErrorCode: 'root_empty',
+      consecutiveFailures: 2,
+      scan: null,
+    })
+
+    const listed = await h.app.inject({
+      method: 'GET',
+      url: '/api/libraries',
+      headers: { cookie: h.cookie },
+    })
+    expect(listed.json()[0]).toMatchObject({
+      healthState: 'OFFLINE',
+      healthErrorCode: 'root_empty',
+      healthConsecutiveFailures: 2,
+    })
+
+    await h.app.close()
+    h.db.close()
+  })
+})

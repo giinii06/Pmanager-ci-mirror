@@ -46,7 +46,7 @@ function addImage(db: ReturnType<typeof openDatabase>, id: string, folderId: str
 }
 
 describe('Schema v15 pinned folder cover thumbnail', () => {
-  test('migrates a v14 database to v15 cleanly', () => {
+  test('migrates a v14 database to the current schema cleanly', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'mv-v15-'))
     tempDirs.push(dir)
     const file = path.join(dir, 'legacy.db')
@@ -72,7 +72,6 @@ describe('Schema v15 pinned folder cover thumbnail', () => {
     const db = openDatabase(file)
     const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()
     expect(version?.user_version).toBe(SCHEMA_VERSION)
-    expect(SCHEMA_VERSION).toBe(15)
     expect(getFolder(db, 'f1')?.coverAssetId).toBeNull()
     db.close()
   })

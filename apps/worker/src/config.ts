@@ -15,6 +15,8 @@ export interface WorkerConfig {
   scanDeleteGuardRatio: number
   /** The operator's explicit override for a deletion the guard would refuse. */
   scanDeleteForce: boolean
+  /** A scan that would hide more than this many assets is refused. 0 disables the cap. */
+  scanDeleteMaxAbsolute?: number
   /** How long archive files must stay unchanged before extraction starts. */
   archiveStableMs?: number
   /** Maximum wait for slow downloads to finish before failing archive stability. */
@@ -45,6 +47,7 @@ export async function loadWorkerConfig(
     workerId: env.WORKER_ID?.trim() || `worker-${process.pid}`,
     scanDeleteGuardRatio: resolveGuardRatio(env.SCAN_DELETE_GUARD_RATIO),
     scanDeleteForce: env.SCAN_DELETE_FORCE === '1',
+    scanDeleteMaxAbsolute: resolveNonNegativeInt(env.SCAN_DELETE_MAX_ABSOLUTE, 0),
     archiveStableMs: resolveNonNegativeInt(env.ARCHIVE_STABLE_MS, 1_500),
     archiveTimeoutMs: resolveNonNegativeInt(env.ARCHIVE_TIMEOUT_MS, 15 * 60_000),
     watchPolling: env.WATCH_POLLING === '1',

@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 15
+export const SCHEMA_VERSION = 16
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -529,6 +529,25 @@ CREATE TABLE IF NOT EXISTS backup_logs (
 );
 `
 
+export const V16_LIBRARY_HEALTH_SQL = `
+CREATE TABLE IF NOT EXISTS library_health (
+  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
+  state TEXT NOT NULL CHECK (state IN ('ONLINE','DEGRADED','OFFLINE','UNVERIFIED')),
+  root_identity TEXT,
+  last_success_at INTEGER,
+  last_error_code TEXT,
+  checked_at INTEGER NOT NULL,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_library_health_state ON library_health(state, checked_at DESC);
+
+ALTER TABLE scan_runs ADD COLUMN mount_identity TEXT;
+ALTER TABLE scan_runs ADD COLUMN missing_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scan_runs ADD COLUMN missing_ratio REAL NOT NULL DEFAULT 0;
+ALTER TABLE scan_runs ADD COLUMN authoritative_verified INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scan_runs ADD COLUMN health_state TEXT;
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -563,4 +582,21 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(OVERHAUL_V13_SQL),
   (exec) => exec(V14_RESILIENCE_AND_VOTES_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN pinned_cover_asset_id TEXT'),
+  (exec) => {
+    exec(V16_LIBRARY_HEALTH_SQL)
+    const now = Date.now()
+    exec(`INSERT INTO library_health (
+             library_id, state, last_success_at, checked_at, consecutive_failures
+           )
+           SELECT l.id, 'ONLINE', s.completed_at, ${now}, 0
+           FROM libraries l
+           JOIN scan_runs s ON s.id = (
+             SELECT id FROM scan_runs
+             WHERE library_id = l.id AND status = 'completed' AND completed_at IS NOT NULL
+             ORDER BY completed_at DESC LIMIT 1
+           )
+           WHERE NOT EXISTS (
+             SELECT 1 FROM library_health h WHERE h.library_id = l.id
+           )`)
+  },
 ]

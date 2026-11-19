@@ -10,7 +10,10 @@ import {
   enqueueJob,
   finishScan,
   getLibrary,
+  getLibraryHealth,
   getScanCheckpoint,
+  markLibraryFailure,
+  markLibraryHealthy,
   preloadLibraryScanIndex,
   recomputeFolderCounts,
   reconcileContributions,
@@ -27,6 +30,7 @@ import {
   insertAsset,
   type AssetFileUpdate,
   type Db,
+  type LibraryHealthState,
   type NewAsset,
   type ScanAssetRow,
 } from '@mediavault/database'
@@ -77,6 +81,17 @@ export class ScanInterruptedError extends Error {
   ) {
     super(message)
     this.name = 'ScanInterruptedError'
+  }
+}
+
+export class ScanBlockedError extends Error {
+  constructor(
+    public readonly healthState: Exclude<LibraryHealthState, 'ONLINE'>,
+    public readonly errorCode: string,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'ScanBlockedError'
   }
 }
 
@@ -188,6 +203,9 @@ export async function scanLibrary(
   const root = resolveInside(config.mediaRoot, library.rootPath)
   if (!root) throw new Error(`library root escapes MEDIA_ROOT: ${library.rootPath}`)
 
+  const health = getLibraryHealth(db, libraryId)
+  const previousIdentity = health?.rootIdentity ?? null
+  let rootIdentity: string | null = null
   const preTotal = countAssets(db, libraryId)
   const runRecordId = newId()
   const now = Date.now()
@@ -206,24 +224,43 @@ export async function scanLibrary(
     startedAt: now,
   })
 
-  const blockScan = (reason: string): never => {
+  const blockScan = (
+    reason: string,
+    state: Exclude<LibraryHealthState, 'ONLINE'> = 'OFFLINE',
+    errorCode = 'drive_unavailable',
+    failureIdentity: string | null = rootIdentity,
+  ): never => {
     const t = Date.now()
     updateScanRun(db, runRecordId, {
       phase: 'blocked',
       status: 'blocked',
       errorMessage: reason.slice(0, 500),
+      mountIdentity: rootIdentity,
+      healthState: state,
       completedAt: t,
       updatedAt: t,
     })
+    markLibraryFailure(db, {
+      libraryId,
+      state,
+      errorCode,
+      now: t,
+      rootIdentity: failureIdentity,
+    })
     setScanState(db, libraryId, 'idle', reason.slice(0, 500))
-    throw new Error(reason)
+    throw new ScanBlockedError(state, errorCode, reason)
   }
 
   let rootEntries: Dirent[]
+  let identityChanged = false
   try {
     const rootLink = await lstat(root)
     if (rootLink.isSymbolicLink() || !rootLink.isDirectory()) {
-      return blockScan(`drive_unavailable: ${library.rootPath} is not a real directory`)
+      return blockScan(
+        `drive_unavailable: ${library.rootPath} is not a real directory`,
+        'OFFLINE',
+        'root_not_directory',
+      )
     }
     const realBase = await realpath(config.mediaRoot)
     const realRoot = await realpath(root)
@@ -235,20 +272,40 @@ export async function scanLibrary(
     ) {
       return blockScan(
         `drive_unavailable: ${library.rootPath} resolves outside allowed media directories`,
+        'OFFLINE',
+        'root_outside_media',
       )
     }
+    const rootStat = await stat(root)
+    rootIdentity = `${rootStat.dev}:${rootStat.ino}`
+    identityChanged = previousIdentity !== null && previousIdentity !== rootIdentity
     rootEntries = await readdir(root, { withFileTypes: true })
   } catch (error) {
     return blockScan(
       `drive_unavailable: cannot access ${library.rootPath} (${(error as Error).message})`,
+      'OFFLINE',
+      'root_unreadable',
+    )
+  }
+
+  if (identityChanged) {
+    return blockScan(
+      `drive_identity_changed: ${library.rootPath} moved from ${previousIdentity} to ${rootIdentity}`,
+      'DEGRADED',
+      'root_identity_changed',
+      null,
     )
   }
 
   if (isMountBoundaryRoot(library.rootPath) && rootEntries.length === 0 && preTotal > 0) {
     return blockScan(
       `drive_unavailable: mountpoint ${library.rootPath || '/media'} is empty while ${preTotal} assets exist`,
+      'OFFLINE',
+      'root_empty',
     )
   }
+
+  updateScanRun(db, runRecordId, { mountIdentity: rootIdentity, updatedAt: Date.now() })
 
   const existingMap = preloadLibraryScanIndex(db, libraryId)
   const summary: ScanSummary = { files: 0, added: 0, updated: 0, removed: 0, skipped: 0 }
@@ -682,26 +739,57 @@ export async function scanLibrary(
 
     checkInterrupted()
     if (readErrors > 0) {
-      throw new Error(`refusing deletion reconciliation after ${readErrors} filesystem read errors`)
+      return blockScan(
+        `refusing deletion reconciliation after ${readErrors} filesystem read errors`,
+        'DEGRADED',
+        'read_errors',
+      )
     }
 
     updateScanRun(db, runRecordId, { phase: 'reconcile', status: 'running', updatedAt: Date.now() })
 
     const total = countAssets(db, libraryId)
     const missing = countMissingAssets(db, libraryId, authoritativeScanId)
-    const threshold = Math.max(50, Math.floor(total * config.scanDeleteGuardRatio))
-    if (!config.scanDeleteForce && missing > threshold) {
+    const missingRatio = total === 0 ? 0 : missing / total
+    const threshold = Math.floor(total * config.scanDeleteGuardRatio)
+    const maxAbsolute = config.scanDeleteMaxAbsolute ?? 0
+    const totalLoss = total > 0 && missing >= total
+    const exceedsRatio = missing > threshold
+    const exceedsAbsolute = maxAbsolute > 0 && missing > maxAbsolute
+
+    if (totalLoss) {
+      console.warn(
+        JSON.stringify({
+          event: 'scan.delete_guard',
+          reason: 'total_loss',
+          libraryId,
+          total,
+          missing,
+        }),
+      )
+      return blockScan(
+        `refusing to soft-delete ${missing} of ${total} assets: the root is empty or replaced`,
+        'DEGRADED',
+        'root_total_loss',
+      )
+    }
+
+    if (missing > 0 && !config.scanDeleteForce && (exceedsRatio || exceedsAbsolute)) {
       console.warn(
         JSON.stringify({
           event: 'scan.delete_guard',
           libraryId,
           total,
           missing,
+          missingRatio,
           threshold,
+          maxAbsolute,
         }),
       )
-      throw new Error(
+      return blockScan(
         `refusing to soft-delete ${missing} of ${total} assets; set SCAN_DELETE_FORCE=1 to allow it`,
+        'DEGRADED',
+        'delete_guard',
       )
     }
 
@@ -715,6 +803,7 @@ export async function scanLibrary(
       reconcileVoteEvents(db)
       clearScanCheckpoint(db, libraryId)
       finishScan(db, libraryId, completedAt, summary.files)
+      markLibraryHealthy(db, { libraryId, rootIdentity, now: completedAt })
       updateScanRun(db, runRecordId, {
         phase: 'completed',
         status: 'completed',
@@ -724,6 +813,11 @@ export async function scanLibrary(
         filesSkipped: summary.skipped,
         filesRemoved: summary.removed,
         readErrors,
+        mountIdentity: rootIdentity,
+        missingCount: missing,
+        missingRatio,
+        authoritativeVerified: 1,
+        healthState: 'ONLINE',
         completedAt,
         updatedAt: completedAt,
       })
@@ -741,6 +835,7 @@ export async function scanLibrary(
     )
     return summary
   } catch (error) {
+    if (error instanceof ScanBlockedError) throw error
     const t = Date.now()
     if (error instanceof ScanInterruptedError) {
       if (
@@ -751,6 +846,13 @@ export async function scanLibrary(
         flushBatch(lastSeenDirRel, lastSeenRelPath, runScanId, true)
       }
       if (error.reason === 'lease_lost') {
+        markLibraryFailure(db, {
+          libraryId,
+          state: 'DEGRADED',
+          errorCode: 'lease_lost',
+          now: t,
+          rootIdentity,
+        })
         updateScanRun(db, runRecordId, {
           phase: 'failed',
           status: 'failed',
@@ -760,6 +862,7 @@ export async function scanLibrary(
           filesSkipped: summary.skipped,
           readErrors,
           errorMessage: error.message.slice(0, 500),
+          healthState: 'DEGRADED',
           completedAt: t,
           updatedAt: t,
         })
@@ -779,6 +882,13 @@ export async function scanLibrary(
         })
       }
     } else {
+      markLibraryFailure(db, {
+        libraryId,
+        state: 'DEGRADED',
+        errorCode: 'scan_failed',
+        now: t,
+        rootIdentity,
+      })
       updateScanRun(db, runRecordId, {
         phase: 'failed',
         status: 'failed',
@@ -788,6 +898,7 @@ export async function scanLibrary(
         filesSkipped: summary.skipped,
         readErrors,
         errorMessage: (error as Error).message.slice(0, 500),
+        healthState: 'DEGRADED',
         completedAt: t,
         updatedAt: t,
       })

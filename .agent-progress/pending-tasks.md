@@ -10,8 +10,8 @@
 
 - [x] **PR 00 Baseline/Backup:** `docs/IMPLEMENTATION-BASELINE.md`, v15 backup verification, restore rehearsal, baseline test counts.
 - [x] **PR 01 Ignore/Compose:** `.env*` ignore rules, long-syntax binds with `create_host_path: false`, required drive roots, ASR/scene read-only mounts, preflight script and tests.
-- [ ] **PR 02 Library Health:** `ONLINE/OFFLINE/DEGRADED/UNVERIFIED` health, scanner finalize guard, small-library deletion policy, health API/UI, zero-deletion regression tests.
-- [ ] **PR 03 Mutation Engine:** `v16` `file_mutations`, `mutation_events`, `library_health`, quarantine delete state machine, idempotent delete API, dedicated mutation worker, SIGKILL reconciliation tests.
+- [x] **PR 02 Library Health:** `ONLINE/OFFLINE/DEGRADED/UNVERIFIED` health, scanner finalize guard, small-library deletion policy, health API/UI, zero-deletion regression tests.
+- [ ] **PR 03 Mutation Engine:** `v17` `file_mutations`, `mutation_events`, quarantine delete state machine, idempotent delete API, dedicated mutation worker, SIGKILL reconciliation tests.
 - [ ] **PR 04 Cache/HLS:** `v17` `hls_generations`, `hls_active`, immutable generation publishing and routes.
 - [ ] **PR 05 Auth:** `v18` Argon2id migration, server sessions, login rate limit, trusted proxy.
 - [ ] **PR 06 Playback:** `v19` play sessions and idempotent play events, resume race fix.

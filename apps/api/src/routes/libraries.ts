@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import {
@@ -9,10 +9,15 @@ import {
   enqueueJob,
   findPausedScanJob,
   getFolder,
+  getLatestScanRun,
   getLibrary,
+  getLibraryHealth,
   listAllFolders,
   listFolders,
   listLibraries,
+  listLibraryHealth,
+  markLibraryFailure,
+  markLibraryVerified,
   resumeJob,
   setFolderCover,
   setScanState,
@@ -21,7 +26,7 @@ import {
 import { resolveInside } from '@mediavault/media'
 import { FOLDER_SORTS, PRIORITY, newId } from '@mediavault/shared'
 import type { AppContext } from '../context'
-import { toFolderDTO, toLibraryDTO } from '../dto'
+import { toFolderDTO, toLibraryDTO, toLibraryHealthDetailDTO } from '../dto'
 import { parseInput } from '../validate'
 import { resolveSafeDirectory } from './fs'
 
@@ -45,9 +50,18 @@ function toPosix(value: string): string {
   return value.split(path.sep).join('/')
 }
 
+function libraryHealthDetail(ctx: AppContext, libraryId: string) {
+  return toLibraryHealthDetailDTO(
+    libraryId,
+    getLibraryHealth(ctx.db, libraryId),
+    getLatestScanRun(ctx.db, libraryId),
+  )
+}
+
 export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/libraries', async (_request, reply) => {
-    reply.send(listLibraries(ctx.db).map(toLibraryDTO))
+    const health = new Map(listLibraryHealth(ctx.db).map((item) => [item.libraryId, item]))
+    reply.send(listLibraries(ctx.db).map((library) => toLibraryDTO(library, health.get(library.id))))
   })
 
   app.post('/api/libraries', async (request, reply) => {
@@ -123,7 +137,71 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
       reply.code(500).send({ error: 'internal', message: 'Could not create the library.' })
       return
     }
-    reply.code(201).send(toLibraryDTO(created))
+    reply.code(201).send(toLibraryDTO(created, getLibraryHealth(ctx.db, created.id)))
+  })
+
+  app.get('/api/libraries/:id/health', async (request, reply) => {
+    const params = parseInput(idParams, request.params, reply)
+    if (!params) return
+    const library = getLibrary(ctx.db, params.id)
+    if (!library) {
+      reply.code(404).send({ error: 'not_found', message: 'Library not found.' })
+      return
+    }
+    reply.send(libraryHealthDetail(ctx, library.id))
+  })
+
+  app.post('/api/libraries/:id/verify', async (request, reply) => {
+    const params = parseInput(idParams, request.params, reply)
+    if (!params) return
+    const library = getLibrary(ctx.db, params.id)
+    if (!library) {
+      reply.code(404).send({ error: 'not_found', message: 'Library not found.' })
+      return
+    }
+
+    const resolved = await resolveSafeDirectory(ctx.config.mediaRoot, library.rootPath)
+    if ('error' in resolved) {
+      markLibraryFailure(ctx.db, {
+        libraryId: library.id,
+        state: 'OFFLINE',
+        errorCode: resolved.error === 'not_found' ? 'root_missing' : resolved.error,
+        now: Date.now(),
+      })
+      reply.send(libraryHealthDetail(ctx, library.id))
+      return
+    }
+
+    let entries: string[]
+    try {
+      entries = await readdir(resolved.abs)
+    } catch {
+      markLibraryFailure(ctx.db, {
+        libraryId: library.id,
+        state: 'OFFLINE',
+        errorCode: 'root_unreadable',
+        now: Date.now(),
+      })
+      reply.send(libraryHealthDetail(ctx, library.id))
+      return
+    }
+
+    if (entries.length === 0 && library.assetCount > 0) {
+      markLibraryFailure(ctx.db, {
+        libraryId: library.id,
+        state: 'OFFLINE',
+        errorCode: 'root_empty',
+        now: Date.now(),
+      })
+    } else {
+      markLibraryVerified(ctx.db, {
+        libraryId: library.id,
+        rootIdentity: `${resolved.stats.dev}:${resolved.stats.ino}`,
+        now: Date.now(),
+      })
+    }
+
+    reply.send(libraryHealthDetail(ctx, library.id))
   })
 
   app.post('/api/libraries/:id/scan', async (request, reply) => {

@@ -12,6 +12,8 @@ export type JobState = 'queued' | 'running' | 'paused' | 'cancelled' | 'done' | 
 
 export type ScanState = 'idle' | 'queued' | 'scanning'
 
+export type LibraryHealthState = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNVERIFIED'
+
 export type PlaybackMode = 'direct' | 'hls' | 'none'
 
 /** 0 runs first. */
@@ -32,6 +34,40 @@ export interface LibraryDTO {
   scannedFiles: number
   assetCount: number
   folderCount: number
+  healthState: LibraryHealthState
+  healthErrorCode: string | null
+  healthCheckedAt: string | null
+  healthConsecutiveFailures: number
+}
+
+export interface ScanRunDTO {
+  id: string
+  phase: string
+  status: string
+  filesSeen: number
+  filesAdded: number
+  filesUpdated: number
+  filesSkipped: number
+  filesRemoved: number
+  readErrors: number
+  missingCount: number
+  missingRatio: number
+  authoritativeVerified: boolean
+  healthState: LibraryHealthState | null
+  errorMessage: string | null
+  startedAt: string
+  completedAt: string | null
+}
+
+export interface LibraryHealthDetailDTO {
+  libraryId: string
+  state: LibraryHealthState
+  rootIdentity: string | null
+  lastSuccessAt: string | null
+  lastErrorCode: string | null
+  checkedAt: string | null
+  consecutiveFailures: number
+  scan: ScanRunDTO | null
 }
 
 export interface TagDTO {
