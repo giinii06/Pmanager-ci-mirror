@@ -194,3 +194,13 @@
 - Viewer tests stub `fetch`: a neighbour response appends and focuses the asset; a response for an older request cannot replace a newer `select`; a response after `close` is discarded; shuffle calls `/api/assets/random` and appends the pick; a single shared-link asset with no filter issues no request.
 - Benchmark (`scripts/bench-navigation.ts`, live `VACUUM INTO` clone, schema v20, `12,851` active assets, SQL time only): worst neighbour p95 `12.84 ms` (`rate`, `12,653` images); `latest` over all assets `4.68 ms`; random p95 `3.49 ms` (images) and `2.72 ms` (all). The 12.8k budget of p95 `100 ms` is met with an order of magnitude to spare. The 200k estimate (~`190 ms`) is an inference, not a measurement, and is recorded as such in `docs/BENCHMARKS.md`.
 - ChatGPT consultation `mediavault-pr07-navigation-01` (status `completed`) recommended Option A and the eligible-set random sampler; both were adopted. Its keyset/hybrid suggestion was deferred with the benchmark as the trigger, and its warning about the unfiltered shared-link scope was implemented by passing an explicit filter at the call site.
+
+### PR 07 Live Host Verification (`media-server`, 2026-11-19)
+
+- Shipped `3881e44` by bundle from host `845d81a`; `git merge --ff-only` fast-forwarded cleanly (17 files, `+1233/-98`).
+- No schema change: live `user_version` stayed `20`; counters unchanged at assets `12,852` total / `12,851` active, folders `115`, tags `63`, playback `191`, `watch_time_ms` `908,884`, views `178`, libraries `1`, votes `1`, `play_sessions`/`play_events` `0`; `integrity_check = ok`; FK `0`.
+- Rebuilt only `api` and `web`, recreated them with `--no-deps`, and restarted `nginx`; `api` reported `healthy` within 6 s.
+- `/health/ready` `200`, `/` `200`; unauthenticated `GET /api/assets/<id>/neighbor` and `POST /api/assets/random` both `401`.
+- With a minted session, `GET /api/assets?kind=video&sort=latest&limit=3` returned `2j2prmy8v1n4`, `ep3jp27mc5j6`, … and `GET /api/assets/2j2prmy8v1n4/neighbor?direction=next&kind=video&sort=latest` returned exactly `ep3jp27mc5j6`, so the server order matches the list on live data.
+- `POST /api/assets/random` with `{kind:'video', currentAssetId:'2j2prmy8v1n4', recentIds:['ep3jp27mc5j6']}` returned `200` with `xwjmx30j3h4j`, which is neither the current nor the recent asset; the same route with a folder that has no assets returned `204`.
+- The served bundle `index-BBoWepTI.js` contains both `assets/random` and `neighbor`, so the new client is the one being served. API and worker logs since the restart contain no errors.

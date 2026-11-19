@@ -147,3 +147,4 @@
 - `JustifiedGrid` already virtualizes rows through `@tanstack/react-virtual` and `buildGalleryEntries`; the viewer no longer depends on a full ID list, so the virtualization path is unchanged.
 - Tests: 12 database navigation tests (order oracle for all six sorts, seed parity, missing vs filtered anchor, exclusion, relaxation, empty filter, coverage/uniformity over 1,200 draws), 5 API route tests, 5 viewer store tests for stale responses and shuffle. `bun test` `453 pass, 0 fail` (54 files).
 - Benchmark on the live v20 clone (`12,851` active assets): neighbour p95 `12.84 ms` worst case (`rate` over `12,653` images), random p95 `3.49 ms`; recorded in `docs/BENCHMARKS.md`.
+- Deployed `3881e44` to `media-server` (no migration): live schema stayed `v20`, all counters unchanged, the neighbour route matched the list order on live data, random returned a non-current asset and `204` for an empty filter, and the served bundle contains both new calls.

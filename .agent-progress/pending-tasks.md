@@ -23,7 +23,7 @@
 - [x] **PR 04 Cache/HLS:** `v18` `hls_generations`, `hls_active`, immutable generation publishing and routes. Deployed as `deb605c`; live schema `v18`, flag off, `12,851` assets intact, legacy playlist still served.
 - [x] **PR 05 Auth:** `v19` Argon2id migration, server sessions, login rate limit, trusted proxy. Deployed as `be9071f`; live schema `v19`, old HMAC cookies rejected, sessions revocable.
 - [x] **PR 06 Playback:** `v20` `play_sessions`/`play_events`, per-session contiguous `seq`, idempotent session create, fenced legacy progress, resume state machine, idempotent votes. Deployed as `845d81a`; live schema `v20`, counters unchanged.
-- [x] **PR 07 Viewer/Search UI:** `GET /api/assets/:id/neighbor`, `POST /api/assets/random`, viewer session/request guards, removal of the 10k/20k shuffle cap, virtualization retained. `453 pass`; neighbour p95 `12.84 ms` at 12.8k. Deployed pending.
+- [x] **PR 07 Viewer/Search UI:** `GET /api/assets/:id/neighbor`, `POST /api/assets/random`, viewer session/request guards, removal of the 10k/20k shuffle cap, virtualization retained. `453 pass`; neighbour p95 `12.84 ms` at 12.8k. Deployed as `3881e44`; live schema `v20`, counters unchanged.
 - [ ] **PR 08 Job Engine:** unified scene queue, GPU ETA, checkpoints, error codes, timeouts.
 - [ ] **PR 09 Search:** SQLite profiling, FTS5 fallback, optional FAISS index.
 - [ ] **PR 10 Duplicates:** `v21` fingerprints and duplicate review groups, no automatic deletion.
