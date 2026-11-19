@@ -7,6 +7,7 @@ import {
   Film,
   FolderHeart,
   Images,
+  ListVideo,
   Loader2,
   Monitor,
   Moon,
@@ -48,6 +49,7 @@ export function Sidebar() {
   const inVideos = location.pathname.startsWith('/videos')
   const inDuplicates = location.pathname.startsWith('/duplicates')
   const inSmartAlbums = location.pathname.startsWith('/smart-albums')
+  const inPlaylists = location.pathname.startsWith('/playlists')
 
   return (
     <aside
@@ -230,6 +232,23 @@ export function Sidebar() {
         >
           <FolderHeart size={16} className={inSmartAlbums ? 'text-accent' : 'text-faint'} />
           <span className={cn('flex-1', collapsed && 'md:hidden')}>스마트 앨범</span>
+        </NavLink>
+
+        <NavLink
+          to="/playlists"
+          title="재생목록"
+          className={() =>
+            cn(
+              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
+              collapsed && 'md:justify-center md:px-0',
+              inPlaylists
+                ? 'bg-accent/12 text-accent'
+                : 'text-muted hover:bg-raised/70 hover:text-ink',
+            )
+          }
+        >
+          <ListVideo size={16} className={inPlaylists ? 'text-accent' : 'text-faint'} />
+          <span className={cn('flex-1', collapsed && 'md:hidden')}>재생목록</span>
         </NavLink>
 
         <NavLink

@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
+  Bookmark,
   Camera,
   Captions,
   ChevronLeft,
   ChevronRight,
   Download,
   Info,
+  ListPlus,
   Plus,
   Share2,
   Shuffle,
@@ -30,6 +32,8 @@ import {
 } from '../lib/format'
 import { randomToken } from '../lib/random'
 import { useUi } from '../store/ui'
+import { AddToPlaylistDialog } from './AddToPlaylistDialog'
+import { BookmarkDialog } from './BookmarkDialog'
 import { Dialog } from './ui/Dialog'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
@@ -88,6 +92,8 @@ export function WatchPage({
   const [paused, setPaused] = useState(true)
   const [tagInput, setTagInput] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [bookmarkOpen, setBookmarkOpen] = useState(false)
+  const [playlistOpen, setPlaylistOpen] = useState(false)
   const copyTimer = useRef<number | null>(null)
   const descriptionRef = useRef<HTMLDivElement>(null)
 
@@ -178,6 +184,8 @@ export function WatchPage({
 
   useEffect(() => {
     setDeleteOpen(false)
+    setBookmarkOpen(false)
+    setPlaylistOpen(false)
     setTagInput('')
   }, [asset.id])
 
@@ -370,6 +378,26 @@ export function WatchPage({
 
               <button
                 type="button"
+                onClick={() => setBookmarkOpen(true)}
+                title="현재 위치에 타임스탬프를 남깁니다."
+                className={PILL}
+              >
+                <Bookmark size={16} />
+                북마크
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPlaylistOpen(true)}
+                title="이 영상을 재생목록에 담습니다."
+                className={PILL}
+              >
+                <ListPlus size={16} />
+                재생목록
+              </button>
+
+              <button
+                type="button"
                 onClick={onToggleShuffle}
                 aria-pressed={shuffle}
                 title="Shuffle 모드 전환"
@@ -524,6 +552,19 @@ export function WatchPage({
           조회수, 누적 재생 시간, Vote 기록이 영구적으로 제거됩니다.
         </p>
       </Dialog>
+
+      <BookmarkDialog
+        open={bookmarkOpen}
+        onClose={() => setBookmarkOpen(false)}
+        asset={asset}
+        videoRef={videoRef}
+      />
+
+      <AddToPlaylistDialog
+        open={playlistOpen}
+        onClose={() => setPlaylistOpen(false)}
+        asset={asset}
+      />
     </div>
   )
 }

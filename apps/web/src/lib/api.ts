@@ -23,6 +23,10 @@ import type {
   PlayEventType,
   PlaySessionDTO,
   PlaybackProgressDTO,
+  PlaylistAssetsDTO,
+  PlaylistDTO,
+  PlaylistDetailDTO,
+  PlaylistItemDTO,
   ReviewDTO,
   SemanticSearchDTO,
   SmartAlbumDTO,
@@ -40,6 +44,7 @@ import type {
   TranslationStatusDTO,
   TranslationSummaryDTO,
   UserDTO,
+  VideoBookmarkDTO,
   VideoSort,
   VoteActivityStatsDTO,
   WorkQueueDTO,
@@ -356,6 +361,52 @@ export const api = {
     }),
   deleteSmartAlbum: (id: string) =>
     request<void>(`/api/smart-albums/${id}`, { method: 'DELETE' }),
+
+  playlists: () => request<{ playlists: PlaylistDTO[] }>('/api/playlists'),
+  playlist: (id: string) => request<PlaylistDetailDTO>(`/api/playlists/${id}`),
+  createPlaylist: (body: { name: string; description?: string | null }) =>
+    request<PlaylistDTO>('/api/playlists', { method: 'POST', body: JSON.stringify(body) }),
+  updatePlaylist: (id: string, body: { name?: string; description?: string | null }) =>
+    request<PlaylistDTO>(`/api/playlists/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deletePlaylist: (id: string) => request<void>(`/api/playlists/${id}`, { method: 'DELETE' }),
+  playlistAssets: (id: string) => request<PlaylistAssetsDTO>(`/api/playlists/${id}/assets`),
+  addPlaylistItem: (id: string, assetId: string) =>
+    request<{ playlist: PlaylistDTO; item: PlaylistItemDTO }>(`/api/playlists/${id}/items`, {
+      method: 'POST',
+      body: JSON.stringify({ assetId }),
+    }),
+  movePlaylistItem: (id: string, itemId: string, position: number) =>
+    request<PlaylistDetailDTO>(`/api/playlists/${id}/items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ position }),
+    }),
+  removePlaylistItem: (id: string, itemId: string) =>
+    request<void>(`/api/playlists/${id}/items/${itemId}`, { method: 'DELETE' }),
+  ensureWatchLater: () =>
+    request<{ playlist: PlaylistDTO }>('/api/playlists/watch-later', { method: 'POST' }),
+  /** Every playlist surface needs the default list to exist before it can show it. */
+  playlistsWithWatchLater: async () => {
+    await api.ensureWatchLater()
+    return api.playlists()
+  },
+  addWatchLater: (assetId: string) =>
+    request<{ playlist: PlaylistDTO; item: PlaylistItemDTO }>('/api/playlists/watch-later/items', {
+      method: 'POST',
+      body: JSON.stringify({ assetId }),
+    }),
+
+  bookmarks: (assetId: string) =>
+    request<{ bookmarks: VideoBookmarkDTO[] }>(`/api/assets/${assetId}/bookmarks`),
+  createBookmark: (assetId: string, body: { positionMs: number; title?: string; note?: string }) =>
+    request<VideoBookmarkDTO>(`/api/assets/${assetId}/bookmarks`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateBookmark: (
+    id: string,
+    body: { positionMs?: number; title?: string | null; note?: string | null },
+  ) => request<VideoBookmarkDTO>(`/api/bookmarks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteBookmark: (id: string) => request<void>(`/api/bookmarks/${id}`, { method: 'DELETE' }),
 
   transcriptionStatus: (id: string) =>
     request<TranscriptionStatusDTO>(`/api/assets/${id}/transcription/status`),

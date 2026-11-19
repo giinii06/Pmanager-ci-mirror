@@ -17,6 +17,7 @@ import { LoginPage, SetupPage } from './pages/AuthPages'
 import { FolderPage, FoldersPage } from './pages/FolderPages'
 import { VideoTagsPage, VideosPage } from './pages/GalleryPages'
 import { DuplicatesPage } from './pages/DuplicatesPage'
+import { PlaylistPage, PlaylistsPage } from './pages/PlaylistsPage'
 import { SearchPage } from './pages/SearchPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SmartAlbumPage, SmartAlbumsPage } from './pages/SmartAlbumsPage'
@@ -87,6 +88,8 @@ export function App() {
           <Route path="duplicates" element={<DuplicatesPage />} />
           <Route path="smart-albums" element={<SmartAlbumsPage />} />
           <Route path="smart-albums/:id" element={<SmartAlbumPage />} />
+          <Route path="playlists" element={<PlaylistsPage />} />
+          <Route path="playlists/:id" element={<PlaylistPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
