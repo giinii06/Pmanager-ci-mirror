@@ -20,3 +20,12 @@
 2. **No Forced Rust Rewrite Before Measurement:** Current `scan.ts` bottleneck is O(N) sequential `stat()` + O(N) per-file `SELECT` + double `readdir()` + unbatched writes. Measure ChatGPT's benchmark matrix across ext4 and DrvFS (`concurrency 1,4,8,16,32`) first; adopt Rust only if Bun CPU/GC dominates over DrvFS/probing.
 3. **Host Service Execution Model (Verified Native Docker Engine):** Win11 runs WSL `3.0.5.0` with native `docker.service` enabled inside WSL2 `systemd` (no Docker Desktop volume migration required). Provide one clean boot supervision script/service under the WSL owner identity plus health watchdog.
 4. **Windows vs WSL2 SSH:** Enable `ssh.service` inside WSL2 with `authorized_keys` for existing port `22 -> 2222` portproxy, AND provide optional elevated installer support for native Windows `OpenSSH.Server` on an explicit non-conflicting port (`2200`) plus standard Windows OpenSSH documentation.
+
+## Spec v1.0 Program Decisions (2026-11-19)
+
+1. **Sequential PR gate.** PR 00, 01, 02, and 03 land in order before any destructive feature is enabled in production. Each PR commits only after typecheck, the full Bun test suite, the web build, and its own safety checks pass.
+2. **Migration numbering follows I-01.** PR 03 ships `v16` with `file_mutations`, `mutation_events`, `library_health`, and the `scan_runs` extensions as one migration. PR 02 therefore computes health from `scan_runs` and live filesystem probes without a new table, so PR 03 keeps the spec's `v16` anchor.
+3. **Fixtures only.** All delete, move, quarantine, and migration tests use temporary directories and cloned SQLite files. No test opens the production host DB for writing.
+4. **Feature flags start off.** `FILE_MUTATION_ENGINE_ENABLED`, `HLS_GENERATIONS_ENABLED`, `PLAY_EVENTS_ENABLED`, `SERVER_RANDOM_ENABLED`, `SMART_ALBUMS_ENABLED`, `BULK_OPERATIONS_ENABLED`, `SEARCH_FTS_ENABLED`, `SEARCH_FAISS_ENABLED`, and `NOTIFICATIONS_ENABLED` are off by default. Safety preflight and scanner guards are always on.
+5. **Compose has no sample fallback in production.** `compose.yaml` requires explicit drive roots and uses `create_host_path: false`. Sample media moves to a dev override.
+6. **Backup before migration.** Every schema PR runs its migration on a cloned DB, compares asset, folder, tag, vote, and playback counts, and only then may the host be upgraded with a fresh pre-migration backup.

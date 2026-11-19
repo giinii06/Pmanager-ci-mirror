@@ -43,3 +43,15 @@
 - `apps/asr-worker/.venv/bin/pytest`: **`110 passed, 1 skipped`**.
 - `bun run --cwd apps/web build`: `vite build` exit `0`.
 - Live post-Wave-6 verification on `media-server` (`192.168.0.27`): executed after Wave 6 bundle deploy (`api`, `worker`, `web`, `nginx`).
+
+## Spec v1.0 PR 00 Baseline Verification (2026-11-19)
+
+- Baseline commit: `aceb0ade51f464c94e8f148d6a9da3445e7a6d37` (`main`), schema `v15`.
+- `bun run typecheck`: exit `0` across 6 workspaces.
+- `bun test`: **`298 pass, 0 fail`**, `1137` expect calls, 36 files, `7.68s`.
+- `bun run --cwd apps/web build`: exit `0`, built in `609ms`.
+- `apps/asr-worker/.venv/bin/pytest apps/asr-worker`: **`110 passed, 1 skipped`**, `17.31s`.
+- Host read-only DB check: `user_version = 15`, `integrity_check = ok`, `foreign_key_check = 0`, assets `12,756`, folders `113`, tags `63`, libraries `1`, `playback_progress` `191`, `vote_events` `1`.
+- Latest host backup `mediavault-2026-11-19T03-25-54-233Z-r777ns.db`: v15, integrity `ok`, FK `0`, same counts.
+- Restore rehearsal on `/tmp/restore-rehearsal.db` inside `mediavault-api-1`: integrity `ok`, FK `0`, counts match; temp file removed. Production DB and backup original untouched.
+- Not verified in PR 00: Windows unattended boot rehearsal, full Docker Compose render, real GPU inference. These belong to later PRs and the release gate.
