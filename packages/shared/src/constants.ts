@@ -1,5 +1,12 @@
 import type { Priority } from './domain'
 
+/**
+ * The release version, reported by `GET /api/health` and the diagnostics app
+ * section. It must equal the root `package.json` version, which
+ * `bun run release:check` asserts.
+ */
+export const APP_VERSION = '1.0.0'
+
 export const THUMBNAIL_SIZES = [320, 640] as const
 export type ThumbnailSize = (typeof THUMBNAIL_SIZES)[number]
 

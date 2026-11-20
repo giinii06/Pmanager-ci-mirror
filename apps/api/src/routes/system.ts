@@ -26,6 +26,7 @@ import {
 } from '@mediavault/database'
 import { isTempDownloadFile, resolveInside } from '@mediavault/media'
 import {
+  APP_VERSION,
   classifyFile,
   isBlockedSystemRelativePath,
   type BackupRecordDTO,
@@ -241,7 +242,7 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   }
 
   app.get('/api/health', async (_request, reply) => {
-    reply.send({ ok: true, version: '0.1.0' })
+    reply.send({ ok: true, version: APP_VERSION })
   })
   app.get('/health/live', liveHandler)
   app.get('/api/health/live', liveHandler)

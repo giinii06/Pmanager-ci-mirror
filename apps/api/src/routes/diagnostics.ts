@@ -7,6 +7,7 @@ import {
   recordDiagnosticsRun,
 } from '@mediavault/database'
 import {
+  APP_VERSION,
   CACHE_TYPES,
   newId,
   type CapabilitiesDTO,
@@ -52,7 +53,7 @@ export function registerDiagnosticsRoutes(app: FastifyInstance, ctx: AppContext)
       notifications: ctx.config.notificationsEnabled === true,
       searchFts: ctx.config.search.ftsEnabled,
       smartAlbums: ctx.config.smartAlbumsEnabled,
-      version: '0.1.0',
+      version: APP_VERSION,
       schemaVersion: schema?.user_version ?? 0,
     }
     reply.send(payload)

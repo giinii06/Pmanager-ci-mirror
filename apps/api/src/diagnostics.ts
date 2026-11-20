@@ -12,11 +12,12 @@ import {
   recentFailures,
   workQueue,
 } from '@mediavault/database'
-import type {
-  DiagnosticsReportDTO,
-  GpuLeaseHealthDTO,
-  StorageCategoryDTO,
-  VolumeHealthDTO,
+import {
+  APP_VERSION,
+  type DiagnosticsReportDTO,
+  type GpuLeaseHealthDTO,
+  type StorageCategoryDTO,
+  type VolumeHealthDTO,
 } from '@mediavault/shared'
 import { BOOT_AT_ISO, uptimeSeconds } from './boot'
 import { scanCache } from './cache-inventory'
@@ -168,7 +169,7 @@ export async function buildDiagnosticsReport(ctx: AppContext): Promise<Diagnosti
   return {
     generatedAt: new Date(now).toISOString(),
     app: {
-      version: '0.1.0',
+      version: APP_VERSION,
       startedAt: BOOT_AT_ISO,
       uptimeSeconds: uptimeSeconds(now),
       pid: process.pid,
