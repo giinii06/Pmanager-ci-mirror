@@ -4,7 +4,6 @@ import { SESSION_COOKIE, parseCookies, resolveSession } from './auth'
 import type { AppContext } from './context'
 import { diagnosticIdOf } from './observability'
 import { registerAssetRoutes } from './routes/assets'
-import { registerBulkOperationRoutes } from './routes/bulk-operations'
 import { registerDiagnosticsRoutes } from './routes/diagnostics'
 import { registerDuplicateRoutes } from './routes/duplicates'
 import { registerFileOperationRoutes } from './routes/file-operations'
@@ -16,10 +15,8 @@ import { registerLibraryRoutes } from './routes/libraries'
 import { registerMediaRoutes } from './routes/media'
 import { registerNotificationRoutes } from './routes/notifications'
 import { registerPlaybackRoutes } from './routes/playback'
-import { registerPlaylistRoutes } from './routes/playlists'
 import { registerSceneRoutes } from './routes/scenes'
 import { registerSearchIndexRoutes } from './routes/search-index'
-import { registerSmartAlbumRoutes } from './routes/smart-albums'
 import { registerSystemRoutes } from './routes/system'
 import { registerTagRoutes } from './routes/tags'
 import { registerTranscriptionRoutes } from './routes/transcriptions'
@@ -173,10 +170,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerAssetRoutes(app, ctx)
   registerPlaybackRoutes(app, ctx)
   registerFileOperationRoutes(app, ctx)
-  registerBulkOperationRoutes(app, ctx)
   registerDuplicateRoutes(app, ctx)
-  registerSmartAlbumRoutes(app, ctx)
-  registerPlaylistRoutes(app, ctx)
   registerBookmarkRoutes(app, ctx)
   registerTagRoutes(app, ctx)
   registerMediaRoutes(app, ctx)

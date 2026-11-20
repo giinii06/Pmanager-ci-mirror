@@ -2,11 +2,6 @@ import type {
   ArchiveJobDTO,
   AsrJobDTO,
   AssetDTO,
-  BulkErrorGroupDTO,
-  BulkOperationCountsDTO,
-  BulkOperationDTO,
-  BulkOperationDetailDTO,
-  BulkOperationItemDTO,
   DuplicateGroupDTO,
   DuplicateGroupMemberDTO,
   EmbeddingJobDTO,
@@ -17,12 +12,9 @@ import type {
   LibraryHealthDetailDTO,
   NotificationDTO,
   PlaybackProgressDTO,
-  PlaylistDTO,
-  PlaylistItemDTO,
   ReviewDTO,
   SceneJobDTO,
   ScanRunDTO,
-  SmartAlbumDTO,
   TagDTO,
   TagSummaryDTO,
   TranscriptDTO,
@@ -41,10 +33,6 @@ import type {
   ArchiveJobRecord,
   AsrJobRecord,
   AssetRecord,
-  BulkErrorGroup,
-  BulkOperationCounts,
-  BulkOperationItemRecord,
-  BulkOperationRecord,
   DuplicateGroupMemberRecord,
   DuplicateGroupRecord,
   EmbeddingJobRecord,
@@ -55,12 +43,9 @@ import type {
   LibraryRecord,
   NotificationRecord,
   PlaybackRecord,
-  PlaylistItemRecord,
-  PlaylistRecord,
   ReviewRecord,
   ScanRunRecord,
   SceneJobRecord,
-  SmartAlbumRecord,
   TagRecord,
   TagSummaryRecord,
   TranscriptRecord,
@@ -550,42 +535,6 @@ function toDuplicateGroupMemberDTO(member: DuplicateGroupMemberRecord): Duplicat
   }
 }
 
-export function toSmartAlbumDTO(album: SmartAlbumRecord): SmartAlbumDTO {
-  return {
-    id: album.id,
-    name: album.name,
-    description: album.description,
-    filter: album.filter,
-    sort: album.sort,
-    pinned: album.pinned,
-    createdAt: new Date(album.createdAt).toISOString(),
-    updatedAt: new Date(album.updatedAt).toISOString(),
-  }
-}
-
-export function toPlaylistDTO(playlist: PlaylistRecord): PlaylistDTO {
-  return {
-    id: playlist.id,
-    name: playlist.name,
-    description: playlist.description,
-    kind: playlist.kind,
-    itemCount: playlist.itemCount,
-    availableCount: playlist.availableCount,
-    createdAt: new Date(playlist.createdAt).toISOString(),
-    updatedAt: new Date(playlist.updatedAt).toISOString(),
-  }
-}
-
-export function toPlaylistItemDTO(item: PlaylistItemRecord): PlaylistItemDTO {
-  return {
-    id: item.id,
-    assetId: item.assetId,
-    position: item.position,
-    addedAt: new Date(item.addedAt).toISOString(),
-    available: item.available,
-  }
-}
-
 export function toVideoBookmarkDTO(bookmark: VideoBookmarkRecord): VideoBookmarkDTO {
   return {
     id: bookmark.id,
@@ -597,63 +546,5 @@ export function toVideoBookmarkDTO(bookmark: VideoBookmarkRecord): VideoBookmark
     stale: bookmark.stale,
     createdAt: new Date(bookmark.createdAt).toISOString(),
     updatedAt: new Date(bookmark.updatedAt).toISOString(),
-  }
-}
-
-export function toBulkOperationCountsDTO(counts: BulkOperationCounts): BulkOperationCountsDTO {
-  return { ...counts }
-}
-
-export function toBulkOperationDTO(
-  record: BulkOperationRecord,
-  counts: BulkOperationCounts,
-): BulkOperationDTO {
-  return {
-    id: record.id,
-    kind: record.kind,
-    state: record.state,
-    selectionKind: record.selectionKind,
-    snapshotCount: record.snapshotCount,
-    counts: toBulkOperationCountsDTO(counts),
-    errorCode: record.errorCode,
-    errorMessage: record.errorMessage,
-    createdAt: new Date(record.createdAt).toISOString(),
-    updatedAt: new Date(record.updatedAt).toISOString(),
-    completedAt: iso(record.completedAt),
-    statusUrl: `/api/bulk-operations/${record.id}`,
-    exportUrl: record.kind === 'export' ? `/api/bulk-operations/${record.id}/export` : null,
-  }
-}
-
-export function toBulkErrorGroupDTO(group: BulkErrorGroup): BulkErrorGroupDTO {
-  return { code: group.code, message: group.message, count: group.count }
-}
-
-export function toBulkOperationItemDTO(item: BulkOperationItemRecord): BulkOperationItemDTO {
-  return {
-    id: item.id,
-    assetId: item.assetId,
-    position: item.position,
-    filename: item.filename,
-    relativePath: item.relativePath,
-    sizeBytes: item.sizeBytes,
-    state: item.state,
-    errorCode: item.errorCode,
-    errorMessage: item.errorMessage,
-    attempts: item.attempts,
-    updatedAt: new Date(item.updatedAt).toISOString(),
-  }
-}
-
-export function toBulkOperationDetailDTO(
-  record: BulkOperationRecord,
-  counts: BulkOperationCounts,
-  groups: BulkErrorGroup[],
-  items: BulkOperationItemRecord[],
-): BulkOperationDetailDTO {
-  return {
-    ...toBulkOperationDTO(record, counts),
-    errorGroups: groups.map(toBulkErrorGroupDTO),
-    items: items.map(toBulkOperationItemDTO),
   }
 }

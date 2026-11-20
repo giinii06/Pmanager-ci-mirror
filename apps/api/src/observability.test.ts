@@ -294,6 +294,16 @@ describe('diagnostics', () => {
   })
 })
 
+describe('removed features', () => {
+  test('retired bulk, playlist and smart album API routes return 404', async () => {
+    const h = await createHarness()
+    for (const url of ['/api/bulk-operations', '/api/playlists', '/api/smart-albums']) {
+      const response = await h.app.inject({ method: 'GET', url, headers: h.headers })
+      expect(response.statusCode).toBe(404)
+    }
+  })
+})
+
 describe('cache cleanup', () => {
   async function seedCache(h: Awaited<ReturnType<typeof createHarness>>): Promise<void> {
     await mkdir(path.join(h.config.cacheDir, 'thumbs', 'a1', 'v1'), { recursive: true })
