@@ -18,6 +18,8 @@ unit-tests:
     - apt-get update -qq && apt-get install -y -qq ffmpeg
     - bun install --frozen-lockfile
   script:
+    # CI checks out sources as root; a few fixture tests chmod source files.
+    - chown -R bun:bun .
     # Permissions tests must not run as root: root bypasses chmod(000).
     - su -s /bin/sh bun -c 'LOG_LEVEL=error bun test'
 
