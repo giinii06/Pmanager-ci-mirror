@@ -38,6 +38,9 @@ import type {
   PlayEventResultDTO,
   PlayEventType,
   PlaySessionDTO,
+  SearchIndexBuildDTO,
+  SearchIndexGcPreviewDTO,
+  SearchIndexStatusDTO,
   PlaybackProgressDTO,
   PlaylistAssetsDTO,
   PlaylistDTO,
@@ -378,6 +381,16 @@ export const api = {
     `/api/system/diagnostics?format=${format}&download=1`,
   metrics: () => request<SystemMetricsDTO>('/api/system/metrics'),
   cacheInventory: () => request<CacheInventoryDTO>('/api/system/cache'),
+  searchIndex: () =>
+    request<{ status: SearchIndexStatusDTO; builds: SearchIndexBuildDTO[] }>(
+      '/api/system/search-index',
+    ),
+  rebuildSearchIndex: () =>
+    request<SearchIndexBuildDTO>('/api/system/search-index/rebuild', { method: 'POST' }),
+  searchIndexGcPreview: () =>
+    request<SearchIndexGcPreviewDTO>('/api/system/search-index/gc/preview'),
+  cleanSearchIndexBuilds: () =>
+    request<{ deleted: number }>('/api/system/search-index/gc', { method: 'POST' }),
   previewCacheCleanup: () =>
     request<CacheCleanupPreviewDTO>('/api/system/cache/preview', { method: 'POST' }),
   cleanCache: (generation: string) =>

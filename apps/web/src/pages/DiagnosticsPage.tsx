@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
-import type { DiagnosticsReportDTO } from '@mediavault/shared'
+import type { DiagnosticsReportDTO, SearchIndexBuildDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { formatAgo, formatBytes, formatCount, formatDate } from '../lib/format'
+import { useUi } from '../store/ui'
 import { Button } from '../components/ui/Button'
+import { Dialog } from '../components/ui/Dialog'
 import { PageHeading } from '../components/PageHeading'
 import { MetricPill, Section } from '../components/ui/Section'
 import { Spinner } from '../components/ui/Spinner'
@@ -14,6 +17,25 @@ const FLAG_LABEL: Record<keyof DiagnosticsReportDTO['flags'], string> = {
   bulkOperations: '일괄 작업',
   notifications: '알림',
   searchFts: '검색 FTS',
+}
+
+const BUILD_STATE_LABEL: Record<SearchIndexBuildDTO['state'], string> = {
+  building: '만드는 중',
+  ready: '준비됨',
+  superseded: '대체됨',
+  failed: '실패',
+}
+
+const BUILD_SOURCE_LABEL: Record<SearchIndexBuildDTO['source'], string> = {
+  bootstrap: '자동 생성',
+  operator: '직접 실행',
+  'boot-repair': '부팅 복구',
+}
+
+const FALLBACK_LABEL: Record<'fts' | 'like-fallback' | 'unavailable', string> = {
+  fts: '색인 사용',
+  'like-fallback': 'LIKE 대체',
+  unavailable: '색인 없음',
 }
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -27,6 +49,224 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function downloadClass(): string {
   return 'inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-line-strong bg-raised px-3 text-[13px] text-ink transition-colors hover:border-[#3a3f4b] hover:bg-[#242832]'
+}
+
+function StateBadge({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <span
+      className={
+        ok
+          ? 'rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10.5px] text-emerald-500'
+          : 'rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10.5px] text-amber-500'
+      }
+    >
+      {label}
+    </span>
+  )
+}
+
+/**
+ * The index is a build record, not a file: the panel shows which build is live,
+ * whether this process can use it, and what has been written since.
+ */
+function SearchIndexPanel() {
+  const queryClient = useQueryClient()
+  const toast = useUi((state) => state.toast)
+  const [rebuildOpen, setRebuildOpen] = useState(false)
+  const [gcOpen, setGcOpen] = useState(false)
+
+  const index = useQuery({
+    queryKey: ['search-index'],
+    queryFn: () => api.searchIndex(),
+    refetchInterval: 30_000,
+    retry: false,
+  })
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['search-index'] })
+    queryClient.invalidateQueries({ queryKey: ['diagnostics'] })
+  }
+  const failed = (fallback: string) => (error: unknown) =>
+    toast(error instanceof Error ? error.message : fallback, 'error')
+
+  const rebuild = useMutation({
+    mutationFn: () => api.rebuildSearchIndex(),
+    onSuccess: (build) => {
+      setRebuildOpen(false)
+      toast(`색인 build를 마쳤습니다. 문서 ${formatCount(build.assets)}개.`)
+      refresh()
+    },
+    onError: failed('색인 build에 실패했습니다'),
+  })
+  const preview = useMutation({
+    mutationFn: () => api.searchIndexGcPreview(),
+    onSuccess: () => setGcOpen(true),
+    onError: failed('정리 후보를 불러오지 못했습니다'),
+  })
+  const clean = useMutation({
+    mutationFn: () => api.cleanSearchIndexBuilds(),
+    onSuccess: (result) => {
+      setGcOpen(false)
+      toast(`build 기록 ${formatCount(result.deleted)}개를 정리했습니다.`)
+      refresh()
+    },
+    onError: failed('build 기록을 정리하지 못했습니다'),
+  })
+
+  const status = index.data?.status
+  const active = status?.active ?? null
+
+  return (
+    <Section
+      title="검색 색인"
+      description="검색이 지금 무엇을 읽는지와 마지막 build가 덮은 범위입니다."
+      actions={
+        <>
+          <Button size="sm" onClick={() => setRebuildOpen(true)} disabled={rebuild.isPending}>
+            <RefreshCw size={12} className={rebuild.isPending ? 'animate-spin' : undefined} />
+            색인 다시 만들기
+          </Button>
+          <Button size="sm" onClick={() => preview.mutate()} disabled={preview.isPending}>
+            정리 후보
+          </Button>
+        </>
+      }
+    >
+      {index.isPending ? (
+        <div className="flex justify-center py-10">
+          <Spinner />
+        </div>
+      ) : index.isError || !status ? (
+        <p className="px-4 py-6 text-center text-[12px] text-muted">
+          색인 상태를 읽지 못했습니다.
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+            <StateBadge label="프로세스 준비" ok={status.processReady} />
+            <StateBadge label="트리거" ok={status.triggersArmed} />
+            <StateBadge label="색인 유지" ok={status.intact} />
+            <span className="ml-auto text-[11px] text-muted">{FALLBACK_LABEL[status.fallback]}</span>
+          </div>
+          <dl className="px-4 pb-2">
+            <Row label="활성 build" value={active ? active.id.slice(0, 8) : '없음'} />
+            <Row label="출처" value={active ? BUILD_SOURCE_LABEL[active.source] : '-'} />
+            <Row label="검증" value={active?.verifiedAt ? formatAgo(active.verifiedAt) : '-'} />
+            <Row
+              label="문서"
+              value={status.live ? `${formatCount(status.live.assets)} · ${formatCount(status.live.segments)}` : '-'}
+            />
+            <Row
+              label="워터마크"
+              value={
+                status.live
+                  ? `${formatCount(status.live.assetWatermark)} · ${formatCount(status.live.segmentWatermark)}`
+                  : '-'
+              }
+            />
+            <Row
+              label="build 이후 행"
+              value={
+                status.rowsSinceBuild
+                  ? `${formatCount(status.rowsSinceBuild.assets)} · ${formatCount(status.rowsSinceBuild.segments)}`
+                  : '-'
+              }
+            />
+            <Row label="마지막 질의 실패" value={status.lastQueryFailure ? formatAgo(status.lastQueryFailure.at) : '-'} />
+          </dl>
+          {status.recent.length === 0 ? (
+            <p className="px-4 py-4 text-[12px] text-muted">기록된 build가 없습니다.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead className="border-y border-line text-[11px] text-muted">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium">build</th>
+                    <th className="px-3 py-2 text-left font-medium">상태</th>
+                    <th className="px-3 py-2 text-left font-medium">출처</th>
+                    <th className="px-3 py-2 text-right font-medium">문서</th>
+                    <th className="px-4 py-2 text-right font-medium">시작</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {status.recent.map((build) => (
+                    <tr key={build.id} className="border-b border-line/60 last:border-0">
+                      <td className="px-4 py-2 font-mono text-[11px] text-ink">{build.id.slice(0, 8)}</td>
+                      <td className="px-3 py-2 text-muted">{BUILD_STATE_LABEL[build.state]}</td>
+                      <td className="px-3 py-2 text-muted">{BUILD_SOURCE_LABEL[build.source]}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted">{formatCount(build.assets)}</td>
+                      <td className="px-4 py-2 text-right text-muted">{formatAgo(build.startedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {active?.lastError ? (
+            <p className="px-4 py-3 text-[11.5px] text-rose-500">{active.lastError}</p>
+          ) : null}
+        </>
+      )}
+
+      <Dialog
+        open={rebuildOpen}
+        onClose={() => setRebuildOpen(false)}
+        title="색인을 다시 만들까요?"
+        description="지금 걸린 검색은 끝까지 기다립니다. 보통 1초 안에 끝납니다."
+        footer={
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setRebuildOpen(false)}>
+              취소
+            </Button>
+            <Button size="sm" onClick={() => rebuild.mutate()} disabled={rebuild.isPending}>
+              다시 만들기
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[12.5px] text-muted">
+          실패하면 지금 색인이 그대로 남습니다. build 기록은 남아 진단에 나옵니다.
+        </p>
+      </Dialog>
+
+      <Dialog
+        open={gcOpen}
+        onClose={() => setGcOpen(false)}
+        title="오래된 build 기록 정리"
+        description="보관 기간이 지난 기록만 지웁니다. 지금 쓰는 build는 지우지 않습니다."
+        footer={
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setGcOpen(false)}>
+              취소
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => clean.mutate()}
+              disabled={clean.isPending || (preview.data?.total ?? 0) === 0}
+            >
+              {formatCount(preview.data?.total ?? 0)}개 삭제
+            </Button>
+          </>
+        }
+      >
+        {preview.data && preview.data.builds.length > 0 ? (
+          <ul className="space-y-1 text-[12px]">
+            {preview.data.builds.map((build) => (
+              <li key={build.id} className="flex items-center justify-between gap-3 text-muted">
+                <span className="font-mono text-[11px] text-ink">{build.id.slice(0, 8)}</span>
+                <span>{BUILD_STATE_LABEL[build.state]}</span>
+                <span>{BUILD_SOURCE_LABEL[build.source]}</span>
+                <span className="tabular-nums">{formatAgo(build.startedAt)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-[12.5px] text-muted">정리할 기록이 없습니다.</p>
+        )}
+      </Dialog>
+    </Section>
+  )
 }
 
 export function DiagnosticsPage() {
@@ -264,6 +504,8 @@ export function DiagnosticsPage() {
               </table>
             </div>
           </Section>
+
+          <SearchIndexPanel />
 
           <Section title="알림 · 기능 플래그" description="알림 인박스와 각 기능의 활성 상태입니다.">
             <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-4">

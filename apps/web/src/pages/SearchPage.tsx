@@ -93,7 +93,7 @@ export function SearchPage({ query }: { query: string }) {
       ) : results.data.hits.length === 0 ? (
         <EmptyState
           title="검색 결과가 없습니다"
-          body="장면은 아직 색인되지 않았을 수 있습니다. 다른 낱말로도 찾아보세요."
+          body="다른 낱말이나 더 짧은 낱말로 찾아보세요."
           icon={<Images size={20} />}
         />
       ) : (

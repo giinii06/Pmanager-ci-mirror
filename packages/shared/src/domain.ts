@@ -1212,6 +1212,57 @@ export interface CacheCleanupResultDTO {
   failed: number
 }
 
+/** One attempt at making a search index the one search reads. */
+export interface SearchIndexBuildDTO {
+  id: string
+  kind: 'fts' | 'faiss'
+  state: 'building' | 'ready' | 'superseded' | 'failed'
+  source: 'bootstrap' | 'operator' | 'boot-repair'
+  assets: number
+  segments: number
+  /** Highest content rowid the build covered, per corpus. */
+  assetWatermark: number
+  segmentWatermark: number
+  modelSha256: string | null
+  pipelineVersion: string | null
+  dimensions: number | null
+  startedAt: string
+  finishedAt: string | null
+  verifiedAt: string | null
+  supersededAt: string | null
+  lastError: string | null
+}
+
+export interface SearchIndexStatusDTO {
+  kind: 'fts'
+  active: SearchIndexBuildDTO | null
+  /** How this API process's boot left the index. */
+  mode: 'adopted' | 'bootstrapped' | 'repaired' | 'off' | null
+  /** This API process verified the index on its own handle. */
+  processReady: boolean
+  triggersArmed: boolean
+  /** Both corpora are still FTS5 tables. */
+  intact: boolean
+  /** Which path a query takes right now, not why it is in that state. */
+  fallback: 'fts' | 'like-fallback' | 'unavailable'
+  live: {
+    assets: number
+    segments: number
+    assetWatermark: number
+    segmentWatermark: number
+  } | null
+  /** Content rows written since the active build, from the watermarks. */
+  rowsSinceBuild: { assets: number; segments: number } | null
+  /** Process-local: the last time this handle's fast path threw. */
+  lastQueryFailure: { at: string; message: string } | null
+  recent: SearchIndexBuildDTO[]
+}
+
+export interface SearchIndexGcPreviewDTO {
+  builds: SearchIndexBuildDTO[]
+  total: number
+}
+
 export interface DiagnosticsAppSectionDTO {
   version: string
   startedAt: string
@@ -1293,6 +1344,7 @@ export interface DiagnosticsReportDTO {
   backups: DiagnosticsBackupSectionDTO
   storage: DiagnosticsStorageSectionDTO
   caches: CacheInventoryDTO
+  searchIndex: SearchIndexStatusDTO
   notifications: DiagnosticsNotificationSectionDTO
   flags: DiagnosticsFlagsDTO
 }

@@ -23,6 +23,7 @@ import { scanCache } from './cache-inventory'
 import type { AppContext } from './context'
 import { toJobDTO, toWorkQueueDTO, toWorkerHeartbeatDTO } from './dto'
 import { checkLibraryHealth } from './library-health'
+import { readSearchIndexStatus, toSearchIndexStatusDTO } from './search-index'
 import { sqliteIntegrity } from './sqlite-health'
 import { measureTree } from './tree-size'
 
@@ -230,6 +231,7 @@ export async function buildDiagnosticsReport(ctx: AppContext): Promise<Diagnosti
     },
     storage,
     caches: cache.inventory,
+    searchIndex: toSearchIndexStatusDTO(readSearchIndexStatus(ctx)),
     notifications: notificationCounts,
     flags: {
       fileMutation: ctx.config.fileMutationEnabled,
@@ -244,6 +246,68 @@ export async function buildDiagnosticsReport(ctx: AppContext): Promise<Diagnosti
 function cell(value: unknown): string {
   if (value === null || value === undefined) return '-'
   return String(value).replaceAll('|', '\\|').replaceAll('\n', ' ')
+}
+
+function shortId(id: string): string {
+  return id.slice(0, 8)
+}
+
+function ageHours(from: string | null, now: string): number | null {
+  if (from === null) return null
+  return Math.round((Date.parse(now) - Date.parse(from)) / 3_600_000)
+}
+
+/** What search is serving, and why it is serving it. */
+function searchIndexSection(report: DiagnosticsReportDTO): string[] {
+  const index = report.searchIndex
+  const active = index.active
+  const live = index.live
+  return [
+    '## Search index',
+    '',
+    ...table(
+      ['field', 'value'],
+      [
+        ['mode', index.mode],
+        ['state', active?.state ?? 'none'],
+        ['build', active === null ? '-' : shortId(active.id)],
+        ['source', active?.source ?? '-'],
+        ['verifiedAgeHours', ageHours(active?.verifiedAt ?? null, report.generatedAt)],
+        [
+          'documents',
+          live === null ? '-' : `${live.assets} assets / ${live.segments} segments`,
+        ],
+        [
+          'watermark',
+          live === null ? '-' : `${live.assetWatermark} / ${live.segmentWatermark}`,
+        ],
+        [
+          'rowsSinceBuild',
+          index.rowsSinceBuild === null
+            ? '-'
+            : `${index.rowsSinceBuild.assets} assets / ${index.rowsSinceBuild.segments} segments`,
+        ],
+        ['triggersArmed', index.triggersArmed],
+        ['processReady', index.processReady],
+        ['intact', index.intact],
+        ['fallback', index.fallback],
+        ['lastError', active?.lastError],
+      ],
+    ),
+    '',
+    ...table(
+      ['build', 'state', 'source', 'startedAt', 'assets', 'segments', 'lastError'],
+      index.recent.map((build) => [
+        shortId(build.id),
+        build.state,
+        build.source,
+        build.startedAt,
+        build.assets,
+        build.segments,
+        build.lastError,
+      ]),
+    ),
+  ]
 }
 
 function table(headers: string[], rows: unknown[][]): string[] {
@@ -428,6 +492,8 @@ export function renderDiagnosticsMarkdown(report: DiagnosticsReportDTO): string 
     ),
     '',
     `totalBytes: ${report.caches.totalBytes}`,
+    '',
+    ...searchIndexSection(report),
     '',
     '## Notifications',
     '',

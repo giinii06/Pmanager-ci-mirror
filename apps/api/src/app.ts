@@ -18,6 +18,7 @@ import { registerNotificationRoutes } from './routes/notifications'
 import { registerPlaybackRoutes } from './routes/playback'
 import { registerPlaylistRoutes } from './routes/playlists'
 import { registerSceneRoutes } from './routes/scenes'
+import { registerSearchIndexRoutes } from './routes/search-index'
 import { registerSmartAlbumRoutes } from './routes/smart-albums'
 import { registerSystemRoutes } from './routes/system'
 import { registerTagRoutes } from './routes/tags'
@@ -189,6 +190,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerWorkerTranslationRoutes(app, ctx)
   registerNotificationRoutes(app, ctx)
   registerDiagnosticsRoutes(app, ctx)
+  registerSearchIndexRoutes(app, ctx)
   registerSystemRoutes(app, ctx)
 
   return app

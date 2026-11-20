@@ -47,6 +47,17 @@ export interface SearchFtsStatus {
 const ready = new WeakSet<Db>()
 
 /**
+ * How the last reconcile of this handle left the index. Process-local and
+ * per-handle, like readiness: it answers "why did this process rebuild" and is
+ * not a fact about the database.
+ */
+const modes = new WeakMap<Db, SearchFtsMode>()
+
+export function searchFtsMode(db: Db): SearchFtsMode | null {
+  return modes.get(db) ?? null
+}
+
+/**
  * Whether this handle can use the trigram index. Only a verification that
  * passed on the same `Db` turns it on, so a caller that skipped the setup falls
  * back to the LIKE oracle instead of trusting an index of unknown completeness.
@@ -101,6 +112,7 @@ export function configureSearchFts(db: Db, enabled: boolean): SearchFtsStatus {
   const now = Date.now()
   const off = (reason: string): SearchFtsStatus => {
     disarmSearchFts(db)
+    modes.set(db, 'off')
     return {
       enabled: false,
       mode: 'off',
@@ -117,17 +129,19 @@ export function configureSearchFts(db: Db, enabled: boolean): SearchFtsStatus {
     buildId: string,
     counts: SearchIndexCounts,
     verifyMs: number,
-  ): SearchFtsStatus => ({
-    enabled: true,
-    mode,
-    reason: null,
-    buildId,
-    assets: counts.assets,
-    segments: counts.segments,
-    rebuiltMs: Math.round((performance.now() - startedAt) * 10) / 10,
-    verifyMs,
-  })
-
+  ): SearchFtsStatus => {
+    modes.set(db, mode)
+    return {
+      enabled: true,
+      mode,
+      reason: null,
+      buildId,
+      assets: counts.assets,
+      segments: counts.segments,
+      rebuiltMs: Math.round((performance.now() - startedAt) * 10) / 10,
+      verifyMs,
+    }
+  }
   if (!enabled) {
     try {
       db.transaction(() => {
