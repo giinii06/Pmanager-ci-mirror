@@ -58,6 +58,6 @@
 기능 플래그를 켜기 전에 남은 항목입니다.
 
 1. `NOTIFICATIONS_ENABLED=1`과 실제 Discord 웹훅으로 알림 1건 전달.
-2. 라이브 라이브러리에서 캐시 정리 1회 (미리보기 → 실행).
-3. 삭제·벌크: 2026-11-21 리허설로 검증을 마쳤고, `api`/`worker`는 같은 날 `423bb3a`로 재빌드해 수정본이 이미 라이브에 있습니다. 남은 것은 `FILE_MUTATION_ENGINE_ENABLED=1`, `BULK_OPERATIONS_ENABLED=1`로 전환하는 운영 작업입니다(현재 둘 다 `0`).
+2. ~~라이브 라이브러리에서 캐시 정리 1회~~ 2026-11-21 완료: 미리보기 178개·1,312,617 bytes, 실행 결과 `deletedFiles 178`, `failed 0`, 감사 행 `1fzg0r75a9dfg1x0`.
+3. 삭제·벌크: 2026-11-21 리허설로 검증을 마친 뒤 라이브에서 `FILE_MUTATION_ENGINE_ENABLED=1`, `BULK_OPERATIONS_ENABLED=1`로 전환했습니다. `capabilities`가 둘 다 `true`이고, 읽기 전용 export 미리보기 `200`, 없는 자산 삭제 `404`를 확인했습니다.
 4. HLS: `HLS_GENERATIONS_ENABLED=1`은 이미 라이브입니다. 리허설에서 생성·재생·supersede·GC를 확인했고, 남은 것은 라이브 라이브러리에서의 실제 사용과 `hls-rehearsal` 픽스처 라이브러리 정리입니다.
