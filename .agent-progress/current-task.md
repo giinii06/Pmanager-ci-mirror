@@ -4,7 +4,7 @@
 - **Repository Root:** `/Users/xo/cod/Pmanager` (`branch: main`)
 - **Baseline Commit:** `aceb0ade51f464c94e8f148d6a9da3445e7a6d37`
 - **Current HEAD:** `5da7803` (the live rollout record is committed on top of it).
-- **Live Win11 Host:** `media-server` (`192.168.0.27`, `~/Pmanager`), schema `v26`, `14,602` assets (`14,601` active), `3` libraries all `ONLINE` (`d` 14,497, `D 드라이브` 104 after the 01:18 scan, `hls-rehearsal` 1); api flags `HLS_GENERATIONS_ENABLED=1`, `FILE_MUTATION_ENGINE_ENABLED=1`, `BULK_OPERATIONS_ENABLED=1`, `NOTIFICATIONS_ENABLED=0`.
+- **Live Win11 Host:** `media-server` (`192.168.0.27`, `~/Pmanager`), schema `v26`, `14,856` assets (`14,855` active), `3` libraries all `ONLINE` (`d` 14,497, `D 드라이브` 358 after the 01:18 scan and its 3 archive extractions, `hls-rehearsal` 1); api flags `HLS_GENERATIONS_ENABLED=1`, `FILE_MUTATION_ENGINE_ENABLED=1`, `BULK_OPERATIONS_ENABLED=1`, `NOTIFICATIONS_ENABLED=0`.
 - **PR 03 Status:** Committed as `55e7549`, migrated live (`16 -> 17`), engine off: delete routes return `503`, `file_mutations` is empty, a manual scan removed nothing.
 - **PR 04 Status:** Committed as `deb605c`, migrated live (`17 -> 18`), flag off: HLS tables empty, the legacy playlist still serves `200`, and the player polls the status route.
 - **PR 05 Status:** Committed as `be9071f` with the `d9fbf87` nginx fix, migrated live (`18 -> 19`). Sessions are server-side rows keyed by an HMAC digest; the old HMAC cookies are rejected, a minted session authenticates and revokes on logout, and the origin check passes for the LAN origin. All browsers must sign in once with their existing password.
