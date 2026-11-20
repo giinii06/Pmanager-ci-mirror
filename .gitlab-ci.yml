@@ -18,7 +18,8 @@ unit-tests:
     - apt-get update -qq && apt-get install -y -qq ffmpeg
     - bun install --frozen-lockfile
   script:
-    - bun test
+    # Permissions tests must not run as root: root bypasses chmod(000).
+    - su -s /bin/sh bun -c 'LOG_LEVEL=error bun test'
 
 web-build:
   stage: verify
