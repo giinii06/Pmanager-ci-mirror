@@ -20,6 +20,7 @@ import { DuplicatesPage } from './pages/DuplicatesPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { SearchPage } from './pages/SearchPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { JournalIndexPage, JournalEditPage } from './pages/JournalPage'
 
 function Splash() {
   return (
@@ -87,6 +88,8 @@ export function App() {
           <Route path="duplicates" element={<DuplicatesPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="journal" element={<JournalIndexPage />} />
+          <Route path="journal/:id" element={<JournalEditPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

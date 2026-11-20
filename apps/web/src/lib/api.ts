@@ -19,6 +19,9 @@ import type {
   HostDriveDTO,
   HlsStatusDTO,
   JobDTO,
+  JournalEntryDTO,
+  JournalEntrySummaryDTO,
+  JournalMentionDTO,
   JobSummaryDTO,
   LibraryDTO,
   LibraryHealthDetailDTO,
@@ -227,6 +230,19 @@ export const api = {
       headers: { 'Idempotency-Key': requestKey },
     }),
   getFileOperation: (id: string) => request<FileOperationDTO>(`/api/file-operations/${id}`),
+
+  journalEntries: () => request<{ items: JournalEntrySummaryDTO[] }>('/api/journal'),
+  createJournalEntry: () => request<JournalEntryDTO>('/api/journal', { method: 'POST' }),
+  journalEntry: (id: string) => request<JournalEntryDTO>(`/api/journal/${encodeURIComponent(id)}`),
+  updateJournalEntry: (id: string, body: { title: string; body: string }) =>
+    request<JournalEntryDTO>(`/api/journal/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteJournalEntry: (id: string) =>
+    request<void>(`/api/journal/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  journalMentions: (q: string) =>
+    request<{ items: JournalMentionDTO[] }>(`/api/journal/mentions?q=${encodeURIComponent(q)}`),
 
   tags: () => request<{ tags: TagSummaryDTO[] }>('/api/tags'),
   createTag: (name: string) =>

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { HoverPreview } from './HoverPreview'
@@ -14,6 +14,7 @@ const Lightbox = lazy(() =>
 export function AppShell() {
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const setSidebarOpen = useUi((state) => state.setSidebarOpen)
+  const journalOpen = useLocation().pathname.startsWith('/journal')
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -26,7 +27,7 @@ export function AppShell() {
         />
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar />
+        {!journalOpen ? <Topbar /> : null}
         <main className="min-h-0 flex-1">
           <Outlet />
         </main>

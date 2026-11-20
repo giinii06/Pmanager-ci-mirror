@@ -127,3 +127,21 @@
     font: inherit;
   }
 }
+
+.journal-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--color-faint);
+  pointer-events: none;
+}
+
+.journal-editor [data-journal-mention] {
+  display: inline;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  color: var(--color-accent);
+  padding: 2px 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 550;
+}
+

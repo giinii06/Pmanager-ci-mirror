@@ -1,11 +1,13 @@
 import { useEffect } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Aperture,
   Copy,
   Film,
   Images,
+  BookOpenText,
+  Plus,
   Loader2,
   Monitor,
   Moon,
@@ -23,6 +25,8 @@ import { useUi, type ThemeMode } from '../store/ui'
 
 export function Sidebar() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const toast = useUi((state) => state.toast)
   const location = useLocation()
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const setSidebarOpen = useUi((state) => state.setSidebarOpen)
@@ -46,6 +50,20 @@ export function Sidebar() {
   const inPhotos = location.pathname === '/' || location.pathname.startsWith('/folders')
   const inVideos = location.pathname.startsWith('/videos')
   const inDuplicates = location.pathname.startsWith('/duplicates')
+  const inJournal = location.pathname.startsWith('/journal')
+  const journal = useQuery({
+    queryKey: ['journal', 'list'],
+    queryFn: api.journalEntries,
+    enabled: inJournal,
+  })
+  const createJournal = useMutation({
+    mutationFn: api.createJournalEntry,
+    onSuccess: (entry) => {
+      void queryClient.invalidateQueries({ queryKey: ['journal', 'list'] })
+      navigate(`/journal/${entry.id}`)
+    },
+    onError: () => toast('새 일지를 만들지 못했습니다.', 'error'),
+  })
 
   return (
     <aside
@@ -212,6 +230,60 @@ export function Sidebar() {
           <Copy size={16} className={inDuplicates ? 'text-accent' : 'text-faint'} />
           <span className={cn('flex-1', collapsed && 'md:hidden')}>중복 검토</span>
         </NavLink>
+
+        <div>
+          <div className="flex items-center gap-0.5">
+            <NavLink
+              to="/journal"
+              title="일지"
+              className={() =>
+                cn(
+                  'flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
+                  collapsed && 'md:justify-center md:px-0',
+                  inJournal ? 'bg-accent/12 text-accent' : 'text-muted hover:bg-raised/70 hover:text-ink',
+                )
+              }
+            >
+              <BookOpenText size={16} className={inJournal ? 'text-accent' : 'text-faint'} />
+              <span className={cn('flex-1', collapsed && 'md:hidden')}>일지</span>
+            </NavLink>
+            <button
+              type="button"
+              aria-label="새 일지 만들기"
+              title="새 일지 만들기"
+              disabled={createJournal.isPending}
+              onClick={() => createJournal.mutate()}
+              className={cn(
+                'rounded-md p-1.5 text-faint hover:bg-raised hover:text-ink disabled:opacity-40',
+                collapsed && 'md:hidden',
+              )}
+            >
+              {createJournal.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            </button>
+          </div>
+          {inJournal && !collapsed && journal.data?.items.length ? (
+            <div className="mt-1 space-y-0.5 pl-6 pr-1 md:block">
+              {journal.data.items.slice(0, 12).map((entry) => (
+                <NavLink
+                  key={entry.id}
+                  to={`/journal/${entry.id}`}
+                  className={({ isActive }) =>
+                    cn(
+                      'block truncate rounded-md px-2 py-1 text-[12px] transition-colors',
+                      isActive ? 'bg-raised font-medium text-ink' : 'text-muted hover:bg-raised/60 hover:text-ink',
+                    )
+                  }
+                  title={entry.title || '제목 없음'}
+                >
+                  <span className="mr-1.5 text-faint">
+                    {new Date(entry.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+                  </span>
+                  {entry.title || '제목 없음'}
+                </NavLink>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
         <NavLink
           to="/settings"
