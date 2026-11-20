@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | version | `APP_VERSION`과 루트 `package.json`의 `version` 일치 | `1.0.0` |
 | typecheck | 6개 워크스페이스 + 루트 프로젝트 | exit `0` |
-| test | `bun test` 전체 | `719 pass, 0 fail`, 81개 파일, 4,646 expect |
+| test | `bun test` 전체 | `720 pass, 0 fail`, 81개 파일, 4,651 expect |
 | build | `apps/web` Vite 프로덕션 빌드 | exit `0`, 2,971 modules, 223 ms |
 | smoke | 실제 API·워커 기동 후 HTTP 확인 | `Smoke test passed.` |
 
