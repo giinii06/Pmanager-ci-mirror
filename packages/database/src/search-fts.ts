@@ -215,8 +215,12 @@ export function configureSearchFts(db: Db, enabled: boolean): SearchFtsStatus {
     if (active) return done('adopted', active.id, active.counts, verifyMs)
     const build = startSearchIndexBuild(db, { kind: 'fts', source: 'bootstrap', now })
     const counts = searchIndexCounts(db)
-    finishSearchIndexBuild(db, build.id, counts, now)
-    activateSearchIndexBuild(db, build.id, now)
+    // The ready stamp and the pointer move together. Split, a failure between
+    // them leaves a ready row that no pointer names and no GC collects.
+    db.transaction(() => {
+      finishSearchIndexBuild(db, build.id, counts, now)
+      activateSearchIndexBuild(db, build.id, now)
+    })()
     return done('bootstrapped', build.id, counts, verifyMs)
   }
 

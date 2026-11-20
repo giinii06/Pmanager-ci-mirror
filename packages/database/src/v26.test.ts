@@ -472,6 +472,29 @@ describe('a rebuild that fails leaves the previous build serving', () => {
   })
 })
 
+describe('a bootstrap that cannot move the pointer', () => {
+  test('leaves no ready row behind, and the next boot bootstraps', () => {
+    const db = seedSearch()
+    // The v26 upgrade shape: a verified index with no catalog rows yet.
+    configureSearchFts(db, true)
+    db.exec('DELETE FROM search_index_active; DELETE FROM search_index_builds;')
+
+    db.exec(`CREATE TRIGGER test_block_bootstrap BEFORE INSERT ON search_index_active
+             BEGIN SELECT RAISE(ABORT, 'bootstrap blocked'); END`)
+    expect(() => configureSearchFts(db, true)).toThrow(/bootstrap blocked/)
+    db.exec('DROP TRIGGER test_block_bootstrap')
+
+    expect(
+      db.query<{ n: number }, []>("SELECT count(*) AS n FROM search_index_builds WHERE state = 'ready'").get()?.n,
+    ).toBe(0)
+    expect(db.query<{ n: number }, []>('SELECT count(*) AS n FROM search_index_active').get()?.n).toBe(0)
+
+    const second = configureSearchFts(db, true)
+    expect(second.mode).toBe('bootstrapped')
+    expect(getActiveSearchIndexBuild(db, 'fts')?.state).toBe('ready')
+  })
+})
+
 describe('a rebuild is idempotent', () => {
   test('twice over the same content gives the same counts, watermarks and results', () => {
     const db = seedSearch()
