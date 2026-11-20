@@ -32,7 +32,6 @@ import type {
   SearchIndexBuildDTO,
   SearchIndexGcPreviewDTO,
   SearchIndexStatusDTO,
-  PlaybackProgressDTO,
   ReviewDTO,
   SemanticSearchDTO,
   StatsDTO,
@@ -263,8 +262,6 @@ export const api = {
     }),
   deleteReview: (id: string) => request<void>(`/api/assets/${id}/review`, { method: 'DELETE' }),
 
-  progress: (id: string) =>
-    request<{ progress: PlaybackProgressDTO | null }>(`/api/playback/${id}`),
   startPlaySession: (assetId: string, fileVersion: number, clientSessionKey: string) =>
     request<PlaySessionDTO>('/api/play-sessions', {
       method: 'POST',

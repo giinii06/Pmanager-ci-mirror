@@ -6,7 +6,7 @@ import type { AssetDTO, HlsStatusDTO, SubtitleTrackDTO } from '@mediavault/share
 import { api, ApiError } from '../lib/api'
 import { patchAssetCounters } from '../lib/cachePatch'
 import { PlaybackReporter } from '../lib/playback'
-import { ResumePosition } from '../lib/resume'
+import { StartPosition } from '../lib/start-position'
 import { cn } from '../lib/cn'
 import { formatDuration } from '../lib/format'
 import {
@@ -40,7 +40,7 @@ export function VideoPlayer({
   videoRef?: RefObject<HTMLVideoElement | null>
   /** Fills a caller-provided frame instead of sizing itself against the viewport. */
   fill?: boolean
-  /** A search hit's second, which wins over the saved resume position. */
+  /** Optional explicit timestamp from a search hit or bookmark. Normal opens start at 0. */
   startMs?: number | null
   onPausedChange?: (paused: boolean) => void
 }) {
@@ -69,11 +69,10 @@ export function VideoPlayer({
   const [volume, setVolume] = useState(1)
   const [captionFontSize, setCaptionFontSize] = useState(16)
   const [captionScale, setCaptionScale] = useState(storedCaptionScale)
-  // The resume candidate only wins while nothing has moved the playhead. An
-  // explicit start (a search hit) is ready from the first render.
-  const [resume] = useState(() => new ResumePosition(startMs))
-  // A direct-to-HLS switch replaces the media source; the old playhead is
-  // carried over instead of re-reading a possibly older saved position.
+  // Only an explicitly requested timestamp can move the initial playhead.
+  // Recorded playback progress is never fetched or applied on a new open.
+  const [startPosition] = useState(() => new StartPosition(startMs))
+  // Direct-to-HLS fallback retains the position within the SAME playback session.
   const carryOver = useRef(0)
   const reporterRef = useRef<PlaybackReporter | null>(null)
   const appFullscreen = containerFullscreen || pseudoFullscreen
@@ -89,50 +88,20 @@ export function VideoPlayer({
     }
   }
 
-  const applyResume = useCallback(() => {
+  const applyStartPosition = useCallback(() => {
     const video = videoRef.current
     if (!video) return
-    // `take` marks the candidate applied before the playhead moves, so the
-    // resulting `seeking` event is not mistaken for a user seek.
-    const positionMs = resume.take(video.duration * 1000)
+    // Take an explicit timestamp at most once, after the media duration is known.
+    const positionMs = startPosition.take(video.duration * 1000)
     if (positionMs !== null) video.currentTime = positionMs / 1000
-  }, [resume, videoRef])
+  }, [startPosition, videoRef])
 
   useEffect(() => {
-    if (startMs && startMs > 0) {
-      resume.override(startMs)
-      applyResume()
-      return
+    if (startMs !== null && startMs > 0) {
+      startPosition.override(startMs)
+      applyStartPosition()
     }
-
-    let cancelled = false
-    const assetId = asset.id
-    const fileVersion = asset.fileVersion
-    api
-      .progress(assetId)
-      .then((result) => {
-        if (cancelled) return
-        // A user seek or an explicit start already owns the playhead.
-        if (resume.current !== 'pending') return
-        const progress = result.progress
-        if (!progress) {
-          resume.offer(0, false)
-          return
-        }
-        // A position saved for another file version describes different media.
-        const positionMs = resume.offer(
-          progress.positionMs,
-          progress.fileVersion === fileVersion,
-        )
-        if (positionMs !== null) applyResume()
-      })
-      .catch(() => {
-        if (!cancelled && resume.current === 'pending') resume.offer(0, false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [applyResume, asset.fileVersion, asset.id, resume, startMs])
+  }, [applyStartPosition, startMs, startPosition])
 
   useEffect(() => {
     if (!useHls) return
@@ -204,13 +173,13 @@ export function VideoPlayer({
     let lastProgressSave = 0
 
     const onLoadedMetadata = () => {
-      const positionMs = resume.take(video.duration * 1000)
+      const positionMs = startPosition.take(video.duration * 1000)
       if (positionMs !== null) {
         video.currentTime = positionMs / 1000
         return
       }
-      // A candidate that is still ready means the duration was not usable yet.
-      if (resume.current === 'ready') return
+      // The explicit timestamp must wait for usable duration metadata.
+      if (startPosition.current === 'ready') return
       // A replacement source (direct to HLS) resumes where the old one was.
       if (carryOver.current > 0) {
         const seconds = carryOver.current
@@ -218,8 +187,7 @@ export function VideoPlayer({
         if (Number.isFinite(video.duration) && seconds < video.duration - 1) {
           video.currentTime = seconds
         }
-        // The carried playhead outranks a saved record that has not arrived yet.
-        resume.userSeek()
+        startPosition.userSeek()
       }
     }
 
@@ -235,7 +203,7 @@ export function VideoPlayer({
     }
 
     const onSeeking = () => {
-      resume.userSeek()
+      startPosition.userSeek()
     }
 
     const onError = () => {
@@ -261,7 +229,7 @@ export function VideoPlayer({
       video.removeEventListener('error', onError)
       saveProgress()
     }
-  }, [asset.id, resume, retryToken, useHls])
+  }, [asset.id, startPosition, retryToken, useHls])
 
   useEffect(() => {
     const video = videoRef.current
