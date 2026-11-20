@@ -1,4 +1,4 @@
-# MediaVault 시스템 아키텍처 (Schema v22)
+# MediaVault 시스템 아키텍처 (Schema v26)
 
 MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engine)에서 상시 운영되며, macOS를 비롯한 LAN 브라우저에서 접속하는 셀프 호스팅 사진·동영상 라이브러리 서버입니다.
 
@@ -20,7 +20,11 @@ MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engin
   - 기동/주기 자동 복구 (`recovery.ts`): 만료 리스 복구, 고아 `scan_runs` 상태 정리, 임시 `.tmp` 정리, 썸네일 정합성 복구, `recovery_logs` 기록.
 - **데이터베이스 (`packages/database`)**: SQLite (`3.53.4` Linux 컨테이너 / `3.54.0` macOS) WAL + `PRAGMA synchronous = FULL` + `PRAGMA busy_timeout = 10000` (기동 락 재시도 포함).
 
-## 2. 데이터베이스 스키마 v14 주요 확장
+## 2. 데이터베이스 스키마 주요 확장 (v14 → v26)
+
+마이그레이션은 `packages/database/src/schema.ts`의 `MIGRATIONS[index]`가 버전 `index + 1`에 해당하며, 모두 추가 전용입니다. `openDatabase()`가 접속 시 하나의 `IMMEDIATE` 트랜잭션에서 적용하고 `PRAGMA user_version`을 기록합니다. 읽은 버전이 `SCHEMA_VERSION` 이상이면 즉시 반환하므로, 이전 바이너리는 더 새로운 스키마를 그대로 열어 읽을 수 있습니다(모르는 테이블·컬럼은 무시).
+
+`v14` 기준선:
 
 - `jobs`: `worker_id`, `lease_epoch`, `lease_expires_at`, `progress_current`, `progress_total`, `phase`, `checkpoint`, `pause_requested`, `cancel_requested`, `completed_at`, 일시정지 중복 방지 인덱스 `ux_jobs_active` (`queued`, `running`, `paused`).
 - `folders`: 중앙 커버 크기/버전 캐시 컬럼 (`cover_width`, `cover_height`, `cover_poster_version`, `coverFileVersion` URL 캐시 버스팅) 및 백분율 `rate`.
@@ -28,7 +32,16 @@ MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engin
 - `vote_events`: 폴더 및 동영상 Vote 활동을 기여(`contribution_events`)와 분리 추적.
 - `recovery_logs`, `backup_logs`: 크래시 복구 및 `VACUUM INTO` 무결성 검증 백업 이력.
 
-이후 PR 02–06이 `v16`–`v20`을 추가했다: `library_health`와 `scan_runs` 확장(`v16`), `file_mutations`/`mutation_events`(`v17`), `hls_generations`/`hls_active`(`v18`), `user_sessions`/`auth_login_attempts`/`auth_events`(`v19`), `play_sessions`/`play_events`와 `playback_progress` 확장(`v20`). PR 07과 PR 08은 스키마를 바꾸지 않았고, PR 08b가 `stage_checkpoints`와 `scene_jobs.analyzed_windows`/`total_windows`(`v21`)를 추가했다. PR 10은 `file_fingerprints`/`duplicate_groups`/`duplicate_group_members`(`v22`)를 추가했다.
+`v15`–`v22`:
+
+- PR 02–06이 `library_health`와 `scan_runs` 확장(`v16`), `file_mutations`/`mutation_events`(`v17`), `hls_generations`/`hls_active`(`v18`), `user_sessions`/`auth_login_attempts`/`auth_events`(`v19`), `play_sessions`/`play_events`와 `playback_progress` 확장(`v20`)을 추가했습니다. PR 07과 PR 08은 스키마를 바꾸지 않았고, PR 08b가 `stage_checkpoints`와 `scene_jobs.analyzed_windows`/`total_windows`(`v21`), PR 10이 `file_fingerprints`/`duplicate_groups`/`duplicate_group_members`(`v22`)를 추가했습니다.
+
+`v23`–`v26`:
+
+- `v23` — `smart_albums`(저장 필터 JSON + `filter_version`, 사용자별 이름 유니크), `playlists`/`playlist_items`(`watch_later`는 사용자당 하나만 허용하는 부분 유니크 인덱스), `video_bookmarks`(`position_ms`와 `file_version` 스냅샷).
+- `v24` — `bulk_operations`/`bulk_operation_items`. 대상 집합과 항목별 결과를 동결해 두고, 항목 행에는 자산 FK를 걸지 않습니다(삭제 성공 뒤에도 무엇을 했는지 보고해야 하므로). `file_mutations`에 `target_library_id`/`target_rel`을 추가해 이동을 표현합니다.
+- `v25` — `notifications`/`notification_delivery_attempts`, `diagnostics_runs`, `worker_heartbeats`(Docker가 `worker_id`를 재사용하므로 부팅마다 새 `instance_id`), `cache_cleanup_runs`, 그리고 `jobs.request_id` + 부분 인덱스.
+- `v26` — `search_index_builds`/`search_index_active`. 색인을 만든 출처(`bootstrap`/`operator`/`boot-repair`), 검증 시각, 자산·구간 워터마크를 행으로 남기고, 활성 포인터가 `ready` 행만 가리키도록 네 개 트리거가 강제합니다. FTS5 외부 콘텐츠 테이블(`asset_search`, `segment_search`)과 동기화 트리거는 스키마가 아니라 `configureSearchFts()`가 만듭니다.
 
 ## 3. 호스트 드라이브 노출 구조
 
