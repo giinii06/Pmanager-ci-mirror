@@ -1,12 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 import {
   completeAsrJob,
+  configureSearchFts,
   createAsrJob,
   createLibrary,
   insertAsset,
+  lastSearchFtsQueryFailure,
   openDatabase,
   searchAssetNames,
   searchDialogue,
+  searchFtsReady,
   upsertFolder,
 } from './index'
 import type { Db } from './db'
@@ -149,5 +152,38 @@ describe('filename search', () => {
     insertAsset(db, assetInput('asset3', 'folder1', 'coast-night.mp4'))
 
     expect(searchAssetNames(db, 'coast', 1)).toHaveLength(1)
+  })
+})
+
+describe('the fast path fails open', () => {
+  test('a vtab swapped for a plain table falls back to LIKE instead of throwing', () => {
+    const db = seed()
+    transcribe(db, 'asset1', 'asr1', '오늘 학교에 갔다', 2_000)
+    configureSearchFts(db, true)
+    expect(searchFtsReady(db)).toBe(true)
+
+    // A ready handle can still meet an index that changed under it.
+    db.exec('DROP TABLE segment_search')
+    db.exec('CREATE TABLE segment_search (text TEXT)')
+
+    const hits = searchDialogue(db, '학교에', 10)
+
+    expect(hits).toHaveLength(1)
+    expect(hits[0]?.text).toBe('오늘 학교에 갔다')
+    expect(lastSearchFtsQueryFailure()).not.toBeNull()
+    expect(lastSearchFtsQueryFailure()?.message).toContain('segment_search')
+    expect(searchFtsReady(db)).toBe(false)
+  })
+
+  test('a filename search keeps answering when the segment index is gone', () => {
+    const db = seed()
+    transcribe(db, 'asset1', 'asr1', '오늘 학교에 갔다', 2_000)
+    configureSearchFts(db, true)
+
+    db.exec('DROP TABLE segment_search')
+    db.exec('CREATE TABLE segment_search (text TEXT)')
+
+    expect(searchAssetNames(db, '축제', 10)).toHaveLength(1)
+    expect(searchDialogue(db, '학교에', 10)).toHaveLength(1)
   })
 })

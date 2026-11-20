@@ -1,4 +1,18 @@
 import type { Db } from './db'
+import {
+  activateSearchIndexBuild,
+  failSearchIndexBuild,
+  failStaleSearchIndexBuilds,
+  finishSearchIndexBuild,
+  getActiveSearchIndexBuild,
+  getSearchIndexBuild,
+  SEARCH_BUILD_STALE_MS,
+  searchIndexCounts,
+  startSearchIndexBuild,
+  type SearchIndexBuildRecord,
+  type SearchIndexBuildSource,
+  type SearchIndexCounts,
+} from './search-index'
 
 /**
  * The two text corpora the search box reads. One definition drives the virtual
@@ -12,9 +26,15 @@ const INDEXES = [
 
 const CONTROL_CHARACTER = /[\u0000-\u001F\u007F]/
 
+/** How the index this process can use came to exist. */
+export type SearchFtsMode = 'adopted' | 'bootstrapped' | 'repaired' | 'off'
+
 export interface SearchFtsStatus {
   enabled: boolean
+  mode: SearchFtsMode
   reason: string | null
+  /** The build row this process serves, when there is one. */
+  buildId: string | null
   /** Documents in the index, not rows in the content table. */
   assets: number
   segments: number
@@ -35,23 +55,78 @@ export function searchFtsReady(db: Db): boolean {
   return ready.has(db)
 }
 
+export function disarmSearchFts(db: Db): void {
+  ready.delete(db)
+}
+
+/** The six triggers that keep the index following the content tables. */
+export function searchFtsArmed(db: Db): boolean {
+  const names = INDEXES.flatMap((index) => [
+    `${index.table}_ai`,
+    `${index.table}_ad`,
+    `${index.table}_au`,
+  ])
+  const found =
+    db
+      .query<{ n: number }, string[]>(
+        `SELECT count(*) AS n FROM sqlite_master
+         WHERE type = 'trigger' AND name IN (${names.map(() => '?').join(', ')})`,
+      )
+      .get(...names)?.n ?? 0
+  return found === names.length
+}
+
+/** Both corpora are still FTS5 tables, not a plain table wearing the name. */
+export function searchFtsIntact(db: Db): boolean {
+  return INDEXES.every((index) => indexState(db, index.table) === 'fts')
+}
+
 /**
  * Reconcile the trigram indexes with the configured state. Called on every
  * start, enabled or not, because the two directions are not symmetric:
  *
- * - Enabled creates the virtual tables and the triggers, then proves the index
- *   agrees with the content tables before trusting it.
+ * - Enabled creates the virtual tables and the triggers, then adopts the build
+ *   the last process verified, or publishes one. A boot never rebuilds an index
+ *   that already passes, so a healthy start costs two integrity checks.
  * - Disabled drops the triggers and leaves the tables. A trigger body writes to
  *   the index, so leaving it armed on a build without the FTS5 module would fail
  *   every insert into `assets` or `transcript_segments`. The index goes stale
  *   while it is off, which the check on the next enable repairs.
+ *
+ * A disabled boot writes no build row: it never attempted a build, and a row
+ * per boot would grow without bound on a host that runs search off.
  */
 export function configureSearchFts(db: Db, enabled: boolean): SearchFtsStatus {
   const startedAt = performance.now()
+  const now = Date.now()
   const off = (reason: string): SearchFtsStatus => {
-    ready.delete(db)
-    return { enabled: false, reason, assets: 0, segments: 0, rebuiltMs: 0, verifyMs: 0 }
+    disarmSearchFts(db)
+    return {
+      enabled: false,
+      mode: 'off',
+      reason,
+      buildId: null,
+      assets: 0,
+      segments: 0,
+      rebuiltMs: 0,
+      verifyMs: 0,
+    }
   }
+  const done = (
+    mode: SearchFtsMode,
+    buildId: string,
+    counts: SearchIndexCounts,
+    verifyMs: number,
+  ): SearchFtsStatus => ({
+    enabled: true,
+    mode,
+    reason: null,
+    buildId,
+    assets: counts.assets,
+    segments: counts.segments,
+    rebuiltMs: Math.round((performance.now() - startedAt) * 10) / 10,
+    verifyMs,
+  })
 
   if (!enabled) {
     try {
@@ -60,7 +135,7 @@ export function configureSearchFts(db: Db, enabled: boolean): SearchFtsStatus {
       })()
       return off('disabled by configuration')
     } catch (error) {
-      return off(error instanceof Error ? error.message : String(error))
+      return off(errorMessage(error))
     }
   }
 
@@ -102,47 +177,88 @@ export function configureSearchFts(db: Db, enabled: boolean): SearchFtsStatus {
       }
     })()
   } catch (error) {
-    return off(error instanceof Error ? error.message : String(error))
+    return off(errorMessage(error))
   }
 
+  failStaleSearchIndexBuilds(db, now, SEARCH_BUILD_STALE_MS)
+  const active = getActiveSearchIndexBuild(db, 'fts')
+
   let verifyMs = 0
-  const timedVerify = (table: string): string | null => {
-    const started = performance.now()
-    const failure = verifyIndex(db, table)
-    verifyMs += performance.now() - started
-    return failure
-  }
+  let failure: string | null = null
   for (const index of INDEXES) {
-    let failure = timedVerify(index.table)
-    if (failure !== null) {
-      rebuild(db, index.table)
-      failure = timedVerify(index.table)
-      if (failure !== null) return off(`${index.table} failed its integrity check: ${failure}`)
+    const started = performance.now()
+    const result = verifyIndex(db, index.table)
+    verifyMs += performance.now() - started
+    if (result !== null) {
+      failure = `${index.table} failed its integrity check: ${result}`
+      break
     }
   }
   verifyMs = Math.round(verifyMs * 10) / 10
 
-  ready.add(db)
-  return {
-    enabled: true,
-    reason: null,
-    assets: indexedRows(db, 'asset_search'),
-    segments: indexedRows(db, 'segment_search'),
-    rebuiltMs: Math.round((performance.now() - startedAt) * 10) / 10,
-    verifyMs,
+  if (failure === null) {
+    ready.add(db)
+    if (active) return done('adopted', active.id, active.counts, verifyMs)
+    const build = startSearchIndexBuild(db, { kind: 'fts', source: 'bootstrap', now })
+    const counts = searchIndexCounts(db)
+    finishSearchIndexBuild(db, build.id, counts, now)
+    activateSearchIndexBuild(db, build.id, now)
+    return done('bootstrapped', build.id, counts, verifyMs)
+  }
+
+  try {
+    const build = publishFtsBuild(db, 'boot-repair', now)
+    ready.add(db)
+    return done('repaired', build.id, build.counts, verifyMs)
+  } catch (error) {
+    return off(errorMessage(error))
   }
 }
 
 /**
- * Re-derive both indexes from the content tables. The operator's tool after a
- * restore, when the database was written by a process that had no triggers.
- * Throws when the indexes were never created, which is the answer the operator
- * needs.
+ * Re-derive both indexes from the content tables and make the result the active
+ * build. The operator's tool after a restore, when the database was written by
+ * a process that had no triggers. Throws when the indexes were never created,
+ * which is the answer the operator needs.
  */
-export function rebuildSearchIndex(db: Db): void {
-  db.transaction(() => {
-    for (const index of INDEXES) rebuild(db, index.table)
-  })()
+export function rebuildSearchIndex(db: Db): SearchIndexBuildRecord {
+  const build = publishFtsBuild(db, 'operator', Date.now())
+  ready.add(db)
+  return build
+}
+
+/**
+ * The one path that turns a rebuild into an active build.
+ *
+ * The `building` row is committed before the transaction opens, so a rollback
+ * still leaves the attempt behind for the failure record and the stale reaper.
+ * The rebuild, its verification, the ready stamp and the pointer move share one
+ * transaction: a throw restores the previous index content and the pointer
+ * never moves, so the build that was serving keeps serving.
+ */
+function publishFtsBuild(
+  db: Db,
+  source: SearchIndexBuildSource,
+  now: number,
+): SearchIndexBuildRecord {
+  const build = startSearchIndexBuild(db, { kind: 'fts', source, now })
+  try {
+    db.transaction(() => {
+      for (const index of INDEXES) rebuild(db, index.table)
+      for (const index of INDEXES) {
+        const failure = verifyIndex(db, index.table)
+        if (failure !== null) {
+          throw new Error(`${index.table} failed its integrity check: ${failure}`)
+        }
+      }
+      finishSearchIndexBuild(db, build.id, searchIndexCounts(db), now)
+      activateSearchIndexBuild(db, build.id, now)
+    })()
+  } catch (error) {
+    failSearchIndexBuild(db, build.id, errorMessage(error), now)
+    throw error
+  }
+  return getSearchIndexBuild(db, build.id)!
 }
 
 /**
@@ -225,20 +341,7 @@ function verifyIndex(db: Db, table: string): string | null {
     db.exec(`INSERT INTO ${table}(${table}, rank) VALUES ('integrity-check', 1)`)
     return null
   } catch (error) {
-    return error instanceof Error ? error.message : String(error)
-  }
-}
-
-/**
- * `count(*)` on an external-content FTS table reads the content table, so it
- * cannot answer this. The `%_docsize` shadow table holds one row per indexed
- * document and does.
- */
-function indexedRows(db: Db, table: string): number {
-  try {
-    return db.query<{ n: number }, []>(`SELECT count(*) AS n FROM ${table}_docsize`).get()?.n ?? 0
-  } catch {
-    return 0
+    return errorMessage(error)
   }
 }
 
@@ -250,4 +353,8 @@ function dropTriggers(db: Db, index: (typeof INDEXES)[number]): void {
 
 function rebuild(db: Db, table: string): void {
   db.exec(`INSERT INTO ${table}(${table}) VALUES ('rebuild')`)
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

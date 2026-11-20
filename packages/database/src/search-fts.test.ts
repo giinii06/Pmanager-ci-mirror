@@ -8,10 +8,15 @@ import {
   createAsrJob,
   createLibrary,
   ftsPhrase,
+  getActiveSearchIndexBuild,
+  getSearchIndexBuild,
   insertAsset,
+  listSearchIndexBuilds,
   openDatabase,
   searchAssetNames,
   searchDialogue,
+  searchFtsArmed,
+  searchFtsIntact,
   searchFtsReady,
   updateAssetFile,
   upsertFolder,
@@ -408,6 +413,103 @@ describe('disabling is a real disable', () => {
     expect(on.enabled).toBe(true)
     expect(countAssetMatches(db, ftsPhrase('새로 들어온')!, CAP)).toBe(1)
     expect(searchAssetNames(db, '새로 들어온', 10)).toHaveLength(1)
+  })
+})
+
+describe('a boot records what it did', () => {
+  test('a verified index with no build row is bootstrapped once, then adopted', () => {
+    const db = seed()
+    // The first boot builds the index; clearing the catalog leaves the same
+    // state a v25 database upgrades with: a correct index and no build row.
+    configureSearchFts(db, true)
+    db.exec('DELETE FROM search_index_active')
+    db.exec('DELETE FROM search_index_builds')
+
+    const bootstrapped = configureSearchFts(db, true)
+
+    expect(bootstrapped.mode).toBe('bootstrapped')
+    expect(bootstrapped.buildId).not.toBeNull()
+    expect(listSearchIndexBuilds(db, 'fts', 10)).toHaveLength(1)
+    expect(getActiveSearchIndexBuild(db, 'fts')?.id).toBe(bootstrapped.buildId!)
+    expect(getSearchIndexBuild(db, bootstrapped.buildId!)?.state).toBe('ready')
+    expect(bootstrapped.assets).toBe(FILENAMES.length)
+    expect(searchFtsReady(db)).toBe(true)
+
+    const adopted = configureSearchFts(db, true)
+
+    expect(adopted.mode).toBe('adopted')
+    expect(adopted.buildId).toBe(bootstrapped.buildId)
+    expect(listSearchIndexBuilds(db, 'fts', 10)).toHaveLength(1)
+  })
+
+  test('a boot that finds the index stale repairs it and supersedes the old build', () => {
+    const db = seed()
+    configureSearchFts(db, true)
+    const first = getActiveSearchIndexBuild(db, 'fts')!
+
+    // Triggers dropped, then a write lands: the index no longer holds the row.
+    configureSearchFts(db, false)
+    insertAsset(db, assetInput('asset9', 'folder1', '새로 들어온 영상.mp4'))
+
+    const repaired = configureSearchFts(db, true)
+
+    expect(repaired.mode).toBe('repaired')
+    expect(repaired.buildId).not.toBe(first.id)
+    expect(getSearchIndexBuild(db, first.id)?.state).toBe('superseded')
+    expect(getSearchIndexBuild(db, first.id)?.supersededAt).not.toBeNull()
+    expect(getActiveSearchIndexBuild(db, 'fts')?.id).toBe(repaired.buildId!)
+    expect(countAssetMatches(db, ftsPhrase('새로 들어온')!, CAP)).toBe(1)
+    expect(searchFtsReady(db)).toBe(true)
+  })
+
+  test('a boot whose repair fails disarms and names the reason', () => {
+    const db = seed()
+    configureSearchFts(db, true)
+    const first = getActiveSearchIndexBuild(db, 'fts')!
+    // A vtab swapped for a plain table cannot be rebuilt, and the failure is
+    // reported rather than served.
+    configureSearchFts(db, false)
+    db.exec('DROP TABLE segment_search')
+    db.exec('CREATE TABLE segment_search (text TEXT)')
+
+    const status = configureSearchFts(db, true)
+
+    expect(status.mode).toBe('off')
+    expect(status.enabled).toBe(false)
+    expect(status.reason).toContain('segment_search')
+    expect(searchFtsReady(db)).toBe(false)
+    expect(searchFtsIntact(db)).toBe(false)
+    expect(getActiveSearchIndexBuild(db, 'fts')?.id).toBe(first.id)
+    expect(searchDialogue(db, '학교 축제', 10)).toHaveLength(2)
+  })
+
+  test('disabling writes no build row and leaves the index intact', () => {
+    const db = seed()
+
+    const off = configureSearchFts(db, false)
+
+    expect(off.mode).toBe('off')
+    expect(off.enabled).toBe(false)
+    expect(off.buildId).toBeNull()
+    expect(off.reason).toBe('disabled by configuration')
+    expect(listSearchIndexBuilds(db, 'fts', 10)).toEqual([])
+    expect(searchFtsArmed(db)).toBe(false)
+    expect(searchFtsReady(db)).toBe(false)
+    expect(searchAssetNames(db, '학교 축제', 10)).toHaveLength(2)
+  })
+
+  test('disabling after a build adds no row, drops the triggers and keeps the vtab', () => {
+    const db = seed()
+    const boot = configureSearchFts(db, true)
+    expect(searchFtsArmed(db)).toBe(true)
+
+    const off = configureSearchFts(db, false)
+
+    expect(off.mode).toBe('off')
+    expect(listSearchIndexBuilds(db, 'fts', 10)).toHaveLength(1)
+    expect(searchFtsArmed(db)).toBe(false)
+    expect(searchFtsIntact(db)).toBe(true)
+    expect(getSearchIndexBuild(db, boot.buildId!)?.state).toBe('ready')
   })
 })
 

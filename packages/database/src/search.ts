@@ -4,7 +4,9 @@ import type { Db } from './db'
 import {
   countAssetMatches,
   countSegmentMatches,
+  disarmSearchFts,
   ftsPhrase,
+  searchFtsIntact,
   searchFtsReady,
 } from './search-fts'
 
@@ -65,6 +67,33 @@ const ASSET_NAME_FILTER = `a.deleted_at IS NULL AND a.filename LIKE ? ESCAPE '\\
 const ASSET_NAME_ORDER = `ORDER BY a.taken_at DESC, a.id DESC`
 
 /**
+ * The last time the trigram path threw on this process. Process-local, like the
+ * readiness set: it describes this handle's history, not the database's.
+ */
+let lastFailure: { at: number; message: string } | null = null
+
+export function lastSearchFtsQueryFailure(): { at: number; message: string } | null {
+  return lastFailure
+}
+
+function recordFtsQueryFailure(table: string, error: unknown): void {
+  lastFailure = {
+    at: Date.now(),
+    message: `${table}: ${error instanceof Error ? error.message : String(error)}`,
+  }
+}
+
+/**
+ * A ready handle can still meet a vtab swapped out from under it, so the fast
+ * path is allowed to fail. Disarming on every failure would cost LIKE search
+ * until restart over one busy moment, so only a structural break disarms.
+ */
+function ftsFailure(table: string, error: unknown, db: Db): void {
+  recordFtsQueryFailure(table, error)
+  if (!searchFtsIntact(db)) disarmSearchFts(db)
+}
+
+/**
  * Substring search over the current transcript of every asset.
  *
  * The LIKE scan is the answer, not a fallback: it is the only path that can
@@ -76,22 +105,24 @@ const ASSET_NAME_ORDER = `ORDER BY a.taken_at DESC, a.id DESC`
 export function searchDialogue(db: Db, query: string, limit: number): DialogueHit[] {
   const phrase = ftsPhrase(query)
   const ceiling = limit * SEARCH_FANOUT.dialogue
-  if (
-    phrase !== null &&
-    searchFtsReady(db) &&
-    countSegmentMatches(db, phrase, ceiling + 1) <= ceiling
-  ) {
-    return db
-      .query<DialogueHit, Params>(
-        `SELECT ${DIALOGUE_COLUMNS}
-         FROM segment_search f
-         JOIN transcript_segments ts ON ts.rowid = f.rowid
-         ${DIALOGUE_JOINS}
-         WHERE segment_search MATCH ? AND ${DIALOGUE_FILTER}
-         ${DIALOGUE_ORDER}
-         LIMIT ?`,
-      )
-      .all(phrase, likePattern(query), limit)
+  if (phrase !== null && searchFtsReady(db)) {
+    try {
+      if (countSegmentMatches(db, phrase, ceiling + 1) <= ceiling) {
+        return db
+          .query<DialogueHit, Params>(
+            `SELECT ${DIALOGUE_COLUMNS}
+             FROM segment_search f
+             JOIN transcript_segments ts ON ts.rowid = f.rowid
+             ${DIALOGUE_JOINS}
+             WHERE segment_search MATCH ? AND ${DIALOGUE_FILTER}
+             ${DIALOGUE_ORDER}
+             LIMIT ?`,
+          )
+          .all(phrase, likePattern(query), limit)
+      }
+    } catch (error) {
+      ftsFailure('segment_search', error, db)
+    }
   }
   return db
     .query<DialogueHit, Params>(
@@ -108,21 +139,23 @@ export function searchDialogue(db: Db, query: string, limit: number): DialogueHi
 export function searchAssetNames(db: Db, query: string, limit: number): AssetNameHit[] {
   const phrase = ftsPhrase(query)
   const ceiling = limit * SEARCH_FANOUT.names
-  if (
-    phrase !== null &&
-    searchFtsReady(db) &&
-    countAssetMatches(db, phrase, ceiling + 1) <= ceiling
-  ) {
-    return db
-      .query<AssetNameHit, Params>(
-        `SELECT ${ASSET_NAME_COLUMNS}
-         FROM asset_search f
-         JOIN assets a ON a.rowid = f.rowid
-         WHERE asset_search MATCH ? AND ${ASSET_NAME_FILTER}
-         ${ASSET_NAME_ORDER}
-         LIMIT ?`,
-      )
-      .all(phrase, likePattern(query), limit)
+  if (phrase !== null && searchFtsReady(db)) {
+    try {
+      if (countAssetMatches(db, phrase, ceiling + 1) <= ceiling) {
+        return db
+          .query<AssetNameHit, Params>(
+            `SELECT ${ASSET_NAME_COLUMNS}
+             FROM asset_search f
+             JOIN assets a ON a.rowid = f.rowid
+             WHERE asset_search MATCH ? AND ${ASSET_NAME_FILTER}
+             ${ASSET_NAME_ORDER}
+             LIMIT ?`,
+          )
+          .all(phrase, likePattern(query), limit)
+      }
+    } catch (error) {
+      ftsFailure('asset_search', error, db)
+    }
   }
   return db
     .query<AssetNameHit, Params>(

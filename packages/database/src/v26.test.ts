@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
   activateSearchIndexBuild,
+  completeAsrJob,
+  configureSearchFts,
+  createAsrJob,
   createLibrary,
   deleteSearchIndexBuilds,
   failSearchIndexBuild,
@@ -15,9 +18,16 @@ import {
   listSearchIndexGcCandidates,
   listSearchIndexBuilds,
   openDatabase,
+  rebuildSearchIndex,
+  searchAssetNames,
+  searchDialogue,
+  searchFtsIntact,
+  searchFtsReady,
   startSearchIndexBuild,
   upsertFolder,
 } from './index'
+import type { Db } from './db'
+import type { NewAsset } from './assets'
 import { MIGRATIONS, SCHEMA_VERSION } from './schema'
 
 const dirs: string[] = []
@@ -329,3 +339,166 @@ describe('the build list', () => {
     expect(listSearchIndexBuilds(db, 'faiss', 10)).toEqual([])
   })
 })
+
+const FILENAMES = ['학교 축제.mp4', 'coast-drive.mp4']
+
+function assetInput(id: string, folderId: string, filename: string): NewAsset {
+  return {
+    id,
+    libraryId: 'lib1',
+    folderId,
+    relativePath: `Videos/${filename}`,
+    filename,
+    kind: 'video',
+    mimeType: 'video/mp4',
+    sizeBytes: 1_000,
+    mtimeMs: 1_000,
+    width: 1_080,
+    height: 1_920,
+    durationMs: 30_000,
+    takenAt: 10_000,
+    videoCodec: 'h264',
+    audioCodec: 'aac',
+    container: 'mov,mp4',
+    indexedAt: 20_000,
+    scanId: 'scan1',
+  }
+}
+
+/** Assets and transcripts, so a rebuild has real work and search has real rows. */
+function seedSearch(): Db {
+  const db = openDatabase(':memory:')
+  createLibrary(db, { id: 'lib1', name: 'Videos', rootPath: 'Videos', createdAt: 1 })
+  const folderId = upsertFolder(db, {
+    id: 'folder1',
+    libraryId: 'lib1',
+    parentId: null,
+    relativePath: 'Videos',
+    name: 'Videos',
+    depth: 0,
+    scanId: 'scan1',
+  })
+  FILENAMES.forEach((filename, index) => {
+    const assetId = `asset${index}`
+    insertAsset(db, assetInput(assetId, folderId, filename))
+    createAsrJob(
+      db,
+      {
+        id: `asr${index}`,
+        assetId,
+        fileVersion: 1,
+        modelRevision: 'asr-rev',
+        alignerRevision: 'align-rev',
+        pipelineVersion: 'asr-pipeline',
+      },
+      2_000 + index,
+    )
+    completeAsrJob(
+      db,
+      {
+        jobId: `asr${index}`,
+        transcriptId: `tr${index}`,
+        resultDir: `${assetId}/1/asr${index}`,
+        plainText: filename,
+        language: 'ko',
+        segments: [{ seq: 0, startMs: 1_000, endMs: 3_000, text: filename }],
+      },
+      2_100 + index,
+    )
+  })
+  return db
+}
+
+describe('a rebuild that fails leaves the previous build serving', () => {
+  test('a read-only database refuses the rebuild and changes nothing', () => {
+    const db = seedSearch()
+    // A fresh virtual table over a seeded content table fails its first
+    // verification, so this boot rebuilds before it serves.
+    const boot = configureSearchFts(db, true)
+    expect(boot.mode).toBe('repaired')
+    const before = {
+      dialogue: searchDialogue(db, '학교 축제', 10),
+      names: searchAssetNames(db, '학교 축제', 10),
+    }
+
+    db.exec('PRAGMA query_only = 1')
+    expect(() => rebuildSearchIndex(db)).toThrow(/readonly database/)
+    db.exec('PRAGMA query_only = 0')
+
+    expect(getActiveSearchIndexBuild(db, 'fts')?.id).toBe(boot.buildId!)
+    expect(getSearchIndexBuild(db, boot.buildId!)?.state).toBe('ready')
+    expect(searchDialogue(db, '학교 축제', 10)).toEqual(before.dialogue)
+    expect(searchAssetNames(db, '학교 축제', 10)).toEqual(before.names)
+    expect(searchDialogue(db, '학교 축제', 10)).toHaveLength(1)
+  })
+
+  test('a failure after the rebuild rolls the index and the pointer back', () => {
+    const db = seedSearch()
+    const boot = configureSearchFts(db, true)
+    const before = {
+      dialogue: searchDialogue(db, '학교 축제', 10),
+      names: searchAssetNames(db, '학교 축제', 10),
+      counts: getSearchIndexBuild(db, boot.buildId!)!.counts,
+    }
+
+    // Aborts the last statement of the rebuild transaction, after the rebuild
+    // and its verification have already run inside it.
+    db.exec(`CREATE TRIGGER test_block_activate BEFORE INSERT ON search_index_active
+             BEGIN SELECT RAISE(ABORT, 'activate blocked'); END`)
+
+    expect(() => rebuildSearchIndex(db)).toThrow(/activate blocked/)
+    db.exec('DROP TRIGGER test_block_activate')
+
+    const active = getActiveSearchIndexBuild(db, 'fts')
+    expect(active?.id).toBe(boot.buildId!)
+    expect(active?.state).toBe('ready')
+    expect(
+      db.query<{ n: number }, []>("SELECT count(*) AS n FROM search_index_builds WHERE state = 'ready'")
+        .get()?.n,
+    ).toBe(1)
+
+    // The building row was committed before the transaction, so it survived the
+    // rollback and now carries the failure.
+    const failed = listSearchIndexBuilds(db, 'fts', 10).filter((row) => row.state === 'failed')
+    expect(failed).toHaveLength(1)
+    expect(failed[0]!.lastError).toContain('activate blocked')
+    expect(failed[0]!.finishedAt).not.toBeNull()
+
+    expect(searchDialogue(db, '학교 축제', 10)).toEqual(before.dialogue)
+    expect(searchAssetNames(db, '학교 축제', 10)).toEqual(before.names)
+    expect(searchFtsIntact(db)).toBe(true)
+    expect(searchFtsReady(db)).toBe(true)
+    expect(getActiveSearchIndexBuild(db, 'fts')?.counts).toEqual(before.counts)
+  })
+})
+
+describe('a rebuild is idempotent', () => {
+  test('twice over the same content gives the same counts, watermarks and results', () => {
+    const db = seedSearch()
+    configureSearchFts(db, true)
+    // Start from an empty catalog so the two rebuilds are the only rows.
+    db.exec('DELETE FROM search_index_active')
+    db.exec('DELETE FROM search_index_builds')
+
+    const first = rebuildSearchIndex(db)
+    const afterFirst = {
+      dialogue: searchDialogue(db, '학교 축제', 10),
+      names: searchAssetNames(db, '학교 축제', 10),
+    }
+    const second = rebuildSearchIndex(db)
+
+    expect(second.counts).toEqual(first.counts)
+    expect(first.counts.assets).toBe(FILENAMES.length)
+    expect(first.counts.segments).toBe(FILENAMES.length)
+    expect(first.counts.assetWatermark).toBeGreaterThan(0)
+    expect(first.counts.segmentWatermark).toBeGreaterThan(0)
+
+    expect(searchDialogue(db, '학교 축제', 10)).toEqual(afterFirst.dialogue)
+    expect(searchAssetNames(db, '학교 축제', 10)).toEqual(afterFirst.names)
+
+    expect(listSearchIndexBuilds(db, 'fts', 10)).toHaveLength(2)
+    expect(getActiveSearchIndexBuild(db, 'fts')?.id).toBe(second.id)
+    expect(getSearchIndexBuild(db, first.id)?.state).toBe('superseded')
+  })
+})
+
