@@ -135,7 +135,7 @@ export function Sidebar() {
         </div>
       ) : null}
 
-      <nav className="flex-1 space-y-1 px-2.5 pt-1" aria-label="주 메뉴">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2.5 pb-3 pt-1" aria-label="주 메뉴">
         <NavLink
           to="/"
           end

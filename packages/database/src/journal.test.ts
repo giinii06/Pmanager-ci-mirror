@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import {
   createJournalEntry,
   createLibrary,
@@ -14,6 +17,28 @@ import {
 } from './index'
 
 describe('journal entries', () => {
+  test('reopening an existing v26 database runs the additive journal migration', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'mv-journal-upgrade-'))
+    try {
+      const filename = path.join(dir, 'existing.db')
+      const old = openDatabase(filename)
+      createUser(old, { id: 'u1', username: 'user1', passwordHash: 'hash', createdAt: 1 })
+      // Simulate an existing v26 file: keep its data, but drop the v27 addition.
+      old.exec('DROP TABLE journal_entries')
+      old.exec('PRAGMA user_version = 26')
+      old.close()
+
+      const upgraded = openDatabase(filename)
+      expect(upgraded.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version).toBe(27)
+      const created = createJournalEntry(upgraded, 'u1', 1234)
+      expect(getJournalEntry(upgraded, 'u1', created.id)?.createdAt).toBe(1234)
+      expect(upgraded.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM users').get()?.n).toBe(1)
+      upgraded.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('timestamps are creation-time snapshots; editing preserves the creation date', () => {
     const db = openDatabase(':memory:')
     createUser(db, { id: 'u1', username: 'user1', passwordHash: 'hash', createdAt: 1 })

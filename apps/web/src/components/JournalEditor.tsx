@@ -189,7 +189,11 @@ export function JournalEditor({
 
   const onPaste = (event: ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault()
-    insertPlainText(event.clipboardData.getData('text/plain').slice(0, 100_000))
+    const root = editorRef.current
+    if (!root) return
+    const selectedLength = window.getSelection()?.toString().length ?? 0
+    const remaining = Math.max(0, 100_000 - plainBody(root).length + selectedLength)
+    insertPlainText(event.clipboardData.getData('text/plain').slice(0, remaining))
   }
 
   return (
@@ -205,6 +209,14 @@ export function JournalEditor({
         data-placeholder="오늘 있었던 일을 자유롭게 기록해 보세요. @를 입력해 동영상이나 사진 앨범을 연결할 수 있어요."
         className="journal-editor min-h-[40vh] w-full whitespace-pre-wrap break-words text-[16px] leading-[1.95] text-ink outline-none focus:outline-none"
         onInput={report}
+        onBeforeInput={(event) => {
+          const root = editorRef.current
+          if (!root) return
+          const input = event.nativeEvent as InputEvent
+          if (input.inputType?.startsWith('insert') && plainBody(root).length >= 100_000) {
+            event.preventDefault()
+          }
+        }}
         onKeyDown={onKey}
         onPaste={onPaste}
         onBlur={onBlurSave}

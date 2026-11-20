@@ -266,7 +266,9 @@ function JournalDocument({ entry }: { entry: JournalEntryDTO }) {
           <time dateTime={entry.createdAt} title="이 페이지를 만든 날짜입니다.">
             {pageDate(entry.createdAt)}
           </time>
-          <span className="ml-2 rounded-md bg-panel-2 px-2 py-0.5 text-[11px]">생성일 고정</span>
+          <span className="ml-2 rounded-md bg-panel-2 px-2 py-0.5 text-[11px]">
+            생성 {new Date(entry.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+          </span>
         </div>
         <input
           aria-label="일지 제목"
