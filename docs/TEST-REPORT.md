@@ -59,5 +59,5 @@
 
 1. `NOTIFICATIONS_ENABLED=1`과 실제 Discord 웹훅으로 알림 1건 전달.
 2. 라이브 라이브러리에서 캐시 정리 1회 (미리보기 → 실행).
-3. 삭제·벌크: 2026-11-21 리허설로 검증을 마쳤습니다. 남은 것은 `api`/`worker`를 `c8fc02a`로 재빌드한 뒤 `FILE_MUTATION_ENGINE_ENABLED=1`, `BULK_OPERATIONS_ENABLED=1`로 전환하는 운영 작업입니다(현재 둘 다 `0`).
+3. 삭제·벌크: 2026-11-21 리허설로 검증을 마쳤고, `api`/`worker`는 같은 날 `423bb3a`로 재빌드해 수정본이 이미 라이브에 있습니다. 남은 것은 `FILE_MUTATION_ENGINE_ENABLED=1`, `BULK_OPERATIONS_ENABLED=1`로 전환하는 운영 작업입니다(현재 둘 다 `0`).
 4. HLS: `HLS_GENERATIONS_ENABLED=1`은 이미 라이브입니다. 리허설에서 생성·재생·supersede·GC를 확인했고, 남은 것은 라이브 라이브러리에서의 실제 사용과 `hls-rehearsal` 픽스처 라이브러리 정리입니다.
