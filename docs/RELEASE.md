@@ -86,13 +86,13 @@ bun run release:check
 
 ## 4. 릴리스 판정
 
-- [ ] `bun run release:check` 통과
-- [ ] 백업 생성과 무결성 확인
-- [ ] 호스트 배포 후 확인 항목 통과
-- [ ] Windows 무인 부팅 리허설 결과 기록 (날짜, 재부팅/정전 각 1회)
-- [ ] 기능 플래그의 현재 값과 이유 기록
-- [ ] `README.md`, `docs/ARCHITECTURE.md`, `docs/TEST-REPORT.md`가 현재 스키마와 수치를 말함
-- [ ] 롤백 경로 확인
+- [x] `bun run release:check` 통과
+- [x] 백업 생성과 무결성 확인
+- [x] 호스트 배포 후 확인 항목 통과
+- [x] Windows 무인 부팅 리허설 결과 기록 (날짜, 재부팅/정전 각 1회)
+- [x] 기능 플래그의 현재 값과 이유 기록
+- [x] `README.md`, `docs/ARCHITECTURE.md`, `docs/TEST-REPORT.md`가 현재 스키마와 수치를 말함
+- [x] 롤백 경로 확인
 
 ## 5. 롤백
 
