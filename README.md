@@ -5,9 +5,12 @@
 
 - 사진: 320/640 WebP 썸네일 + 1600px 프리뷰를 미리 생성
 - 영상: 브라우저가 재생할 수 있으면 Direct Play, 아니면(HEVC/MKV 등) HLS로 변환
+- 검색: 파일 이름과 대사는 SQLite FTS5 trigram으로, 장면은 임베딩으로 찾는다. 인덱스가 없거나 깨지면 LIKE 검색으로 응답한다
+- 정리: 정확 중복 검토, 스마트 앨범·재생목록·북마크, 선택 항목 일괄 작업
 - 자막(선택): 한국어 음성 인식 + 단어 단위 시간 정렬로 VTT/SRT 생성
+- 운영: 진단 리포트, 요청 id, 캐시 정리, 알림 인박스(선택)
 - 웹은 원본 디스크를 직접 훑지 않고 인덱스만 조회. 무거운 작업은 별도 Worker
-- 사용자 요청에 의한 영구 삭제 및 감지된 `.rar` 아카이브 추출/변환 시에만 원본 폴더를 변경한다. 캐시는 지워도 다시 만들어진다
+- 사용자 요청에 의한 영구 삭제와 감지된 `.rar` 아카이브 추출/변환은 `FILE_MUTATION_ENGINE_ENABLED=1`일 때만 원본 폴더를 변경한다. 기본값은 꺼짐이고, 캐시는 지워도 다시 만들어진다
 
 ## 구성
 
@@ -28,6 +31,7 @@ worker  스캔 · 썸네일 · 프리뷰 · HLS (ffmpeg)
 | `web` | Vite 빌드 결과를 서빙 | — |
 | `api` | REST API, 세션, 썸네일·영구 삭제 | `/media`, `/data`, `/cache` |
 | `worker` | 스캔·아카이브 추출·변환 작업 큐 소비 | `/media`, `/data`, `/cache` |
+| `asr-worker` 외 (선택) | 음성 인식, 번역, 임베딩, 장면 분석 | `/media:ro`, `/data`, `/cache`, `./models` |
 
 `/data`에는 SQLite DB와 세션 시크릿이, `/cache`에는 썸네일·프리뷰·HLS가 들어간다.
 두 디렉터리는 named volume이라 컨테이너를 다시 만들어도 유지된다.
@@ -48,8 +52,10 @@ docker compose up -d --build
 **설정 → 라이브러리 추가**에서 `Photos`, `Videos` 같은 하위 폴더를 등록한다.
 등록하면 스캔이 큐에 들어가고, 끝나면 갤러리에 나타난다.
 
-> 포트가 이미 사용 중이면 `.env`의 `MEDIAVAULT_PORT`를 바꾼다. 포트는 항상
-> `127.0.0.1`에만 바인딩되므로 같은 PC 밖에서는 접근할 수 없다.
+> 포트가 이미 사용 중이면 `.env`의 `MEDIAVAULT_PORT`를 바꾼다. Compose는 항상
+> `127.0.0.1`에만 바인딩한다. Windows 호스트에서 LAN으로 접속하려면
+> `scripts/windows`의 감독 스크립트가 등록하는 `netsh portproxy`가 필요하고,
+> 그때 방화벽 규칙도 함께 만들어진다.
 
 ### GPU (선택)
 
@@ -130,10 +136,15 @@ bun run dev        # API :8787 + Worker + Vite :5173
 | 명령 | 설명 |
 | --- | --- |
 | `bun run dev` | API·Worker·Vite 동시 실행 |
-| `bun test` | 단위 테스트 (큐, 커서 페이지네이션, 경로 탈출, 레이아웃) |
+| `bun test` | 단위·통합 테스트 전체 |
+| `bun run release:check` | 릴리스 게이트 전체 (버전 일치, 타입, 테스트, 웹 빌드, 스모크) |
 | `bun run smoke` | 실제 API+Worker를 띄우는 end-to-end 스모크 테스트 |
 | `bun run typecheck` | 전체 워크스페이스 타입 검사 |
+| `bun run preflight` | 미디어 루트 접근성과 여유 공간 확인 |
 | `bun run sample` | 샘플 미디어 재생성 |
+
+배포와 릴리스 판정 절차는 [docs/RELEASE.md](docs/RELEASE.md)를 따릅니다.
+Windows 무인 부팅 구성은 [docs/WINDOWS-OPERATIONS.md](docs/WINDOWS-OPERATIONS.md)에 있습니다.
 
 ## 설정
 
@@ -149,37 +160,52 @@ bun run dev        # API :8787 + Worker + Vite :5173
 
 개발 모드 추가 변수: `PORT`, `HOST`, `DATA_DIR`, `CACHE_DIR`, `WORKER_POLL_MS`.
 
+### 기능 플래그
+
+원본 파일을 바꾸는 기능은 기본값이 꺼져 있습니다.
+
+| 변수 | 기본값 | 켜면 |
+| --- | --- | --- |
+| `FILE_MUTATION_ENGINE_ENABLED` | `0` | 영구 삭제·이동·`.rar` 추출이 실제 파일을 변경 |
+| `HLS_GENERATIONS_ENABLED` | `0` | 세대별 HLS 게시와 교체 |
+| `BULK_OPERATIONS_ENABLED` | `0` | 선택 항목 일괄 작업 |
+| `NOTIFICATIONS_ENABLED` | `0` | 알림 인박스와 Discord 전달 |
+| `SEARCH_FTS_ENABLED` | `1` | trigram 검색 색인. 끄면 LIKE로 응답 |
+| `SMART_ALBUMS_ENABLED` | `1` | 스마트 앨범 |
+
 ## 데이터와 백업
 
-- **원본**: 손대지 않는다. 백업도 기존 방식 그대로 하면 된다.
+- **원본**: 기능 플래그가 꺼져 있는 한 손대지 않는다. 백업도 기존 방식 그대로 하면 된다. 삭제·이동을 켠 뒤에는 DB 백업이 원본 파일까지 되돌려 주지 않으므로, 파일 변경 이력은 `file_mutations`와 격리 디렉터리로 추적한다.
 - **인덱스/캐시**: `/data`, `/cache` named volume. 캐시는 언제든 지워도 된다.
 
-DB만 백업하려면:
-
-```bash
-docker compose stop api worker
-docker run --rm -v mediavault_mediavault-data:/data -v "$PWD":/backup alpine \
-  tar czf /backup/mediavault-data.tgz -C /data .
-docker compose start api worker
-```
-
-복원은 같은 볼륨에 풀고 컨테이너를 다시 시작하면 된다. 스캔은 idempotent라
-DB를 잃어도 원본에서 그대로 다시 인덱싱된다(썸네일도 재생성).
+DB 백업은 `POST /api/backups`(설정 화면의 백업 버튼) 또는 `scripts/windows/backup-db.ps1`이 `VACUUM INTO`로 만들고 `integrity_check`로 검증합니다.
+복원과 세션 초기화 절차는 [docs/RECOVERY.md](docs/RECOVERY.md)에 있습니다.
+스캔은 idempotent라 DB를 잃어도 원본에서 그대로 다시 인덱싱된다(썸네일도 재생성).
 
 ## 동작 메모
 
 - **스캔**: 파일 크기와 mtime이 같으면 건너뛴다. 바뀐 파일은 `file_version`을
   올려 썸네일 캐시 키를 갱신한다. 사라진 파일은 soft delete.
-- **큐**: `jobs` 테이블 + partial unique index로 같은 작업의 중복 등록을 막고,
-  우선순위 `P0(지금 연 사진) → P4(선택)` 순으로 처리한다. 실패는 지수 백오프로
-  재시도하고 3회 넘으면 `failed`로 남긴다. 크래시로 남은 `running` 작업은
-  워커 시작 시 복구한다.
+- **큐**: 미디어·ASR·번역·임베딩·장면·삭제·백업·정비·일괄 아홉 레인을 하나의 읽기
+  모델로 보여주고, 저장은 파이프라인별 테이블로 나뉜다. 같은 작업의 중복 등록은
+  partial unique index로 막고, 우선순위 `P0(지금 연 사진) → P4(선택)`에 2분마다
+  한 단계 승격을 더한다. GPU 작업은 `gpu_leases`의 카드 리스를 공유한다. 실패는
+  14개 안정 코드로 분류해 3회까지 재시도하고 `failed`로 남기며, 크래시로 남은
+  `running` 작업은 워커가 시작할 때 복구한다.
+- **검색**: 파일 이름과 대사는 FTS5 trigram 후보를 LIKE로 다시 확인하고, 3글자
+  미만 질의는 항상 LIKE로 답한다. 장면은 모델 SHA·파이프라인 버전·차원이 같은
+  임베딩만 쓴다. 색인은 build 행으로 기록되고, 실패한 재빌드는 이전 색인을
+  그대로 둔다.
+- **진단**: 모든 응답에 `X-Request-Id`가 붙고 JSON 오류에는 `requestId`, 5xx에는
+  8자 `diagnosticId`가 들어간다. `/api/system/diagnostics`는 JSON과 Markdown을
+  돌려주고 절대 경로를 가린다.
 - **영상**: `mp4/m4v/mov/webm` + `h264/vp8/vp9/av1` + `aac/mp3/opus/vorbis`만
   Direct Play. 그 외는 4초 세그먼트 HLS로 변환해 캐시한다. 플레이어는 준비 중이면
   `202`를 받고 자동으로 재시도한다.
-- **인증**: scrypt 비밀번호 해시, HMAC-SHA256 세션 토큰, `HttpOnly` +
-  `SameSite=Strict` 쿠키 30일. API의 모든 경로는 health/status/setup/login 외에
-  세션을 요구한다.
+- **인증**: Argon2id 비밀번호 해시(기존 scrypt 해시는 로그인할 때 다시 해시),
+  서버 세션 행과 불투명 토큰, `HttpOnly` + `SameSite=Strict` 쿠키 30일. 세션은
+  DB 행을 지워 즉시 폐기할 수 있다. `/api/*`는 health/status/setup/login 외에
+  세션을 요구하고, `/worker/*`는 워커 토큰을 쓴다.
 - **경로 탈출**: 라이브러리 상대 경로는 항상 `MEDIA_ROOT` 안으로 해석되고,
   벗어나는 경로는 거부한다. nginx의 `/internal/*`은 `internal` 지시자로 외부
   접근이 차단된다.
