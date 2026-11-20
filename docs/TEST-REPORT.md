@@ -1,34 +1,55 @@
-# 테스트 및 실서버 검증 보고서
+# 테스트 및 릴리스 검증 보고서
 
-## 1. 로컬 단위·통합·크래시 테스트 스위트
+최종 갱신: 2026-11-20, `main` 기준. 아래 수치는 마지막 `bun run release:check` 실행과 호스트 라이브 점검에서 나온 값입니다.
 
-| 구분 | 범위 | 결과 |
+## 1. 자동 게이트
+
+`bun run release:check`가 아래를 순서대로 실행하고, 하나라도 실패하면 거기서 멈춥니다. 정의는 `scripts/release-check.ts` 한 곳에만 있습니다.
+
+| 게이트 | 확인하는 것 | 결과 |
 | --- | --- | --- |
-| TypeScript 타입 검사 | `bun run typecheck` (6개 워크스페이스) | 0 errors |
-| 전체 단위/통합 테스트 | `bun test` (34개 파일) | `284 pass, 0 fail` |
-| 웹 프로덕션 빌드 | `bun run --cwd apps/web build` | `vite build` 프로덕션 번들 성공 |
-| Python ASR 테스트 | `apps/asr-worker/.venv/bin/pytest` | `110 passed, 1 skipped` |
+| version | `APP_VERSION`과 루트 `package.json`의 `version` 일치 | `1.0.0` |
+| typecheck | 6개 워크스페이스 + 루트 프로젝트 | exit `0` |
+| test | `bun test` 전체 | `719 pass, 0 fail`, 81개 파일, 4,646 expect |
+| build | `apps/web` Vite 프로덕션 빌드 | exit `0`, 2,971 modules, 223 ms |
+| smoke | 실제 API·워커 기동 후 HTTP 확인 | `Smoke test passed.` |
 
-### 주요 신규 릴리스 게이트 테스트 (`apps/worker/src/crash-recovery.test.ts`, `apps/api/src/fs-and-ops.test.ts`, `apps/web/src/lib/justified.test.ts`)
+- **smoke**는 임시 데이터 디렉터리에 계정을 만들고 라이브러리를 등록한 뒤 3개 자산을 스캔하고, 썸네일(534 bytes), 프리뷰, Range `0..99/15435`, 폴더 목록, 통계, 미인증 `401`까지 확인합니다. 8899 포트를 쓰며 `SMOKE_PORT`로 바꿀 수 있습니다.
+- **Python 워커**는 `release:check`에 포함되지 않습니다. 가상환경과 모델이 필요하기 때문입니다.
+  - ASR: `apps/asr-worker/.venv/bin/pytest apps/asr-worker` → `110 passed, 1 skipped` (PR 00 기준선 `aceb0ad`에서 측정, 이후 변경 없음).
+  - 장면: `apps/scene-worker/.venv/bin/pytest -q` → `39 passed` (PR 08b, 체크포인트 재개 포함).
+- CI(`.github/workflows/ci.yml`)는 `bun install --frozen-lockfile` 후 같은 `bun run release:check`를 돌립니다. 러너 이미지에 ffmpeg가 없어 `packages/media`와 `apps/api`의 실제 ffmpeg 테스트를 위해 설치 스텝 하나를 둡니다.
 
-1. **1,000개 파일 스캔 중단 + 오프라인 변조 후 정합성 100% 일치**: 500개 이상에서 중단 후 커서 앞 파일 추가(`000-added-before-cursor.jpg`), 커서 횡단 이동(`001-moved-before-cursor.jpg`), 기존 파일 삭제 후 재개한 스캔 결과가 대조군 전체 스캔 결과와 100% 일치 (오삭제 0건).
-2. **만료 리스 펜싱 + `.tmp` 정리 + 썸네일 보호**: 만료 워커(`lease_epoch = 1`)의 `completeJob` 거부, 새 워커(`lease_epoch = 2`) 정상 완료, 오래된 `.tmp` 삭제 검증.
-3. **체크포인트 저장 중 리스 상실(`lease_lost`) 원자적 롤백**: 다른 워커가 `lease_epoch`를 선점한 상태에서 `saveJobCheckpoint`가 실패하면 해당 배치 트랜잭션을 통째로 롤백하여 부분 에셋·체크포인트 오염 방지.
-4. **취소된 스캔 비부활 및 일시정지 스캔 수동 재개**: 대기 중 스캔 취소 시 `libraries.scan_state = 'idle'`·`scan_checkpoints`를 정리해 주기 복구에서 되살아나지 않으며, 일시정지된 스캔은 `POST /api/libraries/:id/scan` 호출 시 즉시 재개됨.
-5. **빈 마운트포인트 및 시스템 경로/심볼릭 링크 심층 차단**: `SCAN_DELETE_FORCE=true` 상태에서도 `drives/e`가 비어 있으면 `drive_unavailable`로 차단하며, `realpath` 이후 경유 경로가 `Windows` 등 시스템 폴더에 닿는 심볼릭 링크 체인도 `403 blocked_system_path`로 차단.
-6. **스토리지 집계 이중 합산 방지 및 타임존 독립 Vote 달력**: `totalLibraryBytes`에서 `tempBytes` 중복 합산 제거, OS 로컬 타임존과 무관한 `DAY_FORMATTER` 기준 KST 자정 직후 `vote_events` 집계·스트릭 일치, 초협폭(280px) 컨테이너 파노라마 타일 가로 오버플로 방지 검증.
-7. **`VACUUM INTO` 백업 및 복원 무결성**: 백업 생성 후 `PRAGMA integrity_check = ok` 확인 및 임시 파일 교체·사이드카 제거 복원 검증.
+## 2. 스위트가 증명하는 것
 
-## 2. Win11 실서버(`192.168.0.27`) 라이브 검증 결과
+1. **중단·변조 후에도 스캔이 정확하다** (`apps/worker/src/crash-recovery.test.ts`): 1,000개 파일 스캔을 500개에서 중단하고 커서 앞 추가, 커서 횡단 이동, 기존 파일 삭제를 가한 뒤 재개한 결과가 처음부터 스캔한 대조군과 100% 일치합니다(오삭제 0건).
+2. **리스 펜싱이 늦은 워커를 막는다** (`packages/database`): 만료된 `lease_epoch`의 완료·체크포인트 저장이 거부되고, 새 에포크만 진행합니다. 체크포인트 저장 중 리스를 잃으면 배치 전체가 롤백됩니다.
+3. **백업이 실제로 복원된다** (`v14.test.ts`): `VACUUM INTO` 결과의 `integrity_check`가 `ok`이고, 임시 파일 교체·사이드카 제거를 거친 복원이 원본과 같은 카운트를 냅니다.
+4. **색인 재구축이 원자적이다** (`packages/database/src/v26.test.ts`): 재구축 도중 실패하면 색인 내용과 활성 포인터가 함께 이전 상태로 돌아가고, 활성 포인터는 `ready` 행만 가리킬 수 있으며(트리거 6종 거부 경로), GC는 만료된 `superseded`/`failed` 행만 지웁니다.
+5. **색인 장애가 검색 전체를 죽이지 않는다** (`packages/database/src/search.test.ts`, `search-fts.test.ts`): trigram 질의가 던지면 LIKE 오라클로 넘어가고, 구조가 깨진 경우에만 핸들을 무장 해제합니다. `SQLITE_BUSY` 한 번으로 재시작까지 LIKE로 떨어지지 않습니다.
+6. **대량 이동이 크래시를 견딘다** (`apps/worker/src/move-engine.test.ts`): 게시 후 격리 전 크래시, 다른 바이트가 있는 대상, 검증 후 바뀐 심볼릭 링크 모두 이어서 완료되거나 거부됩니다.
+7. **알림이 중복·유실되지 않는다** (`packages/database/src/notifications.test.ts`, `apps/worker/src/observability.test.ts`): 같은 조건은 열린 행 하나로 합쳐지고, 해결된 뒤 새 사건은 새 행이 됩니다. Discord 전송은 1분/5분/15분 재시도 후에도 알림 자체를 잃지 않습니다.
+8. **인증 경계가 유지된다** (`apps/api/src/*.test.ts`): 세션 쿠키는 DB 행과 HMAC 다이제스트로만 검증되고, `/api/*`는 인증을 요구하며 `/worker/*`는 별도 토큰을 씁니다. 소유자별 조회가 섞이지 않습니다.
 
-- **Schema v14 무손실 마이그레이션**: `user_version = 14`, `synchronous = 2 (FULL)`, `assets = 13,080`, `folders = 113`, `views = 3` 보존.
-- **헬스 체크**: `/health/live`, `/health/ready`, Win11 `scripts/windows/check-health.ps1` 모두 `200` / `True` 응답 (`/health/ready`는 풀 B-tree 스캔을 피하기 위해 기본적으로 `dbIntegrity: "skipped"`를 반환하고 `/api/system/status`가 60초 TTL로 `PRAGMA quick_check(1)` 결과를 캐시함).
-- **드라이브 탐색기 및 보안**: `/api/fs/drives`에서 `C:\`, `D:\`, `E:\` 용량 포함 조회, `/api/fs/browse?path=drives/c/Windows` HTTP `403` 차단 확인.
-- **수동 DB 백업**: `POST /api/backups` -> `mediavault-2026-11-18T03-25-13-870Z-mwxsyb.db` (`334,450,688` bytes, `integrity: ok`).
-- **실시간 워커 크래시 자동 복구**: 호스트에서 실행 중인 `mediavault-worker-1` PID `157691`에 커널 `SIGKILL` 전송 후 **5초** 만에 새 PID `158150`으로 자동 재기동되고 `recovery_logs` (`id = 5`, `db_integrity = ok`)가 기록되었으며, 만료 리스 작업 `15468`도 에포크 `2`로 재개되어 `13,080`건 무손실 완료.
+## 3. Win11 실서버(`192.168.0.27`) 라이브 검증
 
-## 3. 사용자 수동 확인 필요 항목 (관리자 권한 및 물리 테스트)
+현재 상태: schema `v26`, `14,497` assets(`14,496` active), `23,434` segments, `15,191` jobs, `integrity_check ok`, `foreign_key_check` 0, `synchronous FULL`, SQLite `3.54.1`.
 
-1. Win11 관리자 PowerShell에서 `scripts/windows/install-service.ps1` 1회 실행 (UAC 승인 필요).
-2. ASRock `B650M PG Lightning` BIOS에서 `Restore on AC/Power Loss -> Power On` 설정.
-3. 실제 물리적 로그오프·재부팅·전원 차단 테스트 (SSH 원격 세션 범위 밖).
+- **v25 → v26 배포** (PR 14): 부팅 시 `mode bootstrapped`, `rebuiltMs 97.1`, `verifyMs 89.8`로 기존 색인을 검증해 채택했습니다(재구축 없음). 운영자 재구축 `POST /api/system/search-index/rebuild`는 `201`, 258 ms, build `v11a11stya4tj595`를 만들고 포인터를 옮겼으며 이전 build는 `superseded`가 됐습니다. GC 미리보기는 `{builds:[],total:0}`(30일 보존 내 없음). 헤드리스 Chrome에서 `/diagnostics`의 `검색 색인` 패널이 세 배지와 build 표를 렌더링했습니다.
+- **v23 → v25 배포** (PR 12+13 동시): 백업 사본에서 마이그레이션이 5 ms, 13개 테이블 카운트가 전후 동일, `foreign_key_check` 빈 결과. 라이브에서 알림 인박스는 플래그가 꺼져 `404`+`requestId`, 진단 다운로드는 `diagnostics_runs` 행을 남겼습니다.
+- **백업**: 배포 전마다 `VACUUM INTO`로 `281,493,504` bytes(`v25`, `68,724` pages, `quick_check ok`)를 만들었습니다. `VACUUM INTO`는 대상 파일이 이미 있으면 실패하므로 타임스탬프 이름을 씁니다.
+- **워커 크래시 자동 복구** (2026-11-18, v14): 실행 중인 `mediavault-worker-1`에 `SIGKILL`을 보낸 뒤 5초 만에 새 PID로 재기동, `recovery_logs`(`db_integrity ok`) 기록, 만료 리스 작업이 에포크 2로 재개되어 `13,080`건을 무손실 완료했습니다.
+- **헬스**: `/health/live`, `/health/ready` `200`. `/health/ready`는 기본적으로 `dbIntegrity: "skipped"`를 반환하고 `/api/system/status`가 60초 TTL로 `PRAGMA quick_check(1)`을 캐시합니다.
+- **드라이브·보안**: `/api/fs/drives`가 `C:\`, `D:\`, `E:\`를 용량과 함께 반환하고, `/api/fs/browse?path=drives/c/Windows`는 `403`으로 차단됩니다.
+
+## 4. 수동 확인 필요 항목
+
+관리자 권한이나 물리 접근이 필요한 항목이라 자동화하지 못했습니다.
+
+1. Win11 관리자 PowerShell에서 `scripts/windows/install-service.ps1` 1회 실행 (UAC 승인 필요). 예약 작업 등록과 즉시 시작까지 확인합니다.
+2. ASRock `B650M PG Lightning` BIOS에서 `Restore on AC/Power Loss -> Power On`.
+3. 실제 물리 로그오프·재부팅·전원 차단 후 무인 부팅 리허설 (`docs/RELEASE.md` 3장).
+4. `NOTIFICATIONS_ENABLED=1`과 실제 Discord 웹훅으로 알림 1건 전달.
+5. 라이브 라이브러리에서 캐시 정리 1회 (미리보기 → 실행).
+6. `BULK_OPERATIONS_ENABLED=1`, `FILE_MUTATION_ENGINE_ENABLED=1`로 전환하기 전, 버릴 수 있는 픽스처 라이브러리에서 이동·삭제 리허설.
+7. `HLS_GENERATIONS_ENABLED=1` 전환 전, 짧은 영상 1건으로 HLS 생성·재생·GC 확인.
