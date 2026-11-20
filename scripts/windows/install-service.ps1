@@ -68,6 +68,9 @@ function Ensure-WslIdleConfig {
 Disable-SupersededBootTasks
 Ensure-WslIdleConfig -UserName $OwnerUser
 Stop-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+if (-not (Wait-MvTaskState -State "Ready")) {
+    throw "Supervisor task '$($script:TaskName)' did not stop within 30 seconds; re-registering it would leave the old instance running. Check '$($script:LogFile)' and the Task Scheduler history."
+}
 
 $psExe = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 $runnerPath = Join-Path $script:BinDir "service-runner.ps1"
@@ -97,6 +100,10 @@ if ($UsePasswordLogon) {
     Register-ScheduledTask -TaskName $script:TaskName -Action $action -Trigger $triggers -Settings $settings -Principal $taskPrincipal -Force | Out-Null
 }
 
+if (-not (Wait-MvTaskState -State "Ready")) {
+    throw "Supervisor task '$($script:TaskName)' still has a live instance after re-registration, so the start below would be dropped by -MultipleInstances IgnoreNew. Check '$($script:LogFile)'."
+}
+
 if (-not $SkipPowerConfig) {
     & powercfg /change standby-timeout-ac 0 | Out-Null
     & powercfg /change hibernate-timeout-ac 0 | Out-Null
@@ -114,13 +121,14 @@ if ($EnableWindowsOpenSSH) {
 }
 
 Start-ScheduledTask -TaskName $script:TaskName
-$taskState = ""
-for ($i = 0; $i -lt 8; $i++) {
-    Start-Sleep -Seconds 1
-    $cur = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
-    $taskState = if ($cur) { [string]$cur.State } else { "Missing" }
-    if ($taskState -eq "Running") { break }
+if (-not (Wait-MvTaskState -State "Running")) {
+    $taskInfo = Get-ScheduledTaskInfo -TaskName $script:TaskName -ErrorAction SilentlyContinue
+    $lastResult = if ($taskInfo) { $taskInfo.LastTaskResult } else { -1 }
+    throw "Supervisor task '$($script:TaskName)' did not reach Running within 30 seconds (LastTaskResult=$lastResult). Check '$($script:LogFile)'."
 }
+
+$task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+$taskState = if ($task) { [string]$task.State } else { "Missing" }
 $taskInfo = Get-ScheduledTaskInfo -TaskName $script:TaskName -ErrorAction SilentlyContinue
 $lastResult = if ($taskInfo) { $taskInfo.LastTaskResult } else { -1 }
 

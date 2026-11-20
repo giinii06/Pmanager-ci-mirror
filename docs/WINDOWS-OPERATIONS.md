@@ -7,12 +7,12 @@
 - WSL `Ubuntu-24.04` 내부에 `systemd=true` 및 **네이티브 Linux `docker.service`**가 활성화되어 있습니다 (Docker Desktop 미사용).
 - 단일 소유 감독 스크립트 `scripts/windows/service-runner.ps1`가 다음 순서로 부팅 및 상시 감시를 수행합니다.
   1. 전역 뮤텍스(`Global\MediaVaultSupervisor`)로 중복 실행 방지.
-  2. `wsl.exe`로 `docker` 및 `ssh` systemd 서비스 기동 확인.
-  3. Windows에서 실제 존재하는 `C`/`D`/`E` 드라이브만 선별해 WSL `/mnt/{c,d,e}` DrvFS 마운트 준비 대기.
+  2. `wsl.exe`로 `docker` 및 `ssh` systemd 서비스 기동과 Docker 데몬 응답(`docker info`)을 확인.
+  3. Windows에서 실제 존재하는 `C`/`D`/`E` 드라이브만 선별해 WSL `/mnt/{c,d,e}` DrvFS 마운트를 최대 90초 대기합니다. 준비되지 않으면 오류를 기록하고 그대로 진행하며, 기동 여부는 이후 단계의 preflight 검사가 결정합니다.
   4. `LAN IPv4` 검증 후 `netsh interface portproxy` (`8080 -> 127.0.0.1:8080`, `22 -> 127.0.0.1:2222`) 등록 및 주기적 갱신.
   5. 전체 `.env*` 및 `compose*.yaml` 플래그로 `docker compose up -d --remove-orphans` 실행 (`Invoke-WslBash`는 PowerShell 5.1 `NativeCommandError` 억제를 위해 호출 범위 내 `$ErrorActionPreference = "Continue"` 적용).
-  6. 15초마다 `http://127.0.0.1:8080/health/ready`를 검사하며 연속 3회 실패 시 지수 백오프로 서비스 및 `nginx` 재시작.
-  7. 로그는 `C:\ProgramData\MediaVault\logs\supervisor.log`에 10 MB 단위 최대 5개로 순환 저장.
+  6. 15초마다 `http://127.0.0.1:8080/health/ready`를 검사하며 연속 3회 실패 시 `api`와 `nginx`를 재시작합니다. 이후 대기 시간은 실패 횟수에 15초를 곱해 최대 120초까지 늘어납니다.
+  7. 로그는 `C:\ProgramData\MediaVault\logs\supervisor.log`에 10 MB 단위로 순환 저장하며, 현재 파일과 `.1`~`.5` 백업까지 최대 6개를 유지합니다.
 
 ## 2. 최초 설치 (관리자 PowerShell 필요 · UAC)
 
@@ -45,9 +45,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\install-service.ps1 -
 | `uninstall-service.ps1` | 예약 작업 제거 및 중지 (관리자 필요) |
 | `service-runner.ps1` | WSL·드라이브·Compose 기동 및 15초 헬스 감시 데몬 |
 | `start-server.ps1` | `stop.flag` 제거 후 서버 및 감독 태스크 시작 |
-| `stop-server.ps1` | 감독 중지 플래그 생성 및 Compose 컨테이너 정지 |
+| `stop-server.ps1` | 감독 중지 플래그 생성, 감독 태스크가 `Ready`가 될 때까지 최대 30초 대기(실패 시 중단), Compose 컨테이너 정지 |
 | `restart-server.ps1` | 서버 정상 재시작 |
 | `status-server.ps1` | 예약 작업, `docker compose ps`, `/health/ready` 상태 일괄 확인 |
 | `view-logs.ps1` | 감독 로그 (`-Source supervisor`) 또는 컨테이너 로그 (`-Source docker -Follow`) 조회 |
-| `check-health.ps1` | `/health/live`, `/health/ready` (`dbIntegrity`는 기본 `"skipped"`, `/api/system/status` 호출 후 60초 TTL 캐시값 반영), SQLite `FULL` 모드 확인 |
+| `check-health.ps1` | `/health/live`와 `/health/ready`만 호출해 `dbIntegrity`, `synchronousMode`, `sqliteVersion`, `uptimeSeconds` 출력 (`dbIntegrity`는 기본 `"skipped"`이고, `/api/system/status` 같은 다른 경로가 60초 TTL 캐시를 채운 뒤에는 그 값이 반영됨) |
 | `backup-db.ps1` | 컨테이너 내 `VACUUM INTO` + `PRAGMA integrity_check = ok` 검증 + 실패 시 임시 파일 정리 트랩 후 호스트로 백업 복사 |
+
+`scripts/windows/*.ps1`를 수정한 뒤에는 관리자 PowerShell에서 `install-service.ps1`을 다시 실행해야 합니다. 예약 작업은 저장소의 파일이 아니라 스테이징된 복사본(`C:\ProgramData\MediaVault\bin\`)을 실행하므로, 재설치하지 않으면 변경 사항이 반영되지 않습니다.

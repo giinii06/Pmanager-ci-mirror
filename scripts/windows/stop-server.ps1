@@ -6,9 +6,9 @@ if (-not (Test-Path $script:StateDir)) {
 }
 Set-Content -Path $script:StopFlag -Value (Get-Date).ToString("o") -Encoding UTF8
 
-$task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
-if ($task -and $task.State -eq "Running") {
-    Stop-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+Stop-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+if (-not (Wait-MvTaskState -State "Ready")) {
+    throw "Supervisor task '$($script:TaskName)' did not stop within 30 seconds; refusing to stop containers because the live supervisor would start them again. Check '$($script:LogFile)'."
 }
 
 $res = Invoke-WslBash -Command "cd $($script:RepoDir) && docker compose $($script:ComposeArgs) stop"

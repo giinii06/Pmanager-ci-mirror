@@ -31,7 +31,7 @@ function Ensure-WslKeepAlive {
 
 function Wait-WslAndDocker {
     for ($attempt = 1; $attempt -le 24; $attempt++) {
-        $probe = Invoke-WslBash -Command "systemctl is-active docker && systemctl is-active ssh" -AsRoot
+        $probe = Invoke-WslBash -Command 'systemctl is-active docker && systemctl is-active ssh && docker info >/dev/null 2>&1' -AsRoot
         if ($probe.ExitCode -eq 0) {
             return $true
         }
@@ -123,7 +123,9 @@ try {
         exit 1
     }
     Ensure-WslKeepAlive
-    $null = Wait-DrivesReady
+    if (-not (Wait-DrivesReady)) {
+        Write-MvLog "DrvFS mounts did not become ready in time; continuing because preflight is the authority." "ERROR"
+    }
     Ensure-PortProxy
     $null = Start-ComposeStack
 
@@ -151,7 +153,7 @@ try {
             $null = Wait-WslAndDocker
             $null = Wait-DrivesReady
             $null = Start-ComposeStack
-            $null = Invoke-WslBash -Command "cd $($script:RepoDir) && docker compose $($script:ComposeArgs) restart nginx || true"
+            $null = Invoke-WslBash -Command "cd $($script:RepoDir) && docker compose $($script:ComposeArgs) restart api nginx || true"
             $backoff = [Math]::Min(120, 15 * $failures)
             Start-Sleep -Seconds $backoff
         } else {

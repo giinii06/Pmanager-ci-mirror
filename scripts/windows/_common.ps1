@@ -79,3 +79,28 @@ function Test-MvPreflight {
     Write-MvLog "Preflight passed: every media root is readable and has free space."
     return $true
 }
+
+function Wait-MvTaskState {
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet("Running", "Ready")][string]$State,
+        [int]$TimeoutSeconds = 30
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ($true) {
+        $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+        $current = if ($task) { [string]$task.State } else { "Ready" }
+        # A queued instance has already been admitted and will run, so it counts as live.
+        $settled = if ($State -eq "Running") {
+            $current -eq "Running"
+        } else {
+            $current -ne "Running" -and $current -ne "Queued"
+        }
+        if ($settled) {
+            return $true
+        }
+        if ((Get-Date) -ge $deadline) {
+            return $false
+        }
+        Start-Sleep -Milliseconds 500
+    }
+}
