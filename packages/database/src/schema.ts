@@ -1088,7 +1088,7 @@ WHEN NEW.kind <> OLD.kind
 BEGIN SELECT RAISE(ABORT, 'a build kind is immutable'); END;
 `
 
-export const V27_JOURNAL_SQL = \`
+export const V27_JOURNAL_SQL = `
 CREATE TABLE IF NOT EXISTS journal_entries (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1098,7 +1098,7 @@ CREATE TABLE IF NOT EXISTS journal_entries (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_journal_user_created ON journal_entries(user_id, created_at DESC, id DESC);
-\`
+`
 
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),

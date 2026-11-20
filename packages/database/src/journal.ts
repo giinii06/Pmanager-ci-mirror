@@ -47,7 +47,7 @@ export function listJournalEntries(db: Db, userId: string): JournalEntrySummary[
 export function getJournalEntry(db: Db, userId: string, id: string): JournalEntryRecord | null {
   return (
     db.query<JournalEntryRecord, [string, string]>(
-      \`SELECT \${SELECT} FROM journal_entries WHERE user_id = ? AND id = ?\`,
+      `SELECT ${SELECT} FROM journal_entries WHERE user_id = ? AND id = ?`,
     ).get(userId, id) ?? null
   )
 }
@@ -73,7 +73,7 @@ export function updateJournalEntry(
   }
   if (sets.length === 0) return getJournalEntry(db, userId, id)
   db.query<null, Params>(
-    \`UPDATE journal_entries SET \${sets.join(', ')}, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND user_id = ?\`,
+    `UPDATE journal_entries SET ${sets.join(', ')}, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND user_id = ?`,
   ).run(...values, now, id, userId)
   return getJournalEntry(db, userId, id)
 }
@@ -89,26 +89,26 @@ export function deleteJournalEntry(db: Db, userId: string, id: string): boolean 
 /** Only live videos and image-containing folders can be mentioned. */
 export function searchJournalMentions(db: Db, rawQuery: string): JournalMentionRecord[] {
   const safe = rawQuery.trim().slice(0, 80).replace(/[\\%_]/g, '\\$&')
-  const pattern = \`%\${safe}%\`
+  const pattern = `%${safe}%`
   const videos = db
     .query<JournalMentionRecord, [string]>(
-      \`SELECT 'video' AS type, a.id, a.filename AS label, l.name AS libraryName
+      `SELECT 'video' AS type, a.id, a.filename AS label, l.name AS libraryName
        FROM assets a JOIN libraries l ON l.id = a.library_id
        WHERE a.kind = 'video' AND a.deleted_at IS NULL
          AND a.filename LIKE ? ESCAPE '\\'
-       ORDER BY a.taken_at DESC, a.id DESC LIMIT 10\`,
+       ORDER BY a.taken_at DESC, a.id DESC LIMIT 10`,
     )
     .all(pattern)
   const albums = db
     .query<JournalMentionRecord, [string]>(
-      \`SELECT 'album' AS type, f.id, f.name AS label, l.name AS libraryName
+      `SELECT 'album' AS type, f.id, f.name AS label, l.name AS libraryName
        FROM folders f JOIN libraries l ON l.id = f.library_id
        WHERE f.name LIKE ? ESCAPE '\\'
          AND EXISTS (
            SELECT 1 FROM assets a
            WHERE a.folder_id = f.id AND a.kind = 'image' AND a.deleted_at IS NULL
          )
-       ORDER BY f.created_at DESC, f.id DESC LIMIT 10\`,
+       ORDER BY f.created_at DESC, f.id DESC LIMIT 10`,
     )
     .all(pattern)
   return [...videos, ...albums].slice(0, 16)
