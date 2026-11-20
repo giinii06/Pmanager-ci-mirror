@@ -33,7 +33,7 @@
 
 ## 3. Win11 실서버(`192.168.0.27`) 라이브 검증
 
-현재 상태: schema `v26`, `14,498` assets(`14,497` active), 라이브러리 3개(`d`, 빈 `D 드라이브`, `hls-rehearsal` 픽스처), `23,472` transcript segments, `15,211` jobs, `integrity_check ok`, `foreign_key_check` 0, `synchronous FULL`, SQLite `3.54.1`.
+현재 상태: schema `v26`, `14,602` assets(`14,601` active), 라이브러리 3개 모두 `ONLINE`(`d` 14,497, `D 드라이브` 104, `hls-rehearsal` 1), `23,472` transcript segments, `15,327` jobs, `integrity_check ok`, `foreign_key_check` 0, `synchronous FULL`, SQLite `3.54.1`.
 
 - **v25 → v26 배포** (PR 14): 부팅 시 `mode bootstrapped`, `rebuiltMs 97.1`, `verifyMs 89.8`로 기존 색인을 검증해 채택했습니다(재구축 없음). 운영자 재구축 `POST /api/system/search-index/rebuild`는 `201`, 258 ms, build `v11a11stya4tj595`를 만들고 포인터를 옮겼으며 이전 build는 `superseded`가 됐습니다. GC 미리보기는 `{builds:[],total:0}`(30일 보존 내 없음). 헤드리스 Chrome에서 `/diagnostics`의 `검색 색인` 패널이 세 배지와 build 표를 렌더링했습니다.
 - **v23 → v25 배포** (PR 12+13 동시): 백업 사본에서 마이그레이션이 5 ms, 13개 테이블 카운트가 전후 동일, `foreign_key_check` 빈 결과. 라이브에서 알림 인박스는 플래그가 꺼져 `404`+`requestId`, 진단 다운로드는 `diagnostics_runs` 행을 남겼습니다.
@@ -52,6 +52,7 @@
   - 벌크 8종(tag add/remove, export BOM, poster, reanalyze, move, copy, delete, cancel)이 모두 통과했습니다. held 항목 재시도가 막힌 mutation을 재사용하는 결함을 찾아 `c8fc02a`에서 고치고 회귀 테스트를 추가했습니다.
   - HLS는 워커 재시작을 넘겨 `ready`가 됐고, 소스 변경 뒤 v2가 발행되며 v1 포인터가 해제됐고, 25시간 뒤 GC가 v1만 지웠습니다(구 URL `404`, v2 `200`).
   - 리허설 프로젝트·이미지·픽스처는 모두 제거했고, 라이브는 9개 컨테이너·`1.0.0`·`v26`으로 남았습니다.
+- **`D 드라이브` 연결** (2026-11-21 01:18): Windows는 `D:\perfect`에서 107개를 보는데 WSL `readdir`이 65개에서 `EIO`로 멈췄고, 원인은 UTF-8 이름이 287 bytes인 파일 하나였습니다(Linux `NAME_MAX` 255). Windows에서 248 bytes로 줄여 이름을 바꾸자 WSL이 107개를 정상적으로 읽었고, 재스캔이 7.3초에 104개 자산을 색인해 라이브러리가 `ONLINE`이 됐습니다. 앱 변경은 없었습니다.
 
 ## 4. 제품 롤아웃 확인 항목 (릴리스 게이트 아님)
 
