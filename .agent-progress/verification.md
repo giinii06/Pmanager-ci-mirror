@@ -440,3 +440,12 @@ The Win11 host was unreachable (`ssh: connect to host 192.168.0.27 port 22: No r
 - The supervisor fix waits for `Ready` after every stop and for `Running` after every start, so the `-MultipleInstances IgnoreNew` start can no longer be dropped while the old instance holds the slot; `stop-server.ps1` refuses to stop containers if the supervisor does not become `Ready`; readiness requires `docker info`, not just `systemctl is-active`; recovery restarts `api` and `nginx` instead of only `nginx`; `start-server.ps1` adds `--remove-orphans`.
 - Docs: `README.md` (features, flags, auth, ports, commands), `docs/ARCHITECTURE.md` (v14 to v26 history), `docs/TEST-REPORT.md` (gate table and live evidence), `docs/BENCHMARKS.md` (FAISS decision and v26 timings), `docs/IMPLEMENTATION-BASELINE.md` (final version map), and the new `docs/RELEASE.md` (gates, deploy, Windows rehearsal, verdict, rollback, first 15 minutes).
 - Not verified: the CI workflow has not run on GitHub; the supervisor fix has not been installed (needs an elevated `install-service.ps1`); the physical reboot and power-cut rehearsal remain operator items; the version change has not been deployed to the host.
+
+## Spec v1.0 PR 15 Live Deploy (2026-11-20)
+
+- Host checkout fast-forwarded `08c3c54 -> 21f0641` from a bundle whose ref was `refs/heads/pr15-final` (`28,507` bytes). `git bundle create <file> <old>..<sha>` refuses the range as empty; the end revision has to be a ref name, so the branch was bundled and fetched by name.
+- `api` built from the new tree (cached layers) and recreated with `up -d --no-deps --wait api`; `nginx` restarted so it resolves the new container address. No worker was rebuilt; all four kept their uptime.
+- `/api/health` returns `{"ok":true,"version":"1.0.0"}`. With a minted session, `/api/system/capabilities` returns `version 1.0.0`, `schemaVersion 26` and the same flag set (`searchFts` and `smartAlbums` on, the other four off); the diagnostics report carries `app.version 1.0.0`, `database.schemaVersion 26`, `integrity ok`, `sqliteVersion 3.54.1`.
+- `PRAGMA user_version` is `26` and `assets` is `14,497`; `/health/ready` `200`. `GET /api/system/search-index` still reports the operator build `v11a11stya4tj595` as active.
+- No `level 50`/`60` lines in the api log for the first five minutes; `api` and `nginx` healthy, workers untouched.
+- Not deployed: the Windows scripts are in the host checkout but not staged. The elevated `install-service.ps1` run is still the operator step that installs and verifies the supervisor fix.
