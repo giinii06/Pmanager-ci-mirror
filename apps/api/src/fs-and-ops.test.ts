@@ -16,6 +16,7 @@ import {
   upsertFolder,
   type Db,
 } from '@mediavault/database'
+import { APP_VERSION } from '@mediavault/shared'
 import { buildApp } from './app'
 import { SESSION_COOKIE, createSession } from './auth'
 import type { ApiConfig } from './config'
@@ -135,6 +136,16 @@ describe('FS explorer, security guards, health, backups, votes activity, and job
     const ready = await h.app.inject({ method: 'GET', url: '/health/ready' })
     expect(ready.json().synchronousMode).toBe('FULL')
     expect(ready.json().dbIntegrity).toBe('skipped')
+    await h.app.close()
+    h.db.close()
+  })
+
+  test('/api/health reports the shared APP_VERSION', async () => {
+    const h = await createHarness()
+    const res = await h.app.inject({ method: 'GET', url: '/api/health' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().ok).toBe(true)
+    expect(res.json().version).toBe(APP_VERSION)
     await h.app.close()
     h.db.close()
   })
