@@ -22,6 +22,8 @@
 
 - [ ] **Turn on HLS generations on the host.** `HLS_GENERATIONS_ENABLED` is still `0` on `media-server`. Before enabling it, play a fixture asset with the flag on, confirm a generation row goes `queued -> running -> ready`, that the served playlist uses generation URLs, that the encode survives a worker restart, and that a superseded generation is collected after the grace window.
 
+- [ ] **Turn on notifications on the host.** `NOTIFICATIONS_ENABLED` is still `0` on `media-server`, so the inbox, bell, evaluator and Discord sender are dark. Before enabling it, decide whether a Discord webhook is wanted and set `DISCORD_WEBHOOK_URL` in `.env`; then recreate `api` and `worker`, open `/notifications`, and confirm one real alert and its recovery. The delivery path has only been exercised with a fake fetch.
+
 ## Spec v1.0 PR Sequence
 
 - [x] **PR 00 Baseline/Backup:** `docs/IMPLEMENTATION-BASELINE.md`, v15 backup verification, restore rehearsal, baseline test counts.
@@ -38,7 +40,7 @@
 - [ ] **PR 14 must re-measure the scene scan on the host before choosing ANN.** The exact scan is `373 / 417 ms` p95 on the host at 17,439 scenes, close to the 500 ms trigger, and the host is ~2.5x the Mac clone. The 100k-scene numbers in `docs/BENCHMARKS.md` came from the clone.
 - [x] **PR 10 Duplicates:** `v22` fingerprints and duplicate review groups, no automatic deletion. Stage A (hashing, `maintenance` job, four routes) and stage B (lane split, review page) are deployed as `239ef72` + `88017b6`; live schema `v22`, counters unchanged, one real scan found `14` groups over `31` files and wrote no mutation.
 - [x] **PR 11 Collections:** `v23` smart albums, playlists, bookmarks, poster UX. Deployed `9d65229` + `e893780` + `5ed56f1`; live schema `v23`, counters unchanged, all new routes and pages verified.
-- [x] **PR 12 Bulk/Move:** `v24` dry run, snapshots, per-item operations. Implemented and locally verified (`652 pass`), not deployed; both flags remain off. See the operator follow-up below before enabling them.
-- [ ] **PR 13 Observability:** `v25` health, diagnostics, notifications, cache policy.
+- [x] **PR 12 Bulk/Move:** `v24` dry run, snapshots, per-item operations. Code deployed as part of `f5033cb`; both flags remain off. See the operator follow-up below before enabling them.
+- [x] **PR 13 Observability:** `v25` health, diagnostics, notifications, cache policy. Deployed as `f5033cb`; live schema `v25`, notifications off.
 - [ ] **PR 14 Search Index Metadata:** `v26` index generations, backfill, GC.
 - [ ] **PR 15 Hardening/Release:** docs, CI, Windows boot rehearsal, E2E, performance, release checklist.
