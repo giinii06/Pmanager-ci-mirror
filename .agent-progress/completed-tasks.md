@@ -261,3 +261,12 @@
 - Live `user_version 25`, `integrity ok`, `14,497` assets (`14,496` active), `15,187` jobs, `2` users; worker heartbeat `idle`; capabilities report `schemaVersion 25` and every feature flag off; diagnostics and metrics `200`; notifications `404` with the flag off; cache preview over `176` files / `1,300,177` bytes with `11,084,793,666` protected bytes; one diagnostics download audit row.
 - Headless Chrome rendered `/diagnostics` (metric pills, all sections, worker heartbeat) and `/notifications` (tabs plus the centered disabled-state message). Screenshots `/tmp/pm-diagnostics.png` and `/tmp/pm-notifications.png`.
 - Not run live: the inbox with the flag on, a real Discord webhook, and a cache clean against the live library.
+
+## Spec v1.0 PR 14 — Search Index Builds (2026-11-20)
+
+- Schema `v26`: `search_index_builds` and `search_index_active(kind PRIMARY KEY)` plus four triggers. One active build per kind is a row constraint, and activation, demotion, deletion and kind changes are refused at the database, not by convention.
+- The FTS lifecycle is adopt-or-repair: `configureSearchFts` verifies first and records `adopted`, `bootstrapped`, `repaired` or `off`; `publishFtsBuild` commits the `building` row, then rebuilds, verifies, stamps `ready` and moves the pointer in one transaction, so a failure leaves the previous build serving and the attempt recorded. A disabled boot writes no row. Stale `building` rows are failed on the next boot.
+- Search no longer 500s when the vtab is swapped out: each corpus falls back to LIKE and disarms only on a structural break; the last failure is process-local and shown on the panel.
+- Operator surface: `GET /api/system/search-index`, `POST /api/system/search-index/rebuild` (409 in flight, masked 500 otherwise), `GET …/gc/preview`, `POST …/gc`, a diagnostics section and markdown, and a `검색 색인` panel with the three-state matrix, recent builds and a GC dialog. The search empty state no longer blames the scene index for every empty result.
+- `bun test`: **`719 pass, 0 fail`**, 81 files. `bun run typecheck`: exit `0`. Web build exit `0`.
+- Host-clone rehearsal on the live `v25` backup: `v25 -> v26` in `3.1 ms`, no counter drift, clean integrity and FK checks; `bootstrapped` over `14,497` assets / `23,434` segments; rebuild `111.5 ms` over `37,931` documents with identical results; repair after a disarmed write `128.1 ms`; one pointer after three builds; every illegal trigger move refused; GC removed exactly the backdated row.
