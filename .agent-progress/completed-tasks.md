@@ -270,3 +270,10 @@
 - Operator surface: `GET /api/system/search-index`, `POST /api/system/search-index/rebuild` (409 in flight, masked 500 otherwise), `GET …/gc/preview`, `POST …/gc`, a diagnostics section and markdown, and a `검색 색인` panel with the three-state matrix, recent builds and a GC dialog. The search empty state no longer blames the scene index for every empty result.
 - `bun test`: **`719 pass, 0 fail`**, 81 files. `bun run typecheck`: exit `0`. Web build exit `0`.
 - Host-clone rehearsal on the live `v25` backup: `v25 -> v26` in `3.1 ms`, no counter drift, clean integrity and FK checks; `bootstrapped` over `14,497` assets / `23,434` segments; rebuild `111.5 ms` over `37,931` documents with identical results; repair after a disarmed write `128.1 ms`; one pointer after three builds; every illegal trigger move refused; GC removed exactly the backdated row.
+
+## Spec v1.0 PR 14 — Deploy (2026-11-20)
+
+- Backup `281,493,504` bytes at `v25` (`quick_check ok`), host fast-forwarded `68c85dc -> 7974fb7`, `api` and `web` rebuilt and recreated, `nginx` restarted, no worker rebuilt.
+- Live `user_version 26`, both tables, four triggers, `integrity ok`, FK `0`, `14,497` assets (`14,496` active), `15,191` jobs. Boot log `mode bootstrapped` over `14,497` assets / `23,434` segments in `97.1 ms` setup + `89.8 ms` verify, so the upgrade recorded the existing index rather than rebuilding it.
+- `GET /api/system/search-index` `200` with `fallback fts` and all three badges true; diagnostics Markdown carries `## Search index`; one operator rebuild `201` in `258 ms`, new build active and the bootstrap build superseded; GC preview empty; the panel renders in headless Chrome with both builds; the shipped bundle carries the corrected empty-state copy.
+- Not exercised live: the `409` (needs re-entry), the GC delete (nothing eligible), and the search empty state (the semantic leg always returns nearest scenes).
