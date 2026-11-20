@@ -1,8 +1,11 @@
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyRequest } from 'fastify'
+import { newId } from '@mediavault/shared'
 import { SESSION_COOKIE, parseCookies, resolveSession } from './auth'
 import type { AppContext } from './context'
+import { diagnosticIdOf } from './observability'
 import { registerAssetRoutes } from './routes/assets'
 import { registerBulkOperationRoutes } from './routes/bulk-operations'
+import { registerDiagnosticsRoutes } from './routes/diagnostics'
 import { registerDuplicateRoutes } from './routes/duplicates'
 import { registerFileOperationRoutes } from './routes/file-operations'
 import { registerAuthRoutes } from './routes/auth'
@@ -11,6 +14,7 @@ import { registerFsRoutes } from './routes/fs'
 import { registerIndexRoutes } from './routes/index-run'
 import { registerLibraryRoutes } from './routes/libraries'
 import { registerMediaRoutes } from './routes/media'
+import { registerNotificationRoutes } from './routes/notifications'
 import { registerPlaybackRoutes } from './routes/playback'
 import { registerPlaylistRoutes } from './routes/playlists'
 import { registerSceneRoutes } from './routes/scenes'
@@ -73,7 +77,15 @@ function isCrossOrigin(request: FastifyRequest, allowedOrigins: string[]): boole
 
 export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: { level: process.env.LOG_LEVEL ?? 'info' },
+    logger: {
+      level: process.env.LOG_LEVEL ?? 'info',
+      redact: {
+        paths: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'],
+        censor: '[redacted]',
+      },
+    },
+    // Server-minted: an inbound X-Request-Id is never trusted for correlation.
+    genReqId: () => newId(16),
     trustProxy: ctx.config.trustProxy,
     bodyLimit: 1024 * 1024,
   })
@@ -81,14 +93,36 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   app.decorateRequest('user', null)
   app.decorateRequest('sessionId', null)
 
-  app.addHook('onSend', async (_request, reply, payload) => {
+  app.addHook('onSend', async (request, reply, payload) => {
     reply.header('X-Content-Type-Options', 'nosniff')
     reply.header('X-Frame-Options', 'SAMEORIGIN')
     reply.header('Referrer-Policy', 'same-origin')
+    reply.header('X-Request-Id', request.id)
     if (ctx.config.secureCookies) {
       reply.header('Strict-Transport-Security', 'max-age=31536000')
     }
+    if (reply.statusCode >= 400 && typeof payload === 'string' && payload.startsWith('{')) {
+      try {
+        const body = JSON.parse(payload) as Record<string, unknown>
+        if (body !== null && typeof body.error === 'string') {
+          body.requestId = request.id
+          if (reply.statusCode >= 500) body.diagnosticId = diagnosticIdOf(request.id)
+          return JSON.stringify(body)
+        }
+      } catch {
+        // A non-JSON error body passes through untouched.
+      }
+    }
     return payload
+  })
+
+  app.addHook('onResponse', async (request, reply) => {
+    ctx.metrics?.record(
+      request.method,
+      request.routeOptions?.url ?? 'unmatched',
+      reply.statusCode,
+      reply.elapsedTime,
+    )
   })
 
   app.addHook('onRequest', async (request, reply) => {
@@ -115,7 +149,12 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
     const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 500
-    if (status >= 500) request.log.error({ err: error }, 'request failed')
+    if (status >= 500) {
+      request.log.error(
+        { err: error, requestId: request.id, diagnosticId: diagnosticIdOf(request.id) },
+        'request failed',
+      )
+    }
     reply.code(status).send({
       error: status >= 500 ? 'internal' : (error.code ?? 'request_failed'),
       message: status >= 500 ? 'Something went wrong.' : error.message,
@@ -148,6 +187,8 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerWorkerGpuRoutes(app, ctx)
   registerWorkerSceneRoutes(app, ctx)
   registerWorkerTranslationRoutes(app, ctx)
+  registerNotificationRoutes(app, ctx)
+  registerDiagnosticsRoutes(app, ctx)
   registerSystemRoutes(app, ctx)
 
   return app

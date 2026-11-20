@@ -138,6 +138,7 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
         kind: 'scan_library',
         priority: PRIORITY.next,
         libraryId: id,
+        requestId: request.id,
       },
       now,
     )
@@ -236,6 +237,7 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
         kind: 'scan_library',
         priority: PRIORITY.next,
         libraryId: params.id,
+        requestId: request.id,
       },
       now,
     )

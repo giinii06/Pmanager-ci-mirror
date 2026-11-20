@@ -322,10 +322,11 @@ describe('duplicate routes', () => {
       payload: { action: 'delete' },
     })
     expect(remove.statusCode).toBe(409)
-    expect(remove.json()).toEqual({
+    expect(remove.json()).toMatchObject({
       error: 'delete_not_available',
       message: '중복 삭제는 파일 작업 엔진이 켜진 뒤 별도 확인을 거칩니다.',
     })
+    expect(remove.headers['x-request-id']).toBeString()
 
     const unknown = await h.app.inject({
       method: 'POST',

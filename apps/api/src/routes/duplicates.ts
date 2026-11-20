@@ -46,6 +46,7 @@ export function registerDuplicateRoutes(app: FastifyInstance, ctx: AppContext): 
         priority: 4,
         libraryId: body.libraryId,
         payload: { task: 'duplicates' },
+        requestId: request.id,
       },
       Date.now(),
     )

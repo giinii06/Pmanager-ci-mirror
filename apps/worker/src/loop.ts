@@ -16,10 +16,13 @@ import {
 import { StructuredLogger } from '@mediavault/media'
 import type { WorkerConfig } from './config'
 import { runBulkLoop } from './bulk/worker'
+import { createDiskPolicy } from './disk-policy'
 import { executeJob } from './handlers'
 import { classifyJobError } from './job-errors'
 import { collectHlsGarbage } from './hls-maintenance'
 import { runMutationLoop } from './mutations/worker'
+import { startWorkerHeartbeat } from './observability/heartbeat'
+import { runAlertLoop } from './observability/evaluator'
 import { runWorkerRecovery } from './recovery'
 import { ScanInterruptedError } from './scan'
 import { startMediaWatcher } from './watch'
@@ -28,6 +31,7 @@ const HEARTBEAT_INTERVAL_MS = 20_000
 const RECOVERY_INTERVAL_MS = 15_000
 const HLS_GC_INTERVAL_MS = 10 * 60_000
 const BACKUP_INTERVAL_MS = 24 * 60 * 60_000
+const BACKUP_FAILURE_BACKOFF_MS = 15 * 60_000
 const JOB_RETENTION_MS = 14 * 24 * 60 * 60_000
 
 export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
@@ -67,17 +71,28 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
     : runBulkLoop(db, config, logger, bulkController.signal).catch((error) => {
         logger.error('worker.bulk_loop.crashed', { errorMessage: (error as Error).message })
       })
+  const alertController = new AbortController()
+  const alertLoop = config.once
+    ? null
+    : runAlertLoop(db, config, logger, alertController.signal).catch((error) => {
+        logger.error('worker.alert_loop.crashed', { errorMessage: (error as Error).message })
+      })
+  const heartbeat = startWorkerHeartbeat(db, config)
+  const diskPolicy = createDiskPolicy(config)
   const stop = () => {
     stopping = true
     activeController?.abort('shutdown')
     mutationController.abort('shutdown')
     bulkController.abort('shutdown')
+    alertController.abort('shutdown')
+    heartbeat.stop()
   }
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
 
   let lastRecoveryCheck = Date.now()
   let lastBackupCheck = Date.now()
+  let backupRetryAfter = 0
   let lastHlsGc = 0
 
   try {
@@ -109,7 +124,7 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
         }
       }
 
-      if (!config.once && now - lastBackupCheck >= 60_000) {
+      if (!config.once && now - lastBackupCheck >= 60_000 && now >= backupRetryAfter) {
         lastBackupCheck = now
         const latestBackup = getLatestBackupLog(db, true)
         if (!latestBackup || now - latestBackup.createdAt >= BACKUP_INTERVAL_MS) {
@@ -123,22 +138,29 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
               sizeBytes: record.sizeBytes,
             })
           } catch (error) {
+            backupRetryAfter = Date.now() + BACKUP_FAILURE_BACKOFF_MS
             logger.error('worker.backup.failed', {
               errorMessage: (error as Error).message,
+              retryAfterMs: BACKUP_FAILURE_BACKOFF_MS,
             })
           }
         }
       }
 
+      const excludedKinds = await diskPolicy.excludedKinds()
       const job = claimNextJob(db, Date.now(), {
         workerId: config.workerId,
         leaseMs: DEFAULT_JOB_LEASE_MS,
+        excludeKinds: excludedKinds,
       })
       if (!job) {
         if (config.once) return
+        heartbeat.setState('idle')
         await Bun.sleep(config.pollMs)
         continue
       }
+
+      heartbeat.setState('running', job.id)
 
       const started = Date.now()
       const controller = new AbortController()
@@ -217,12 +239,15 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
       } finally {
         clearInterval(hbTimer)
         activeController = null
+        heartbeat.setState('idle')
       }
     }
   } finally {
     process.off('SIGINT', stop)
     process.off('SIGTERM', stop)
+    heartbeat.stop()
     if (mutationLoop) await mutationLoop
+    if (alertLoop) await alertLoop
     if (watcher) await watcher.close()
   }
 }

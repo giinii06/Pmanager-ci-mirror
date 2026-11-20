@@ -28,20 +28,18 @@ import { isTempDownloadFile, resolveInside } from '@mediavault/media'
 import {
   classifyFile,
   isBlockedSystemRelativePath,
-  isMountBoundaryRoot,
   type BackupRecordDTO,
-  type LibraryHealthDTO,
   type StorageStatsDTO,
   type SystemStatusDTO,
 } from '@mediavault/shared'
 import type { AppContext } from '../context'
+import { BOOT_AT_ISO, uptimeSeconds } from '../boot'
 import { toArchiveJobDTO, toJobDTO, toWorkQueueDTO } from '../dto'
+import { checkLibraryHealth } from '../library-health'
+import { peekIntegrity, sqliteIntegrity } from '../sqlite-health'
 import { parseInput } from '../validate'
 
-const BOOT_AT_MS = Date.now()
-const BOOT_AT_ISO = new Date(BOOT_AT_MS).toISOString()
 const STORAGE_CACHE_TTL_MS = 30_000
-const INTEGRITY_CACHE_TTL_MS = 60_000
 const WALK_CONCURRENCY = 24
 const jobIdParams = z.object({ id: z.coerce.number().int().positive() })
 
@@ -211,59 +209,13 @@ function toBackupRecordDTO(row: BackupLogRecord): BackupRecordDTO {
   }
 }
 
-async function checkLibraryHealth(ctx: AppContext): Promise<LibraryHealthDTO[]> {
-  const libs = listLibraries(ctx.db)
-  return Promise.all(
-    libs.map(async (lib) => {
-      const abs = resolveInside(ctx.config.mediaRoot, lib.rootPath)
-      let accessible = false
-      if (abs) {
-        try {
-          const info = await stat(abs)
-          if (info.isDirectory()) {
-            if (isMountBoundaryRoot(lib.rootPath) && lib.assetCount > 0) {
-              const entries = await readdir(abs)
-              accessible = entries.length > 0
-            } else {
-              accessible = true
-            }
-          }
-        } catch {
-          accessible = false
-        }
-      }
-
-      const status: LibraryHealthDTO['status'] = !accessible
-        ? 'unavailable'
-        : lib.lastError?.startsWith('drive_unavailable')
-          ? 'blocked'
-          : lib.scanState === 'scanning'
-            ? 'scanning'
-            : 'available'
-
-      return {
-        id: lib.id,
-        name: lib.name,
-        rootPath: lib.rootPath,
-        status,
-        scanState: lib.scanState,
-        lastError: lib.lastError,
-        lastScanAt: lib.lastScanAt !== null ? new Date(lib.lastScanAt).toISOString() : null,
-        assetCount: lib.assetCount,
-        scannedFiles: lib.scannedFiles,
-      }
-    }),
-  )
-}
-
 export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): void {
   let cachedStorage: { expiresAt: number; data: StorageStatsDTO } | null = null
-  let cachedIntegrity: { expiresAt: number; value: string } | null = null
 
   const liveHandler = async () => ({
     ok: true,
     pid: process.pid,
-    uptimeSeconds: Math.max(0, Math.floor((Date.now() - BOOT_AT_MS) / 1000)),
+    uptimeSeconds: uptimeSeconds(),
     timestamp: new Date().toISOString(),
   })
 
@@ -275,8 +227,8 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
       const sqlite = getSqliteRuntimeInfo(ctx.db, { checkIntegrity: false })
       reply.send({
         ok: true,
-        uptimeSeconds: Math.max(0, Math.floor((Date.now() - BOOT_AT_MS) / 1000)),
-        dbIntegrity: cachedIntegrity ? cachedIntegrity.value : sqlite.integrity,
+        uptimeSeconds: uptimeSeconds(),
+        dbIntegrity: peekIntegrity(ctx) ?? sqlite.integrity,
         sqliteVersion: sqlite.sqliteVersion,
         synchronousMode: sqlite.synchronousMode,
       })
@@ -310,18 +262,14 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   app.get('/api/system/status', async (_request, reply) => {
     const now = Date.now()
-    const checkIntegrity = !cachedIntegrity || now >= cachedIntegrity.expiresAt
-    const sqlite = getSqliteRuntimeInfo(ctx.db, { checkIntegrity })
-    const integrity = checkIntegrity ? sqlite.integrity : cachedIntegrity!.value
-    if (checkIntegrity) {
-      cachedIntegrity = { expiresAt: now + INTEGRITY_CACHE_TTL_MS, value: integrity }
-    }
+    const sqlite = getSqliteRuntimeInfo(ctx.db, { checkIntegrity: false })
+    const integrity = sqliteIntegrity(ctx, now)
     const libraries = await checkLibraryHealth(ctx)
     const recovery = getLatestRecoveryLog(ctx.db)
     const latestBackup = getLatestBackupLog(ctx.db)
     const payload: SystemStatusDTO = {
       startedAt: BOOT_AT_ISO,
-      uptimeSeconds: Math.max(0, Math.floor((now - BOOT_AT_MS) / 1000)),
+      uptimeSeconds: uptimeSeconds(now),
       dbIntegrity: integrity,
       sqliteVersion: sqlite.sqliteVersion,
       synchronousMode: sqlite.synchronousMode,

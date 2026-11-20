@@ -15,6 +15,7 @@ import type {
   JobDTO,
   LibraryDTO,
   LibraryHealthDetailDTO,
+  NotificationDTO,
   PlaybackProgressDTO,
   PlaylistDTO,
   PlaylistItemDTO,
@@ -33,6 +34,7 @@ import type {
   VideoBookmarkDTO,
   WorkItemDTO,
   WorkQueueDTO,
+  WorkerHeartbeatDTO,
 } from '@mediavault/shared'
 import { POSTER_SCHEME, playbackModeFor } from '@mediavault/shared'
 import type {
@@ -51,6 +53,7 @@ import type {
   JobRecord,
   LibraryHealthRecord,
   LibraryRecord,
+  NotificationRecord,
   PlaybackRecord,
   PlaylistItemRecord,
   PlaylistRecord,
@@ -67,6 +70,7 @@ import type {
   TranslationWithSegments,
   UserRecord,
   VideoBookmarkRecord,
+  WorkerHeartbeatRecord,
   WorkItemRecord,
   WorkQueueRecord,
 } from '@mediavault/database'
@@ -259,7 +263,50 @@ export function toJobDTO(job: JobRecord): JobDTO {
     cancelRequested: job.cancelRequested === 1,
     completedAt: iso(job.completedAt),
     lastError: job.lastError,
+    requestId: job.requestId,
     updatedAt: new Date(job.updatedAt).toISOString(),
+  }
+}
+
+function parseMetadata(raw: string | null): unknown {
+  if (raw === null) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export function toNotificationDTO(row: NotificationRecord): NotificationDTO {
+  return {
+    id: row.id,
+    kind: row.kind,
+    severity: row.severity,
+    state: row.state,
+    title: row.title,
+    body: row.body,
+    metadata: parseMetadata(row.metadataJson),
+    occurrences: row.occurrences,
+    readAt: iso(row.readAt),
+    firstSeenAt: new Date(row.firstSeenAt).toISOString(),
+    lastSeenAt: new Date(row.lastSeenAt).toISOString(),
+    lastNotifiedAt: iso(row.lastNotifiedAt),
+    resolvedAt: iso(row.resolvedAt),
+    createdAt: new Date(row.createdAt).toISOString(),
+    updatedAt: new Date(row.updatedAt).toISOString(),
+  }
+}
+
+export function toWorkerHeartbeatDTO(row: WorkerHeartbeatRecord): WorkerHeartbeatDTO {
+  return {
+    instanceId: row.instanceId,
+    workerId: row.workerId,
+    component: row.component,
+    pid: row.pid,
+    state: row.state,
+    currentJobId: row.currentJobId,
+    startedAt: new Date(row.startedAt).toISOString(),
+    lastSeenAt: new Date(row.lastSeenAt).toISOString(),
   }
 }
 

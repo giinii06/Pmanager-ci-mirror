@@ -81,6 +81,8 @@ export interface ApiConfig {
   smartAlbumsEnabled: boolean
   /** Enables bulk operations. Off by default; the routes answer 404 when off. */
   bulkOperationsEnabled?: boolean
+  /** Enables the notification inbox. Off by default; the routes answer 404 when off. */
+  notificationsEnabled?: boolean
   /** Peers whose forwarded headers are believed. The API is only reachable through nginx. */
   trustProxy: string[]
   /** Exact origins allowed to send state-changing requests; empty compares against the request host. */
@@ -258,6 +260,7 @@ export async function loadConfig(
     hlsGenerationsEnabled: env.HLS_GENERATIONS_ENABLED === '1',
     smartAlbumsEnabled: env.SMART_ALBUMS_ENABLED !== '0',
     bulkOperationsEnabled: env.BULK_OPERATIONS_ENABLED === '1',
+    notificationsEnabled: env.NOTIFICATIONS_ENABLED === '1',
     trustProxy: resolveList(env.TRUSTED_PROXIES, ['127.0.0.1', '::1', '172.16.0.0/12']),
     publicOrigins: resolveOrigins(env.PUBLIC_ORIGINS),
     gpu: { resourceId: env.GPU_RESOURCE?.trim() || 'gpu:0' },

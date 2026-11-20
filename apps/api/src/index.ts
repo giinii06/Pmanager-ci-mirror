@@ -4,6 +4,7 @@ import { buildApp } from './app'
 import { loadConfig } from './config'
 import type { AppContext } from './context'
 import { ensurePipelineJobs } from './index-trigger'
+import { RequestMetrics } from './observability'
 import { Semaphore } from './semaphore'
 
 const config = await loadConfig()
@@ -26,6 +27,7 @@ try {
 const ctx: AppContext = {
   config,
   db,
+  metrics: new RequestMetrics(),
   thumbnails: new Semaphore(3),
   previews: new Semaphore(2),
 }

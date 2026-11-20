@@ -202,6 +202,7 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
             kind: 'thumbnail',
             priority: PRIORITY.now,
             assetId: info.id,
+            requestId: request.id,
           },
           Date.now(),
         )
@@ -343,6 +344,7 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
           kind: 'hls',
           priority: PRIORITY.now,
           assetId: info.id,
+          requestId: request.id,
         },
         Date.now(),
       )

@@ -145,6 +145,7 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
               kind: 'thumbnail',
               priority: PRIORITY.visible,
               assetId: asset.id,
+              requestId: request.id,
             },
             now,
           )

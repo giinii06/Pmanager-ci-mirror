@@ -15,6 +15,11 @@ import type {
   BulkOperationParams,
   BulkPreviewDTO,
   BulkSelection,
+  CacheCleanupPreviewDTO,
+  CacheCleanupResultDTO,
+  CacheInventoryDTO,
+  CapabilitiesDTO,
+  DiagnosticsReportDTO,
   FolderDTO,
   FolderSort,
   FileOperationDTO,
@@ -26,6 +31,9 @@ import type {
   JobSummaryDTO,
   LibraryDTO,
   LibraryHealthDetailDTO,
+  NotificationDTO,
+  NotificationListDTO,
+  NotificationUnreadDTO,
   Page,
   PlayEventResultDTO,
   PlayEventType,
@@ -41,6 +49,7 @@ import type {
   StatsDTO,
   StorageStatsDTO,
   SubtitleTracksDTO,
+  SystemMetricsDTO,
   SystemStatusDTO,
   TagDTO,
   TagSummaryDTO,
@@ -63,6 +72,8 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly code?: string,
+    readonly requestId?: string,
+    readonly diagnosticId?: string,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -82,14 +93,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     let message = `요청이 실패했습니다 (${response.status})`
     let code: string | undefined
+    let requestId: string | undefined
+    let diagnosticId: string | undefined
     try {
-      const body = (await response.json()) as { message?: string; error?: string }
+      const body = (await response.json()) as {
+        message?: string
+        error?: string
+        requestId?: string
+        diagnosticId?: string
+      }
       if (body?.message) message = body.message
       if (body?.error) code = body.error
+      if (body?.requestId) requestId = body.requestId
+      if (body?.diagnosticId) diagnosticId = body.diagnosticId
     } catch {
       // Keep the status message.
     }
-    throw new ApiError(response.status, message, code)
+    // The short id is what an operator can grep; the full id stays on the error.
+    if (diagnosticId) message = `${message} (진단 ID: ${diagnosticId})`
+    throw new ApiError(response.status, message, code, requestId, diagnosticId)
   }
 
   if (response.status === 204) return undefined as T
@@ -347,6 +369,40 @@ export const api = {
   cancelJob: (id: number) => request<{ job: JobDTO }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
   workQueue: () => request<WorkQueueDTO>('/api/queue'),
   systemStatus: () => request<SystemStatusDTO>('/api/system/status'),
+  capabilities: () => request<CapabilitiesDTO>('/api/system/capabilities'),
+  diagnostics: (format: 'json' | 'md' = 'json', refresh = false) =>
+    request<DiagnosticsReportDTO>(
+      `/api/system/diagnostics?format=${format}${refresh ? '&refresh=1' : ''}`,
+    ),
+  diagnosticsUrl: (format: 'json' | 'md') =>
+    `/api/system/diagnostics?format=${format}&download=1`,
+  metrics: () => request<SystemMetricsDTO>('/api/system/metrics'),
+  cacheInventory: () => request<CacheInventoryDTO>('/api/system/cache'),
+  previewCacheCleanup: () =>
+    request<CacheCleanupPreviewDTO>('/api/system/cache/preview', { method: 'POST' }),
+  cleanCache: (generation: string) =>
+    request<CacheCleanupResultDTO>('/api/system/cache/clean', {
+      method: 'POST',
+      body: JSON.stringify({ generation }),
+    }),
+  notifications: (params?: { state?: string; limit?: number; cursor?: string | null }) => {
+    const search = new URLSearchParams()
+    if (params?.state) search.set('state', params.state)
+    if (params?.limit) search.set('limit', String(params.limit))
+    if (params?.cursor) search.set('cursor', params.cursor)
+    const qs = search.toString()
+    return request<NotificationListDTO>(`/api/notifications${qs ? `?${qs}` : ''}`)
+  },
+  notificationsUnread: () => request<NotificationUnreadDTO>('/api/notifications/unread'),
+  readNotification: (id: string) =>
+    request<{ notification: NotificationDTO }>(`/api/notifications/${encodeURIComponent(id)}/read`, {
+      method: 'POST',
+    }),
+  dismissNotification: (id: string) =>
+    request<{ notification: NotificationDTO }>(
+      `/api/notifications/${encodeURIComponent(id)}/dismiss`,
+      { method: 'POST' },
+    ),
   backups: () => request<{ backups: BackupRecordDTO[] }>('/api/backups'),
   createBackup: () => request<{ backup: BackupRecordDTO }>('/api/backups', { method: 'POST' }),
   fsDrives: () => request<{ drives: HostDriveDTO[] }>('/api/fs/drives'),

@@ -29,6 +29,15 @@ export interface WorkerConfig {
   fileMutationEnabled?: boolean
   /** Enables the bulk-operation loop. Off by default; the API answers 404 when off. */
   bulkOperationsEnabled?: boolean
+  /** Enables the alert evaluator and Discord delivery. Off by default (spec I-05). */
+  notificationsEnabled?: boolean
+  /** Discord incoming webhook. Never logged or returned by the API. */
+  discordWebhookUrl?: string
+  /** How often the alert checks run. */
+  alertIntervalMs?: number
+  /** A volume below either floor stops cache-writing claims. */
+  minFreeBytes?: number
+  minFreeRatio?: number
   /** How often the bulk loop looks for work while idle. */
   bulkPollMs?: number
   /** How often the mutation loop looks for work while idle. */
@@ -66,6 +75,11 @@ export async function loadWorkerConfig(
     staleTempAgeMs: resolveNonNegativeInt(env.STALE_TEMP_AGE_MS, 2 * 60_000),
     fileMutationEnabled: env.FILE_MUTATION_ENGINE_ENABLED === '1',
     bulkOperationsEnabled: env.BULK_OPERATIONS_ENABLED === '1',
+    notificationsEnabled: env.NOTIFICATIONS_ENABLED === '1',
+    discordWebhookUrl: env.DISCORD_WEBHOOK_URL?.trim() || '',
+    alertIntervalMs: resolveNonNegativeInt(env.ALERT_INTERVAL_MS, 30_000),
+    minFreeBytes: resolveNonNegativeInt(env.MIN_FREE_BYTES, 2 * 1024 * 1024 * 1024),
+    minFreeRatio: resolveRatio(env.MIN_FREE_RATIO, 0.1),
     bulkPollMs: resolveNonNegativeInt(env.BULK_POLL_MS, 1_000),
     mutationPollMs: resolveNonNegativeInt(env.MUTATION_POLL_MS, 1_000),
     asrResultDir: path.resolve(env.ASR_RESULT_DIR ?? 'asr-results'),
@@ -82,4 +96,10 @@ function resolveNonNegativeInt(raw: string | undefined, fallback: number): numbe
 function resolveGuardRatio(raw: string | undefined): number {
   const value = Number(raw)
   return Number.isFinite(value) && value >= 0 && value <= 1 ? value : 0.2
+}
+
+function resolveRatio(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === '') return fallback
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 && value <= 1 ? value : fallback
 }

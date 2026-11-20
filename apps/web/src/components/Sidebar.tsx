@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
+  Activity,
   Aperture,
   Copy,
   Film,
@@ -268,6 +269,27 @@ export function Sidebar() {
         >
           <ListVideo size={16} className={inPlaylists ? 'text-accent' : 'text-faint'} />
           <span className={cn('flex-1', collapsed && 'md:hidden')}>재생목록</span>
+        </NavLink>
+
+        <NavLink
+          to="/diagnostics"
+          title="진단"
+          className={({ isActive }) =>
+            cn(
+              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
+              collapsed && 'md:justify-center md:px-0',
+              isActive
+                ? 'bg-accent/12 text-accent'
+                : 'text-muted hover:bg-raised/70 hover:text-ink',
+            )
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <Activity size={16} className={isActive ? 'text-accent' : 'text-faint'} />
+              <span className={cn('flex-1', collapsed && 'md:hidden')}>진단</span>
+            </>
+          )}
         </NavLink>
 
         <NavLink

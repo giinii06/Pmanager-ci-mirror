@@ -23,8 +23,13 @@ import {
   Tag,
   Trash2,
 } from 'lucide-react'
-import type { ArchiveJobState, LibraryDTO, LibraryHealthState } from '@mediavault/shared'
-import { api } from '../lib/api'
+import type {
+  ArchiveJobState,
+  CacheCleanupPreviewDTO,
+  LibraryDTO,
+  LibraryHealthState,
+} from '@mediavault/shared'
+import { api, ApiError } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatAgo, formatBytes, formatCount, formatDate } from '../lib/format'
 import { useUi, type ThemeMode } from '../store/ui'
@@ -34,6 +39,7 @@ import { Input } from '../components/ui/Input'
 import { HostFolderPicker } from '../components/HostFolderPicker'
 import { PageHeading } from '../components/PageHeading'
 import { Spinner } from '../components/ui/Spinner'
+import { Section, MetricPill } from '../components/ui/Section'
 import { ProcessingPanel } from '../components/ProcessingPanel'
 
 const CALENDAR_THEME = {
@@ -69,31 +75,6 @@ const ARCHIVE_STATE_LABEL: Record<ArchiveJobState, { text: string; tone: string 
   failed: { text: '실패', tone: 'text-danger bg-danger/10 border-danger/35' },
 }
 
-function Section({
-  title,
-  description,
-  actions,
-  children,
-}: {
-  title: string
-  description?: string
-  actions?: ReactNode
-  children: ReactNode
-}) {
-  return (
-    <section className="mb-6 overflow-hidden rounded-panel border border-line bg-panel">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3">
-        <div>
-          <h2 className="text-[13.5px] font-semibold text-ink">{title}</h2>
-          {description ? <p className="mt-0.5 text-[11.5px] text-muted">{description}</p> : null}
-        </div>
-        {actions}
-      </div>
-      {children}
-    </section>
-  )
-}
-
 function StatCard({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
   return (
     <div className="rounded-panel border border-line bg-panel px-4 py-3">
@@ -104,15 +85,6 @@ function StatCard({ icon, label, value }: { icon: ReactNode; label: string; valu
       <p className="mt-1.5 text-[20px] font-semibold tabular-nums tracking-tight text-ink">
         {formatCount(value)}
       </p>
-    </div>
-  )
-}
-
-function MetricPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-line bg-panel-2 px-3 py-2">
-      <p className="text-[11px] text-muted">{label}</p>
-      <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-ink">{value}</p>
     </div>
   )
 }
@@ -155,6 +127,11 @@ export function SettingsPage() {
     queryKey: ['backups'],
     queryFn: api.backups,
   })
+  const cacheInventory = useQuery({
+    queryKey: ['cache-inventory'],
+    queryFn: api.cacheInventory,
+    staleTime: 60_000,
+  })
 
   const [addOpen, setAddOpen] = useState(false)
   const [manualPathOpen, setManualPathOpen] = useState(false)
@@ -164,6 +141,7 @@ export function SettingsPage() {
   const [pendingDelete, setPendingDelete] = useState<LibraryDTO | null>(null)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [selectedVoteDay, setSelectedVoteDay] = useState<string | null>(null)
+  const [cachePreview, setCachePreview] = useState<CacheCleanupPreviewDTO | null>(null)
 
   const invalidateLibraryData = () => {
     queryClient.invalidateQueries({ queryKey: ['libraries'] })
@@ -182,6 +160,35 @@ export function SettingsPage() {
       toast('저장 공간 통계를 새로고침했습니다.', 'success')
     },
     onError: () => toast('저장 공간을 계산하지 못했습니다.', 'error'),
+  })
+
+  const previewCleanup = useMutation({
+    mutationFn: () => api.previewCacheCleanup(),
+    onSuccess: (preview) => setCachePreview(preview),
+    onError: (error) =>
+      toast(error instanceof Error ? error.message : '정리 대상을 계산하지 못했습니다.', 'error'),
+  })
+
+  const cleanCache = useMutation({
+    mutationFn: (generation: string) => api.cleanCache(generation),
+    onSuccess: (result) => {
+      setCachePreview(null)
+      toast(
+        `캐시 ${formatCount(result.deletedFiles)}개 파일(${formatBytes(result.deletedBytes)})을 정리했습니다.`,
+        'success',
+      )
+      queryClient.invalidateQueries({ queryKey: ['cache-inventory'] })
+      queryClient.invalidateQueries({ queryKey: ['stats', 'storage'] })
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        setCachePreview(null)
+        toast('캐시가 미리보기 이후에 바뀌었습니다. 미리보기를 다시 실행해 주세요.', 'error')
+        queryClient.invalidateQueries({ queryKey: ['cache-inventory'] })
+        return
+      }
+      toast(error instanceof Error ? error.message : '캐시를 정리하지 못했습니다.', 'error')
+    },
   })
 
   const scan = useMutation({
@@ -579,14 +586,24 @@ export function SettingsPage() {
         title="저장 공간 (Storage)"
         description="등록된 라이브러리 원본 파일, 생성된 썸네일, AI/스트리밍 캐시, 임시 작업 파일 용량입니다."
         actions={
-          <Button
-            size="sm"
-            onClick={() => refreshStorage.mutate()}
-            disabled={refreshStorage.isPending}
-          >
-            <RefreshCw size={12} className={refreshStorage.isPending ? 'animate-spin' : undefined} />
-            새로고침
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => previewCleanup.mutate()}
+              disabled={previewCleanup.isPending}
+            >
+              <Trash2 size={12} />
+              정리 미리보기
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => refreshStorage.mutate()}
+              disabled={refreshStorage.isPending}
+            >
+              <RefreshCw size={12} className={refreshStorage.isPending ? 'animate-spin' : undefined} />
+              새로고침
+            </Button>
+          </div>
         }
       >
         {storage.isPending ? (
@@ -659,6 +676,74 @@ export function SettingsPage() {
                 </p>
               </div>
             ) : null}
+
+            <div className="rounded-lg border border-line">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2">
+                <div>
+                  <p className="text-[12px] font-medium text-ink">캐시 종류별 용량</p>
+                  <p className="mt-0.5 text-[11px] text-muted">
+                    원본, DB, 격리 파일은 정리 대상이 아닙니다. HLS는 워커가 오래된 세대만 회수합니다.
+                  </p>
+                </div>
+                {cacheInventory.data ? (
+                  <span className="text-[11px] tabular-nums text-faint">
+                    합계 {formatBytes(cacheInventory.data.totalBytes)}
+                  </span>
+                ) : null}
+              </div>
+              {cacheInventory.isPending ? (
+                <div className="flex justify-center py-6">
+                  <Spinner />
+                </div>
+              ) : cacheInventory.isError ? (
+                <p className="px-3 py-4 text-[12px] text-danger">
+                  {cacheInventory.error instanceof Error
+                    ? cacheInventory.error.message
+                    : '캐시 용량을 읽지 못했습니다.'}
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[12px]">
+                    <thead className="border-b border-line text-[11px] text-muted">
+                      <tr>
+                        <th className="px-3 py-1.5 text-left font-medium">종류</th>
+                        <th className="px-3 py-1.5 text-right font-medium">용량</th>
+                        <th className="px-3 py-1.5 text-right font-medium">파일</th>
+                        <th className="px-3 py-1.5 text-right font-medium">가장 오래됨</th>
+                        <th className="px-3 py-1.5 text-right font-medium">상태</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cacheInventory.data.types.map((type) => (
+                        <tr key={type.type} className="border-b border-line/60 last:border-0">
+                          <td className="px-3 py-1.5 text-ink">{type.type}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-muted">
+                            {formatBytes(type.bytes)}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-muted">
+                            {formatCount(type.files)}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-muted">
+                            {type.oldestAt ? formatAgo(type.oldestAt) : '-'}
+                          </td>
+                          <td className="px-3 py-1.5 text-right">
+                            <span
+                              className={
+                                type.protected
+                                  ? 'rounded border border-line bg-panel-2 px-1.5 py-0.5 text-[10.5px] text-muted'
+                                  : 'rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10.5px] text-emerald-500'
+                              }
+                            >
+                              {type.protected ? '보호' : '정리 가능'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
       </Section>
@@ -1028,6 +1113,48 @@ export function SettingsPage() {
           <span className="text-ink">{pendingDelete?.name}</span> 폴더의 인덱스{' '}
           {formatCount(pendingDelete?.assetCount ?? 0)}개가 사라집니다.
         </p>
+      </Dialog>
+
+      <Dialog
+        open={cachePreview !== null}
+        onClose={() => setCachePreview(null)}
+        title="캐시 정리 미리보기"
+        description="아래 항목만 삭제됩니다. 원본, DB, 격리 파일, 현재 버전 캐시는 그대로 남습니다."
+        footer={
+          <>
+            <Button onClick={() => setCachePreview(null)}>취소</Button>
+            <Button
+              variant="danger"
+              disabled={cleanCache.isPending || !cachePreview || cachePreview.files === 0}
+              onClick={() => cachePreview && cleanCache.mutate(cachePreview.generation)}
+            >
+              {cleanCache.isPending ? '정리하는 중' : '정리 실행'}
+            </Button>
+          </>
+        }
+      >
+        {cachePreview ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <MetricPill label="대상 파일" value={`${formatCount(cachePreview.files)}개`} />
+              <MetricPill label="정리 용량" value={formatBytes(cachePreview.bytes)} />
+              <MetricPill label="보호되는 용량" value={formatBytes(cachePreview.protectedBytes)} />
+            </div>
+            <div className="rounded-lg border border-line bg-panel-2 px-3 py-2 text-[12px] text-muted">
+              <p>
+                종류:{' '}
+                <span className="text-ink">
+                  {cachePreview.types.length > 0 ? cachePreview.types.join(', ') : '없음'}
+                </span>
+              </p>
+              <p className="mt-1">기준 시각: {formatDate(cachePreview.cutoff)}</p>
+              <p className="mt-1 leading-relaxed">{cachePreview.restoreCost}</p>
+            </div>
+            {cachePreview.files === 0 ? (
+              <p className="text-[12px] text-muted">지금은 정리할 캐시가 없습니다.</p>
+            ) : null}
+          </div>
+        ) : null}
       </Dialog>
     </div>
   )

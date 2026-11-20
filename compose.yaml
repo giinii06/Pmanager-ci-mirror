@@ -27,6 +27,8 @@ services:
       SMART_ALBUMS_ENABLED: ${SMART_ALBUMS_ENABLED:-1}
       # Bulk operations; 0 turns the routes off. Delete/move also need the mutation engine.
       BULK_OPERATIONS_ENABLED: ${BULK_OPERATIONS_ENABLED:-0}
+      # Notification inbox; 0 hides the routes and the bell. The worker also has to be on.
+      NOTIFICATIONS_ENABLED: ${NOTIFICATIONS_ENABLED:-0}
     volumes:
       - type: bind
         source: ${MEDIA_ROOT:?set MEDIA_ROOT to the host media folder}
@@ -60,6 +62,14 @@ services:
       WATCH_POLLING: ${WATCH_POLLING:-1}
       FILE_MUTATION_ENGINE_ENABLED: ${FILE_MUTATION_ENGINE_ENABLED:-0}
       BULK_OPERATIONS_ENABLED: ${BULK_OPERATIONS_ENABLED:-0}
+      # Alerts, the inbox and optional Discord delivery. Off by default (spec I-05).
+      NOTIFICATIONS_ENABLED: ${NOTIFICATIONS_ENABLED:-0}
+      # Worker-only secret. Never exposed by the API; leave empty to keep alerts in-app.
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      ALERT_INTERVAL_MS: ${ALERT_INTERVAL_MS:-30000}
+      # Below either floor the worker keeps cache-writing jobs queued instead of failing them.
+      MIN_FREE_BYTES: ${MIN_FREE_BYTES:-2147483648}
+      MIN_FREE_RATIO: ${MIN_FREE_RATIO:-0.1}
     volumes:
       - type: bind
         source: ${MEDIA_ROOT:?set MEDIA_ROOT to the host media folder}

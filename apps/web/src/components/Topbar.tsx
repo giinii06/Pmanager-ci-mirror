@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Menu, PanelLeft, Search, Settings2 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Bell, Menu, PanelLeft, Search, Settings2 } from 'lucide-react'
+import { api } from '../lib/api'
 import { useDebounced } from '../lib/hooks'
 import { useUi } from '../store/ui'
 
@@ -15,6 +17,21 @@ export function Topbar() {
   })
   const inputRef = useRef<HTMLInputElement>(null)
   const debounced = useDebounced(value, 260)
+
+  const capabilities = useQuery({
+    queryKey: ['capabilities'],
+    queryFn: api.capabilities,
+    staleTime: 60_000,
+    retry: false,
+  })
+  const notificationsOn = capabilities.data?.notifications === true
+  const unread = useQuery({
+    queryKey: ['notifications', 'unread'],
+    queryFn: api.notificationsUnread,
+    enabled: notificationsOn,
+    refetchInterval: 30_000,
+    retry: false,
+  })
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -93,6 +110,25 @@ export function Topbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-1">
+        {notificationsOn ? (
+          <button
+            type="button"
+            onClick={() => navigate('/notifications')}
+            aria-label={
+              unread.data && unread.data.unread > 0
+                ? `알림, 읽지 않음 ${unread.data.unread}개`
+                : '알림'
+            }
+            className="relative rounded-lg p-2 text-muted transition-colors hover:bg-raised hover:text-ink"
+          >
+            <Bell size={16} />
+            {unread.data && unread.data.unread > 0 ? (
+              <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9.5px] font-semibold leading-none text-white">
+                {unread.data.unread > 99 ? '99+' : unread.data.unread}
+              </span>
+            ) : null}
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => navigate('/settings')}
