@@ -42,6 +42,7 @@
 - **헬스**: `/health/live`, `/health/ready` `200`. `/health/ready`는 기본적으로 `dbIntegrity: "skipped"`를 반환하고 `/api/system/status`가 60초 TTL로 `PRAGMA quick_check(1)`을 캐시합니다.
 - **드라이브·보안**: `/api/fs/drives`가 `C:\`, `D:\`, `E:\`를 용량과 함께 반환하고, `/api/fs/browse?path=drives/c/Windows`는 `403`으로 차단됩니다.
 
+- **무인 재부팅 리허설**: 2026-11-20 22:57 재부팅. Windows 부팅 `22:57:33` → 슈퍼바이저 `22:58:14` → preflight `22:58:49` → compose 동기화 `22:58:57`, 부팅 84초 뒤 `/health/ready` `200`(맥에서 확인). 사람이 아무것도 하지 않았고, 라이브는 `1.0.0`·`v26`·`14,497` assets였습니다. `AutoAdminLogon=1`이라 콘솔 세션은 자동으로 열리므로 이번 리허설이 증명한 것은 "세션 없음"이 아니라 "사람 개입 없음"입니다. 예약 작업은 `AtStartup` 트리거를 함께 가지므로 S4U 경로는 자동 로그온과 무관합니다.
 - **Windows 슈퍼바이저**: 2026-11-20 22:48 관리자 PowerShell에서 `install-service.ps1 -OwnerUser giini`를 실행했습니다. 예약 작업이 `State Running`, `LastTaskResult 267009`(`0x41301`, 실행 중), 5초 뒤 `Preflight passed`, `/health/ready` `200`입니다. 스테이징된 `service-runner.ps1`에 `restart api nginx`, `_common.ps1`에 `Wait-MvTaskState`가 있어 PR 15의 수정이 실제로 도는 코드임을 확인했습니다.
 
 ## 4. 수동 확인 필요 항목
@@ -49,9 +50,8 @@
 관리자 권한이나 물리 접근이 필요한 항목이라 자동화하지 못했습니다.
 
 1. ASRock `B650M PG Lightning` BIOS에서 `Restore on AC/Power Loss -> Power On`.
-2. 실제 물리 로그오프·재부팅 후 무인 부팅 리허설 (`docs/RELEASE.md` 3장).
-3. 전원 차단 후 자동 복구 리허설.
-4. `NOTIFICATIONS_ENABLED=1`과 실제 Discord 웹훅으로 알림 1건 전달.
-5. 라이브 라이브러리에서 캐시 정리 1회 (미리보기 → 실행).
-6. `BULK_OPERATIONS_ENABLED=1`, `FILE_MUTATION_ENGINE_ENABLED=1`로 전환하기 전, 버릴 수 있는 픽스처 라이브러리에서 이동·삭제 리허설.
-7. `HLS_GENERATIONS_ENABLED=1` 전환 전, 짧은 영상 1건으로 HLS 생성·재생·GC 확인.
+2. 전원 차단 후 자동 복구 리허설.
+3. `NOTIFICATIONS_ENABLED=1`과 실제 Discord 웹훅으로 알림 1건 전달.
+4. 라이브 라이브러리에서 캐시 정리 1회 (미리보기 → 실행).
+5. `BULK_OPERATIONS_ENABLED=1`, `FILE_MUTATION_ENGINE_ENABLED=1`로 전환하기 전, 버릴 수 있는 픽스처 라이브러리에서 이동·삭제 리허설.
+6. `HLS_GENERATIONS_ENABLED=1` 전환 전, 짧은 영상 1건으로 HLS 생성·재생·GC 확인.
