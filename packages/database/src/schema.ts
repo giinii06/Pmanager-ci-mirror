@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 26
+export const SCHEMA_VERSION = 27
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -1088,6 +1088,18 @@ WHEN NEW.kind <> OLD.kind
 BEGIN SELECT RAISE(ABORT, 'a build kind is immutable'); END;
 `
 
+export const V27_JOURNAL_SQL = \`
+CREATE TABLE IF NOT EXISTS journal_entries (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_journal_user_created ON journal_entries(user_id, created_at DESC, id DESC);
+\`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -1149,4 +1161,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V24_BULK_OPERATIONS_SQL),
   (exec) => exec(V25_OBSERVABILITY_SQL),
   (exec) => exec(V26_SEARCH_INDEX_SQL),
+  (exec) => exec(V27_JOURNAL_SQL),
 ]

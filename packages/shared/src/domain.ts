@@ -88,6 +88,24 @@ export interface TagSummaryDTO {
   createdAt: string
 }
 
+/** A personal diary page; createdAt is immutable and fixed by the server at creation. */
+export interface JournalEntryDTO {
+  id: string
+  title: string
+  body: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type JournalEntrySummaryDTO = Omit<JournalEntryDTO, 'body'>
+
+export interface JournalMentionDTO {
+  type: 'video' | 'album'
+  id: string
+  label: string
+  libraryName: string
+}
+
 export interface FolderDTO {
   id: string
   libraryId: string
