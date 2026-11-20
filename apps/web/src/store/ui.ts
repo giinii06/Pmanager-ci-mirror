@@ -53,7 +53,7 @@ function applyThemeToDom(mode: ThemeMode): ResolvedTheme {
     root.dataset.themeMode = mode
     root.style.colorScheme = resolved
     const meta = document.querySelector('meta[name="theme-color"]')
-    if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0B0C0F' : '#F6F7F4')
+    if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0B0C0F' : '#FFFFFF')
   }
   return resolved
 }

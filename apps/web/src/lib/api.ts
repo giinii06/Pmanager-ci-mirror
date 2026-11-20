@@ -7,14 +7,6 @@ import type {
   AssetQuery,
   AuthStatusDTO,
   BackupRecordDTO,
-  BulkOperationDTO,
-  BulkOperationDetailDTO,
-  BulkOperationItemDTO,
-  BulkOperationKind,
-  BulkOperationListDTO,
-  BulkOperationParams,
-  BulkPreviewDTO,
-  BulkSelection,
   CacheCleanupPreviewDTO,
   CacheCleanupResultDTO,
   CacheInventoryDTO,
@@ -23,7 +15,6 @@ import type {
   FolderDTO,
   FolderSort,
   FileOperationDTO,
-  FilterTree,
   HostBrowseResponseDTO,
   HostDriveDTO,
   HlsStatusDTO,
@@ -42,13 +33,8 @@ import type {
   SearchIndexGcPreviewDTO,
   SearchIndexStatusDTO,
   PlaybackProgressDTO,
-  PlaylistAssetsDTO,
-  PlaylistDTO,
-  PlaylistDetailDTO,
-  PlaylistItemDTO,
   ReviewDTO,
   SemanticSearchDTO,
-  SmartAlbumDTO,
   StatsDTO,
   StorageStatsDTO,
   SubtitleTracksDTO,
@@ -65,7 +51,6 @@ import type {
   TranslationSummaryDTO,
   UserDTO,
   VideoBookmarkDTO,
-  VideoSort,
   VoteActivityStatsDTO,
   WorkQueueDTO,
 } from '@mediavault/shared'
@@ -127,7 +112,6 @@ function queryString(query: AssetQuery): string {
   if (query.folderId) params.set('folderId', query.folderId)
   if (query.kind) params.set('kind', query.kind)
   if (query.tagId) params.set('tagId', query.tagId)
-  if (query.albumId) params.set('albumId', query.albumId)
   if (query.sort) params.set('sort', query.sort)
   if (query.seed !== undefined) params.set('seed', String(query.seed))
   if (query.q) params.set('q', query.q)
@@ -244,61 +228,6 @@ export const api = {
       headers: { 'Idempotency-Key': requestKey },
     }),
   getFileOperation: (id: string) => request<FileOperationDTO>(`/api/file-operations/${id}`),
-
-  bulkPreview: (body: {
-    kind: BulkOperationKind
-    selection: BulkSelection
-    params?: BulkOperationParams
-  }) =>
-    request<BulkPreviewDTO>('/api/bulk-operations/preview', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  createBulkOperation: (body: {
-    kind: BulkOperationKind
-    selection: BulkSelection
-    params?: BulkOperationParams
-    requestId: string
-    generation: string
-    expectedCount: number
-  }) =>
-    request<{ operationId: string; state: string; statusUrl: string; created: boolean }>(
-      '/api/bulk-operations',
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
-  bulkOperations: () => request<BulkOperationListDTO>('/api/bulk-operations'),
-  bulkOperation: (
-    id: string,
-    opts?: { itemState?: string; itemLimit?: number; itemOffset?: number },
-  ) => {
-    const params = new URLSearchParams()
-    if (opts?.itemState) params.set('itemState', opts.itemState)
-    if (opts?.itemLimit !== undefined) params.set('itemLimit', String(opts.itemLimit))
-    if (opts?.itemOffset !== undefined) params.set('itemOffset', String(opts.itemOffset))
-    const qs = params.toString()
-    return request<BulkOperationDetailDTO>(`/api/bulk-operations/${id}${qs ? `?${qs}` : ''}`)
-  },
-  bulkOperationItems: (
-    id: string,
-    opts?: { state?: string; limit?: number; offset?: number },
-  ) => {
-    const params = new URLSearchParams()
-    if (opts?.state) params.set('state', opts.state)
-    if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
-    if (opts?.offset !== undefined) params.set('offset', String(opts.offset))
-    const qs = params.toString()
-    return request<{ items: BulkOperationItemDTO[] }>(
-      `/api/bulk-operations/${id}/items${qs ? `?${qs}` : ''}`,
-    )
-  },
-  cancelBulkOperation: (id: string) =>
-    request<{ state: string }>(`/api/bulk-operations/${id}/cancel`, { method: 'POST' }),
-  retryBulkOperation: (id: string, itemIds?: string[]) =>
-    request<{ reset: number }>(`/api/bulk-operations/${id}/retry`, {
-      method: 'POST',
-      body: JSON.stringify(itemIds ? { itemIds } : {}),
-    }),
-  bulkExportUrl: (id: string) => `/api/bulk-operations/${id}/export`,
 
   tags: () => request<{ tags: TagSummaryDTO[] }>('/api/tags'),
   createTag: (name: string) =>
@@ -467,65 +396,6 @@ export const api = {
       embeddings: number
       scenes: number
     }>('/api/index/run', { method: 'POST' }),
-
-  smartAlbums: () => request<{ albums: SmartAlbumDTO[] }>('/api/smart-albums'),
-  smartAlbum: (id: string) => request<SmartAlbumDTO>(`/api/smart-albums/${id}`),
-  createSmartAlbum: (body: {
-    name: string
-    description?: string | null
-    filter: FilterTree
-    sort?: VideoSort | null
-    pinned?: boolean
-  }) => request<SmartAlbumDTO>('/api/smart-albums', { method: 'POST', body: JSON.stringify(body) }),
-  updateSmartAlbum: (
-    id: string,
-    body: Partial<{
-      name: string
-      description: string | null
-      filter: FilterTree
-      sort: VideoSort | null
-      pinned: boolean
-    }>,
-  ) =>
-    request<SmartAlbumDTO>(`/api/smart-albums/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    }),
-  deleteSmartAlbum: (id: string) =>
-    request<void>(`/api/smart-albums/${id}`, { method: 'DELETE' }),
-
-  playlists: () => request<{ playlists: PlaylistDTO[] }>('/api/playlists'),
-  playlist: (id: string) => request<PlaylistDetailDTO>(`/api/playlists/${id}`),
-  createPlaylist: (body: { name: string; description?: string | null }) =>
-    request<PlaylistDTO>('/api/playlists', { method: 'POST', body: JSON.stringify(body) }),
-  updatePlaylist: (id: string, body: { name?: string; description?: string | null }) =>
-    request<PlaylistDTO>(`/api/playlists/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  deletePlaylist: (id: string) => request<void>(`/api/playlists/${id}`, { method: 'DELETE' }),
-  playlistAssets: (id: string) => request<PlaylistAssetsDTO>(`/api/playlists/${id}/assets`),
-  addPlaylistItem: (id: string, assetId: string) =>
-    request<{ playlist: PlaylistDTO; item: PlaylistItemDTO }>(`/api/playlists/${id}/items`, {
-      method: 'POST',
-      body: JSON.stringify({ assetId }),
-    }),
-  movePlaylistItem: (id: string, itemId: string, position: number) =>
-    request<PlaylistDetailDTO>(`/api/playlists/${id}/items/${itemId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ position }),
-    }),
-  removePlaylistItem: (id: string, itemId: string) =>
-    request<void>(`/api/playlists/${id}/items/${itemId}`, { method: 'DELETE' }),
-  ensureWatchLater: () =>
-    request<{ playlist: PlaylistDTO }>('/api/playlists/watch-later', { method: 'POST' }),
-  /** Every playlist surface needs the default list to exist before it can show it. */
-  playlistsWithWatchLater: async () => {
-    await api.ensureWatchLater()
-    return api.playlists()
-  },
-  addWatchLater: (assetId: string) =>
-    request<{ playlist: PlaylistDTO; item: PlaylistItemDTO }>('/api/playlists/watch-later/items', {
-      method: 'POST',
-      body: JSON.stringify({ assetId }),
-    }),
 
   bookmarks: (assetId: string) =>
     request<{ bookmarks: VideoBookmarkDTO[] }>(`/api/assets/${assetId}/bookmarks`),

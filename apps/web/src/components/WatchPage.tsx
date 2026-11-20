@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Download,
   Info,
-  ListPlus,
   Plus,
   Share2,
   Shuffle,
@@ -32,7 +31,6 @@ import {
 } from '../lib/format'
 import { randomToken } from '../lib/random'
 import { useUi } from '../store/ui'
-import { AddToPlaylistDialog } from './AddToPlaylistDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { PosterDialog } from './PosterDialog'
 import { Dialog } from './ui/Dialog'
@@ -94,7 +92,6 @@ export function WatchPage({
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [bookmarkOpen, setBookmarkOpen] = useState(false)
   const [posterOpen, setPosterOpen] = useState(false)
-  const [playlistOpen, setPlaylistOpen] = useState(false)
   const copyTimer = useRef<number | null>(null)
   const descriptionRef = useRef<HTMLDivElement>(null)
 
@@ -171,7 +168,6 @@ export function WatchPage({
   useEffect(() => {
     setDeleteOpen(false)
     setBookmarkOpen(false)
-    setPlaylistOpen(false)
     setTagInput('')
   }, [asset.id])
 
@@ -368,16 +364,6 @@ export function WatchPage({
 
               <button
                 type="button"
-                onClick={() => setPlaylistOpen(true)}
-                title="이 영상을 재생목록에 담습니다."
-                className={PILL}
-              >
-                <ListPlus size={16} />
-                재생목록
-              </button>
-
-              <button
-                type="button"
                 onClick={onToggleShuffle}
                 aria-pressed={shuffle}
                 title="Shuffle 모드 전환"
@@ -545,12 +531,6 @@ export function WatchPage({
         onClose={() => setPosterOpen(false)}
         asset={asset}
         videoRef={videoRef}
-      />
-
-      <AddToPlaylistDialog
-        open={playlistOpen}
-        onClose={() => setPlaylistOpen(false)}
-        asset={asset}
       />
     </div>
   )

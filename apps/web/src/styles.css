@@ -27,12 +27,12 @@
 }
 
 :root[data-theme='light'] {
-  --color-canvas: #f6f7f4;
+  --color-canvas: #ffffff;
   --color-panel: #ffffff;
-  --color-panel-2: #eff1ed;
-  --color-raised: #e6e8e2;
-  --color-line: #e1e4dd;
-  --color-line-strong: #c8cdc4;
+  --color-panel-2: #f8f9fc;
+  --color-raised: #f1f3f7;
+  --color-line: #e5e7eb;
+  --color-line-strong: #cbd5e1;
   --color-ink: #14161a;
   --color-muted: #505763;
   --color-faint: #78808e;

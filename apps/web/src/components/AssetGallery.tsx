@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { CheckSquare } from 'lucide-react'
 import type { AssetDTO, AssetQuery, Page } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { formatCount } from '../lib/format'
-import { useSelection } from '../store/selection'
 import { useViewer } from '../store/viewer'
 import { EmptyState } from './EmptyState'
 import { JustifiedGrid } from './JustifiedGrid'
 import { PageHeading } from './PageHeading'
-import { SelectionBar } from './SelectionBar'
 import { Button } from './ui/Button'
 
 interface AssetGalleryProps {
@@ -64,17 +61,8 @@ export function AssetGallery({
   }, [query.data])
 
   const total = query.data?.pages[0]?.total ?? 0
-  const selectionActive = useSelection((state) => state.active)
-  const selectionIds = useSelection((state) => state.ids)
-  const toggleSelection = useSelection((state) => state.toggle)
-  const startSelection = useSelection((state) => state.start)
-  const selectionSet = useMemo(() => new Set(selectionIds), [selectionIds])
-
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 })
-    // A different filter or page is a different result set, so a selection made
-    // against the old one must not carry over.
-    if (useSelection.getState().active) useSelection.getState().stop()
   }, [
     filters.libraryId,
     filters.folderId,
@@ -92,17 +80,7 @@ export function AssetGallery({
       <PageHeading
         title={title}
         meta={meta ?? `${formatCount(total)}개`}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {actions}
-            {!selectionActive ? (
-              <Button size="sm" onClick={startSelection}>
-                <CheckSquare size={13} />
-                선택
-              </Button>
-            ) : null}
-          </div>
-        }
+        actions={actions}
       />
     </>
   )
@@ -126,7 +104,6 @@ export function AssetGallery({
             <>
               {heading}
               {subheader}
-              <SelectionBar filters={filters} loadedIds={items.map((item) => item.id)} />
             </>
           }
           loading={query.isPending}
@@ -135,9 +112,6 @@ export function AssetGallery({
           fetchNextPage={() => query.fetchNextPage()}
           onOpen={(index) => useViewer.getState().open(items, index, { filter: filters })}
           groupByMonth={groupByMonth}
-          selection={
-            selectionActive ? { ids: selectionSet, onToggle: toggleSelection } : undefined
-          }
           empty={
             hideEmpty ? null : (
               <EmptyState

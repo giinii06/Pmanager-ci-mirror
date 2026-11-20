@@ -2,14 +2,10 @@ import { useEffect } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Activity,
   Aperture,
   Copy,
   Film,
-  FolderHeart,
   Images,
-  Layers,
-  ListVideo,
   Loader2,
   Monitor,
   Moon,
@@ -50,9 +46,6 @@ export function Sidebar() {
   const inPhotos = location.pathname === '/' || location.pathname.startsWith('/folders')
   const inVideos = location.pathname.startsWith('/videos')
   const inDuplicates = location.pathname.startsWith('/duplicates')
-  const inBulk = location.pathname.startsWith('/bulk')
-  const inSmartAlbums = location.pathname.startsWith('/smart-albums')
-  const inPlaylists = location.pathname.startsWith('/playlists')
 
   return (
     <aside
@@ -218,78 +211,6 @@ export function Sidebar() {
         >
           <Copy size={16} className={inDuplicates ? 'text-accent' : 'text-faint'} />
           <span className={cn('flex-1', collapsed && 'md:hidden')}>중복 검토</span>
-        </NavLink>
-
-        <NavLink
-          to="/bulk"
-          title="일괄 작업"
-          className={() =>
-            cn(
-              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
-              collapsed && 'md:justify-center md:px-0',
-              inBulk
-                ? 'bg-accent/12 text-accent'
-                : 'text-muted hover:bg-raised/70 hover:text-ink',
-            )
-          }
-        >
-          <Layers size={16} className={inBulk ? 'text-accent' : 'text-faint'} />
-          <span className={cn('flex-1', collapsed && 'md:hidden')}>일괄 작업</span>
-        </NavLink>
-
-        <NavLink
-          to="/smart-albums"
-          title="스마트 앨범"
-          className={() =>
-            cn(
-              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
-              collapsed && 'md:justify-center md:px-0',
-              inSmartAlbums
-                ? 'bg-accent/12 text-accent'
-                : 'text-muted hover:bg-raised/70 hover:text-ink',
-            )
-          }
-        >
-          <FolderHeart size={16} className={inSmartAlbums ? 'text-accent' : 'text-faint'} />
-          <span className={cn('flex-1', collapsed && 'md:hidden')}>스마트 앨범</span>
-        </NavLink>
-
-        <NavLink
-          to="/playlists"
-          title="재생목록"
-          className={() =>
-            cn(
-              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
-              collapsed && 'md:justify-center md:px-0',
-              inPlaylists
-                ? 'bg-accent/12 text-accent'
-                : 'text-muted hover:bg-raised/70 hover:text-ink',
-            )
-          }
-        >
-          <ListVideo size={16} className={inPlaylists ? 'text-accent' : 'text-faint'} />
-          <span className={cn('flex-1', collapsed && 'md:hidden')}>재생목록</span>
-        </NavLink>
-
-        <NavLink
-          to="/diagnostics"
-          title="진단"
-          className={({ isActive }) =>
-            cn(
-              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
-              collapsed && 'md:justify-center md:px-0',
-              isActive
-                ? 'bg-accent/12 text-accent'
-                : 'text-muted hover:bg-raised/70 hover:text-ink',
-            )
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <Activity size={16} className={isActive ? 'text-accent' : 'text-faint'} />
-              <span className={cn('flex-1', collapsed && 'md:hidden')}>진단</span>
-            </>
-          )}
         </NavLink>
 
         <NavLink

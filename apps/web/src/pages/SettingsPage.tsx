@@ -41,6 +41,7 @@ import { PageHeading } from '../components/PageHeading'
 import { Spinner } from '../components/ui/Spinner'
 import { Section, MetricPill } from '../components/ui/Section'
 import { ProcessingPanel } from '../components/ProcessingPanel'
+import { DiagnosticsSection } from './DiagnosticsPage'
 
 const CALENDAR_THEME = {
   light: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
@@ -1018,6 +1019,8 @@ export function SettingsPage() {
           </Button>
         </div>
       </Section>
+
+      <DiagnosticsSection />
 
       <Dialog
         open={addOpen}
