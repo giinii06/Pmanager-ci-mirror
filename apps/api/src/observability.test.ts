@@ -14,7 +14,12 @@ import {
   upsertFolder,
   type Db,
 } from '@mediavault/database'
-import type { CacheCleanupPreviewDTO, CacheInventoryDTO, DiagnosticsReportDTO } from '@mediavault/shared'
+import {
+  APP_VERSION,
+  type CacheCleanupPreviewDTO,
+  type CacheInventoryDTO,
+  type DiagnosticsReportDTO,
+} from '@mediavault/shared'
 import { buildApp } from './app'
 import { SESSION_COOKIE, createSession } from './auth'
 import type { ApiConfig } from './config'
@@ -191,6 +196,7 @@ describe('capabilities and notifications', () => {
       headers: h.headers,
     })
     expect(capabilities.json().notifications).toBe(false)
+    expect(capabilities.json().version).toBe(APP_VERSION)
 
     const list = await h.app.inject({ method: 'GET', url: '/api/notifications', headers: h.headers })
     expect(list.statusCode).toBe(404)
@@ -266,6 +272,7 @@ describe('diagnostics', () => {
     const report = response.json() as DiagnosticsReportDTO
     expect(report.database.schemaVersion).toBe(26)
     expect(report.database.journalMode).toBe('wal')
+    expect(report.app.version).toBe(APP_VERSION)
     expect(report.libraries[0]!.lastError).toBe('<media>/Lib/boom')
     expect(report.flags.notifications).toBe(false)
     expect(report.caches.types.map((type) => type.type)).toContain('thumbs')
