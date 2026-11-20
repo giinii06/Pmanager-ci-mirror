@@ -479,8 +479,9 @@ export function requestBulkCancel(
 
 /**
  * Puts failed and held items back in the queue. The parent must not be held by
- * a worker, and only items whose mutation is gone can be reset: resetting one
- * with a live mutation would start a second file operation for the same file.
+ * a worker. A file item's blocked mutation keeps the bulk request key, so that
+ * key is moved aside first; otherwise the retried item would receive the old
+ * blocked row instead of a new attempt.
  */
 export function retryBulkItems(
   db: Db,
@@ -502,29 +503,30 @@ export function retryBulkItems(
       return null
     }
 
-    let reset = 0
-    if (itemIds && itemIds.length > 0) {
-      const placeholders = itemIds.map(() => '?').join(',')
-      const result = db
-        .query<null, Params>(
-          `UPDATE bulk_operation_items SET
-             state = 'pending', attempts = 0, mutation_id = NULL,
-             error_code = NULL, error_message = NULL, updated_at = ?
-           WHERE operation_id = ? AND state IN ('failed','held') AND id IN (${placeholders})`,
-        )
-        .run(now, id, ...itemIds)
-      reset = result.changes
-    } else {
-      const result = db
-        .query<null, Params>(
-          `UPDATE bulk_operation_items SET
-             state = 'pending', attempts = 0, mutation_id = NULL,
-             error_code = NULL, error_message = NULL, updated_at = ?
-           WHERE operation_id = ? AND state IN ('failed','held')`,
-        )
-        .run(now, id)
-      reset = result.changes
-    }
+    const scoped = itemIds !== null && itemIds.length > 0
+    const scope = scoped ? `AND id IN (${itemIds.map(() => '?').join(',')})` : ''
+    const scopeParams = scoped ? itemIds : []
+
+    db.query<null, Params>(
+      `UPDATE file_mutations SET request_key = request_key || ':retry:' || id
+       WHERE id IN (
+         SELECT mutation_id FROM bulk_operation_items
+         WHERE operation_id = ? AND state IN ('failed','held')
+           AND mutation_id IS NOT NULL ${scope}
+       )
+       AND (state IN ('blocked','cancelled_pre_commit')
+            OR (state = 'failed_retryable' AND attempts >= max_attempts))`,
+    ).run(id, ...scopeParams)
+
+    const result = db
+      .query<null, Params>(
+        `UPDATE bulk_operation_items SET
+           state = 'pending', attempts = 0, mutation_id = NULL,
+           error_code = NULL, error_message = NULL, updated_at = ?
+         WHERE operation_id = ? AND state IN ('failed','held') ${scope}`,
+      )
+      .run(now, id, ...scopeParams)
+    const reset = result.changes
     if (reset === 0) return 0
 
     db.query<null, Params>(

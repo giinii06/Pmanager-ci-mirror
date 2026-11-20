@@ -396,6 +396,55 @@ describe('bulk worker', () => {
     h.db.close()
   })
 
+  test('retrying a held move starts a new mutation after the target clears', async () => {
+    const h = await setup()
+    createLibrary(h.db, { id: 'lib2', name: 'Target', rootPath: 'Target', createdAt: 1 })
+    markLibraryHealthy(h.db, { libraryId: 'lib2', rootIdentity: '3:4', now: 1 })
+    const targetDir = path.join(h.mediaRoot, 'Target')
+    await mkdir(targetDir, { recursive: true })
+    const collision = path.join(targetDir, 'a1.mp4')
+    await writeFile(collision, Buffer.alloc(16, 9))
+
+    createOperation(h.db, 'move', {
+      assetIds: ['a1'],
+      params: { targetLibraryId: 'lib2', targetFolder: '' },
+    })
+
+    const controller = new AbortController()
+    const mutationLoop = runMutationLoop(h.db, h.config, silentLogger, controller.signal)
+
+    expect(await run(h.db, h.config)).toBe(true)
+    expect(getBulkOperation(h.db, 'op1')?.state).toBe('completed_with_errors')
+    expect(itemStates(h.db, 'op1')).toEqual(['held'])
+    expect(await exists(path.join(h.libraryDir, 'a1.mp4'))).toBe(true)
+
+    await rm(collision)
+    expect(retryBulkItems(h.db, 'op1', 'u1', null, Date.now())).toBe(1)
+    expect(await run(h.db, h.config)).toBe(true)
+    controller.abort('done')
+    await mutationLoop
+
+    expect(getBulkOperation(h.db, 'op1')?.state).toBe('completed')
+    expect(itemStates(h.db, 'op1')).toEqual(['succeeded'])
+    expect(await exists(path.join(h.libraryDir, 'a1.mp4'))).toBe(false)
+    expect(await exists(path.join(targetDir, 'a1.mp4'))).toBe(true)
+    const asset = h.db
+      .query<{ library_id: string; relative_path: string }, []>(
+        "SELECT library_id, relative_path FROM assets WHERE id = 'a1'",
+      )
+      .get()
+    expect(asset).toEqual({ library_id: 'lib2', relative_path: 'a1.mp4' })
+    const keys = h.db
+      .query<{ key: string }, []>(
+        "SELECT request_key AS key FROM file_mutations WHERE kind = 'move'",
+      )
+      .all()
+    expect(keys.length).toBe(2)
+    expect(keys.some((row) => row.key.includes(':retry:'))).toBe(true)
+    expect(keys.some((row) => row.key.startsWith('bulk:op1:') && !row.key.includes(':retry:'))).toBe(true)
+    h.db.close()
+  })
+
   test('a restart with the file engine off cancels an untouched file item', async () => {
     const h = await setup()
     const operation = createOperation(h.db, 'delete', {
