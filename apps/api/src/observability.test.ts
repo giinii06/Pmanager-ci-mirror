@@ -264,7 +264,7 @@ describe('diagnostics', () => {
     })
     expect(response.statusCode).toBe(200)
     const report = response.json() as DiagnosticsReportDTO
-    expect(report.database.schemaVersion).toBe(25)
+    expect(report.database.schemaVersion).toBe(26)
     expect(report.database.journalMode).toBe('wal')
     expect(report.libraries[0]!.lastError).toBe('<media>/Lib/boom')
     expect(report.flags.notifications).toBe(false)

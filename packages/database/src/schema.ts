@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 25
+export const SCHEMA_VERSION = 26
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -1031,6 +1031,63 @@ ALTER TABLE jobs ADD COLUMN request_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_jobs_request ON jobs(request_id) WHERE request_id IS NOT NULL;
 `
 
+export const V26_SEARCH_INDEX_SQL = `
+CREATE TABLE IF NOT EXISTS search_index_builds (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('fts','faiss')),
+  state TEXT NOT NULL CHECK (state IN ('building','ready','superseded','failed')),
+  source TEXT NOT NULL CHECK (source IN ('bootstrap','operator','boot-repair')),
+  assets_count INTEGER NOT NULL DEFAULT 0,
+  segments_count INTEGER NOT NULL DEFAULT 0,
+  asset_watermark INTEGER NOT NULL DEFAULT 0,
+  segment_watermark INTEGER NOT NULL DEFAULT 0,
+  model_sha256 TEXT,
+  pipeline_version TEXT,
+  dimensions INTEGER,
+  started_at INTEGER NOT NULL,
+  finished_at INTEGER,
+  verified_at INTEGER,
+  superseded_at INTEGER,
+  last_error TEXT,
+  CHECK (kind <> 'faiss'
+    OR (model_sha256 IS NOT NULL AND pipeline_version IS NOT NULL AND dimensions IS NOT NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_index_builds_kind_state
+  ON search_index_builds(kind, state, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_index_builds_age
+  ON search_index_builds(started_at);
+
+CREATE TABLE IF NOT EXISTS search_index_active (
+  kind TEXT PRIMARY KEY CHECK (kind IN ('fts','faiss')),
+  build_id TEXT NOT NULL REFERENCES search_index_builds(id) ON DELETE RESTRICT,
+  activated_at INTEGER NOT NULL
+);
+
+CREATE TRIGGER IF NOT EXISTS si_active_ready_ins
+BEFORE INSERT ON search_index_active
+WHEN (SELECT state FROM search_index_builds WHERE id = NEW.build_id) IS NOT 'ready'
+  OR (SELECT kind  FROM search_index_builds WHERE id = NEW.build_id) IS NOT NEW.kind
+BEGIN SELECT RAISE(ABORT, 'active build is not ready'); END;
+
+CREATE TRIGGER IF NOT EXISTS si_active_ready_upd
+BEFORE UPDATE ON search_index_active
+WHEN (SELECT state FROM search_index_builds WHERE id = NEW.build_id) IS NOT 'ready'
+  OR (SELECT kind  FROM search_index_builds WHERE id = NEW.build_id) IS NOT NEW.kind
+BEGIN SELECT RAISE(ABORT, 'active build is not ready'); END;
+
+CREATE TRIGGER IF NOT EXISTS si_active_pinned
+BEFORE UPDATE OF state ON search_index_builds
+WHEN OLD.state = 'ready' AND NEW.state <> 'ready'
+  AND EXISTS (SELECT 1 FROM search_index_active WHERE build_id = OLD.id)
+BEGIN SELECT RAISE(ABORT, 'the active build cannot leave ready'); END;
+
+CREATE TRIGGER IF NOT EXISTS si_kind_immutable
+BEFORE UPDATE OF kind ON search_index_builds
+WHEN NEW.kind <> OLD.kind
+BEGIN SELECT RAISE(ABORT, 'a build kind is immutable'); END;
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -1091,4 +1148,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V23_COLLECTIONS_SQL),
   (exec) => exec(V24_BULK_OPERATIONS_SQL),
   (exec) => exec(V25_OBSERVABILITY_SQL),
+  (exec) => exec(V26_SEARCH_INDEX_SQL),
 ]

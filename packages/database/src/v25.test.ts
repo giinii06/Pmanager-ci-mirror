@@ -78,7 +78,7 @@ describe('schema v25 observability', () => {
     expect(db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version).toBe(
       SCHEMA_VERSION,
     )
-    expect(SCHEMA_VERSION).toBe(25)
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(25)
 
     const tables = db
       .query<{ name: string }, []>(
