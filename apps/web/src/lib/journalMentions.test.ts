@@ -15,7 +15,7 @@ describe('journal inline media mentions', () => {
   })
 
   test('does not interpret untrusted HTML or malformed media references as rendered HTML', () => {
-    const raw = '<img src=x onerror=alert(1)> @[wrong](video:hello) @now'
+    const raw = '<img src=x onerror=alert(1)> @[wrong](video:hello!) @now'
     expect(splitJournalBody(raw)).toEqual([{ kind: 'text', value: raw }])
     expect(encodeJournalMention({ type: 'video', id: 'ok', label: 'line]\nbreak' }))
       .toBe('@[line  break](video:ok)')

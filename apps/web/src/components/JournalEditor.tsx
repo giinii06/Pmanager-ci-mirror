@@ -77,6 +77,7 @@ export function JournalEditor({
     if (!root) return
     const fragment = document.createDocumentFragment()
     for (const part of splitJournalBody(initialBody)) {
+      if (part.kind === 'text' && part.value === '') continue
       fragment.append(
         part.kind === 'text' ? document.createTextNode(part.value) : makeMentionNode(part),
       )
