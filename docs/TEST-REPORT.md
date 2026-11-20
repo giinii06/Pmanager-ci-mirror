@@ -1,6 +1,6 @@
 # 테스트 및 릴리스 검증 보고서
 
-최종 갱신: 2026-11-20, `main` 기준. 아래 수치는 마지막 `bun run release:check` 실행과 호스트 라이브 점검에서 나온 값입니다.
+최종 갱신: 2026-11-21, `main` 기준. 아래 수치는 마지막 `bun run release:check` 실행과 호스트 라이브 점검에서 나온 값입니다.
 
 ## 1. 자동 게이트
 
@@ -10,8 +10,8 @@
 | --- | --- | --- |
 | version | `APP_VERSION`과 루트 `package.json`의 `version` 일치 | `1.0.0` |
 | typecheck | 6개 워크스페이스 + 루트 프로젝트 | exit `0` |
-| test | `bun test` 전체 | `720 pass, 0 fail`, 81개 파일, 4,651 expect |
-| build | `apps/web` Vite 프로덕션 빌드 | exit `0`, 2,971 modules, 223 ms |
+| test | `bun test` 전체 | `721 pass, 0 fail`, 81개 파일, 4,665 expect |
+| build | `apps/web` Vite 프로덕션 빌드 | exit `0`, 2,971 modules, `index-DkBWFB8k.js` 593.34 kB |
 | smoke | 실제 API·워커 기동 후 HTTP 확인 | `Smoke test passed.` |
 
 - **smoke**는 임시 데이터 디렉터리에 계정을 만들고 라이브러리를 등록한 뒤 3개 자산을 스캔하고, 썸네일(534 bytes), 프리뷰, Range `0..99/15435`, 폴더 목록, 통계, 미인증 `401`까지 확인합니다. 8899 포트를 쓰며 `SMOKE_PORT`로 바꿀 수 있습니다.
@@ -33,7 +33,7 @@
 
 ## 3. Win11 실서버(`192.168.0.27`) 라이브 검증
 
-현재 상태: schema `v26`, `14,497` assets(`14,496` active), `23,434` segments, `15,191` jobs, `integrity_check ok`, `foreign_key_check` 0, `synchronous FULL`, SQLite `3.54.1`.
+현재 상태: schema `v26`, `14,498` assets(`14,497` active), 라이브러리 3개(`d`, 빈 `D 드라이브`, `hls-rehearsal` 픽스처), `23,472` transcript segments, `15,211` jobs, `integrity_check ok`, `foreign_key_check` 0, `synchronous FULL`, SQLite `3.54.1`.
 
 - **v25 → v26 배포** (PR 14): 부팅 시 `mode bootstrapped`, `rebuiltMs 97.1`, `verifyMs 89.8`로 기존 색인을 검증해 채택했습니다(재구축 없음). 운영자 재구축 `POST /api/system/search-index/rebuild`는 `201`, 258 ms, build `v11a11stya4tj595`를 만들고 포인터를 옮겼으며 이전 build는 `superseded`가 됐습니다. GC 미리보기는 `{builds:[],total:0}`(30일 보존 내 없음). 헤드리스 Chrome에서 `/diagnostics`의 `검색 색인` 패널이 세 배지와 build 표를 렌더링했습니다.
 - **v23 → v25 배포** (PR 12+13 동시): 백업 사본에서 마이그레이션이 5 ms, 13개 테이블 카운트가 전후 동일, `foreign_key_check` 빈 결과. 라이브에서 알림 인박스는 플래그가 꺼져 `404`+`requestId`, 진단 다운로드는 `diagnostics_runs` 행을 남겼습니다.
@@ -47,6 +47,11 @@
 
 - **정전 복구 리허설**: 2026-11-20 23:08 전원을 끊었다 다시 넣었더니 사람 개입 없이 복구됐습니다. Windows 부팅 `23:08:20` → 슈퍼바이저 `23:08:50` → preflight `23:09:20` → compose 동기화 `23:09:29`, 부팅 69초 뒤 `/health/ready` `200`. 라이브 `1.0.0`·`v26`·`integrity ok`, `level 50/60` 0건. UEFI의 `Restore on AC/Power Loss = Power On`이 실제로 동작함을 확인했습니다.
 - **릴리스 백업**: 리허설 직후 `VACUUM INTO`로 `/data/backup-v26-2026-11-20T14-11-17-287Z.db`(`281,583,616` bytes, `quick_check ok`, `user_version 26`)를 만들고 `~/Pmanager-backups/`로 복사했습니다.
+- **롤아웃 리허설** (2026-11-21): 라이브를 건드리지 않도록 별도 compose 프로젝트 `mv-rehearsal`(포트 8092, 자체 볼륨, `MEDIA_ROOT=/home/giini/mv-rehearsal-media`)에서 삭제·벌크·HLS를 실제 워커로 돌렸습니다.
+  - 삭제 2건이 6개 이벤트를 남기고 `completed`까지 갔고, 격리 파일(`106,167` bytes, SHA-256 `d1b8efd7…`)이 purge 57 ms 전에 존재함을 컨테이너 안에서 확인했습니다.
+  - 벌크 8종(tag add/remove, export BOM, poster, reanalyze, move, copy, delete, cancel)이 모두 통과했습니다. held 항목 재시도가 막힌 mutation을 재사용하는 결함을 찾아 `c8fc02a`에서 고치고 회귀 테스트를 추가했습니다.
+  - HLS는 워커 재시작을 넘겨 `ready`가 됐고, 소스 변경 뒤 v2가 발행되며 v1 포인터가 해제됐고, 25시간 뒤 GC가 v1만 지웠습니다(구 URL `404`, v2 `200`).
+  - 리허설 프로젝트·이미지·픽스처는 모두 제거했고, 라이브는 9개 컨테이너·`1.0.0`·`v26`으로 남았습니다.
 
 ## 4. 제품 롤아웃 확인 항목 (릴리스 게이트 아님)
 
@@ -54,5 +59,5 @@
 
 1. `NOTIFICATIONS_ENABLED=1`과 실제 Discord 웹훅으로 알림 1건 전달.
 2. 라이브 라이브러리에서 캐시 정리 1회 (미리보기 → 실행).
-3. `BULK_OPERATIONS_ENABLED=1`, `FILE_MUTATION_ENGINE_ENABLED=1`로 전환하기 전, 버릴 수 있는 픽스처 라이브러리에서 이동·삭제 리허설.
-4. `HLS_GENERATIONS_ENABLED=1` 전환 전, 짧은 영상 1건으로 HLS 생성·재생·GC 확인.
+3. 삭제·벌크: 2026-11-21 리허설로 검증을 마쳤습니다. 남은 것은 `api`/`worker`를 `c8fc02a`로 재빌드한 뒤 `FILE_MUTATION_ENGINE_ENABLED=1`, `BULK_OPERATIONS_ENABLED=1`로 전환하는 운영 작업입니다(현재 둘 다 `0`).
+4. HLS: `HLS_GENERATIONS_ENABLED=1`은 이미 라이브입니다. 리허설에서 생성·재생·supersede·GC를 확인했고, 남은 것은 라이브 라이브러리에서의 실제 사용과 `hls-rehearsal` 픽스처 라이브러리 정리입니다.
