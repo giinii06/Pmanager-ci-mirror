@@ -163,6 +163,9 @@ export function JournalEditor({
   }
 
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    // Enter finalizes Korean IME composition before it means a new line
+    // or an autocomplete selection.
+    if (event.nativeEvent.isComposing || event.key === 'Process') return
     if (mentionTerm !== null && items.length > 0) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault()
