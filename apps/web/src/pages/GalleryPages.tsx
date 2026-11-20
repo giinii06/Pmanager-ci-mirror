@@ -198,10 +198,6 @@ export function VideoTagsPage() {
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <SortBar sort={sort} onChange={setSort} />
-              <Button size="sm" onClick={() => setSavingAlbum(true)}>
-                <FolderHeart size={13} />
-                앨범으로 저장
-              </Button>
             </div>
           }
           emptyTitle="이 태그의 동영상이 없습니다"

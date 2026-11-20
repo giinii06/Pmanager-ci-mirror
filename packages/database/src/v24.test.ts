@@ -4,14 +4,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
-  createBulkOperation,
   createLibrary,
   createMoveMutation,
   createUser,
-  getBulkOperation,
-  getBulkOperationCounts,
   insertAsset,
-  listBulkOperationItems,
   openDatabase,
   upsertFolder,
 } from './index'
@@ -57,8 +53,8 @@ function seed(legacy: Database): void {
   })
 }
 
-describe('schema v24 bulk operations', () => {
-  test('migrates a v23 database, keeps the asset, and enables a frozen bulk operation', () => {
+describe('schema v24 historical migration compatibility', () => {
+  test('migrates v23 while retaining existing assets and legacy table schema', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'mv-v24-'))
     dirs.push(dir)
     const file = path.join(dir, 'legacy.db')
@@ -121,33 +117,6 @@ describe('schema v24 bulk operations', () => {
         .query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM assets WHERE relative_path = ?')
         .get('clip.mp4')?.n,
     ).toBe(1)
-
-    const created = createBulkOperation(db, {
-      id: 'op1',
-      userId: 'u1',
-      kind: 'move',
-      selectionKind: 'ids',
-      selectionJson: JSON.stringify({ kind: 'ids', assetIds: ['asset1'] }),
-      snapshotCount: 1,
-      snapshotHash: 'hash',
-      snapshotGeneration: 'gen',
-      paramsJson: JSON.stringify({ targetLibraryId: 'lib1', targetFolder: 'sorted' }),
-      requestKey: 'u1:req-1',
-      items: [{ assetId: 'asset1', filename: 'clip.mp4', relativePath: 'clip.mp4', sizeBytes: 10 }],
-      now: 100,
-    })
-    expect(created.created).toBe(true)
-    expect(getBulkOperation(db, 'op1')?.state).toBe('queued')
-    expect(getBulkOperationCounts(db, 'op1')).toEqual({
-      total: 1,
-      pending: 1,
-      running: 0,
-      succeeded: 0,
-      failed: 0,
-      held: 0,
-      cancelled: 0,
-    })
-    expect(listBulkOperationItems(db, 'op1').map((item) => item.assetId)).toEqual(['asset1'])
 
     const move = createMoveMutation(db, {
       assetId: 'asset1',

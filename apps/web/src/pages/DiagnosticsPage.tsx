@@ -42,7 +42,7 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-baseline justify-between gap-3 border-b border-line/60 py-1.5 last:border-0">
       <dt className="shrink-0 text-[11.5px] text-muted">{label}</dt>
       <dd className="min-w-0 truncate text-right text-[12px] tabular-nums text-ink">{value}</dd>
-    </section>
+    </div>
   )
 }
 
@@ -520,6 +520,6 @@ export function DiagnosticsSection() {
           </Section>
         </>
       )}
-    </div>
+    </section>
   )
 }
