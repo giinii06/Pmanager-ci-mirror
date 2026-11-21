@@ -197,7 +197,7 @@
 
 
 
-// A quieter, larger workspace chrome. Keep all four existing palette presets intact.
+/* A quieter, larger workspace chrome. The four existing palettes remain unchanged. */
 :root {
   --ui-on-accent: #0b0c0f;
   --ui-elevation: 0 12px 36px rgba(0, 0, 0, 0.10);

@@ -1,24 +1,57 @@
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Aperture,
-  Copy,
-  Film,
-  Images,
-  BookOpenText,
-  Plus,
-  Loader2,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Settings2,
-  Tag,
-  X,
+  Aperture, BookOpenText, Copy, Film, Images, Loader2, PanelLeftClose,
+  PanelLeftOpen, Plus, Settings2, Tag, X,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
 import { useUi } from '../store/ui'
+
+function GroupLabel({ children, collapsed }: { children: ReactNode; collapsed: boolean }) {
+  return <p className={cn('px-3 pb-2 pt-5 text-[11px] font-semibold tracking-wide text-faint', collapsed && 'md:sr-only')}>{children}</p>
+}
+
+function MainLink({
+  to, label, icon, active, collapsed, count, end,
+}: {
+  to: string
+  label: string
+  icon: ReactNode
+  active: boolean
+  collapsed: boolean
+  count?: number
+  end?: boolean
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      title={label}
+      aria-label={label}
+      className={cn(
+        'group flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-[14px] font-medium transition-colors',
+        'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent',
+        collapsed && 'md:justify-center md:px-0',
+        active
+          ? 'bg-accent/12 text-accent'
+          : 'text-muted hover:bg-raised/65 hover:text-ink',
+      )}
+    >
+      <span className={cn('flex shrink-0 items-center justify-center', active ? 'text-accent' : 'text-faint group-hover:text-ink')}>
+        {icon}
+      </span>
+      <span className={cn('min-w-0 flex-1 truncate', collapsed && 'md:hidden')}>{label}</span>
+      {typeof count === 'number' && count > 0 ? (
+        <span className={cn('rounded-lg bg-panel-2 px-1.5 py-0.5 text-[11px] tabular-nums text-faint', collapsed && 'md:hidden')}>
+          {formatCount(count)}
+        </span>
+      ) : null}
+    </NavLink>
+  )
+}
 
 export function Sidebar() {
   const navigate = useNavigate()
@@ -31,21 +64,17 @@ export function Sidebar() {
   const toggleCollapsed = useUi((state) => state.toggleSidebarCollapsed)
 
   const stats = useQuery({ queryKey: ['stats'], queryFn: api.stats })
-  const jobs = useQuery({
-    queryKey: ['jobs'],
-    queryFn: api.jobs,
-    refetchInterval: 6000,
-  })
+  const jobs = useQuery({ queryKey: ['jobs'], queryFn: api.jobs, refetchInterval: 6000 })
 
   useEffect(() => {
     setSidebarOpen(false)
   }, [location.pathname, setSidebarOpen])
 
+  const pathname = location.pathname
   const activeJobs = (jobs.data?.counts.queued ?? 0) + (jobs.data?.counts.running ?? 0)
-  const inPhotos = location.pathname === '/' || location.pathname.startsWith('/folders')
-  const inVideos = location.pathname.startsWith('/videos')
-  const inDuplicates = location.pathname.startsWith('/duplicates')
-  const inJournal = location.pathname.startsWith('/journal')
+  const inPhotos = pathname === '/' || pathname.startsWith('/folders')
+  const inVideos = pathname.startsWith('/videos')
+  const inJournal = pathname.startsWith('/journal')
   const journal = useQuery({
     queryKey: ['journal', 'recent'],
     queryFn: () => api.journalEntries(),
@@ -55,273 +84,124 @@ export function Sidebar() {
     mutationFn: api.createJournalEntry,
     onSuccess: (entry) => {
       void queryClient.invalidateQueries({ queryKey: ['journal'] })
-      navigate(`/journal/${entry.id}`)
+      navigate('/journal/' + entry.id)
     },
     onError: () => toast('새 일지를 만들지 못했습니다.', 'error'),
   })
 
   return (
     <aside
+      aria-label="사이드바"
       className={cn(
-        'fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col border-r border-line bg-panel transition-[transform,width] duration-200 md:static md:translate-x-0',
+        'fixed inset-y-0 left-0 z-50 flex w-[284px] shrink-0 flex-col border-r border-line bg-panel shadow-2xl',
+        'transition-[transform,width] duration-200 md:static md:w-[268px] md:translate-x-0 md:shadow-none',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-        'w-[232px]',
-        collapsed && 'md:w-[64px]',
+        collapsed && 'md:w-[76px]',
       )}
     >
-      <div
-        className={cn(
-          'flex h-14 items-center px-3.5',
-          collapsed ? 'md:justify-center md:px-2' : 'justify-between',
-        )}
-      >
+      <div className={cn('flex min-h-[76px] items-center gap-3 border-b border-line/70 px-4', collapsed && 'md:justify-center md:px-2')}>
         <button
           type="button"
           onClick={() => navigate('/')}
-          title="MediaVault"
-          className="flex items-center gap-2.5 rounded-lg text-left"
+          title="MediaVault 홈"
+          aria-label="MediaVault 홈"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-accent"
         >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
-            <Aperture size={16} />
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent text-[var(--ui-on-accent)] shadow-sm">
+            <Aperture size={23} strokeWidth={1.9} />
           </span>
-          <span
-            className={cn(
-              'text-[14px] font-semibold tracking-tight text-ink',
-              collapsed && 'md:hidden',
-            )}
-          >
-            MediaVault
+          <span className={cn('min-w-0 flex-1', collapsed && 'md:hidden')}>
+            <span className="block truncate text-[16px] font-bold tracking-tight text-ink">MediaVault</span>
+            <span className="block truncate text-[11px] text-faint">나만의 미디어 공간</span>
           </span>
         </button>
-
-        {!collapsed ? (
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            aria-label="사이드바 접기"
-            title="사이드바 접기"
-            className="hidden rounded-md p-1.5 text-faint hover:bg-raised hover:text-ink md:inline-flex"
-          >
-            <PanelLeftClose size={15} />
-          </button>
-        ) : null}
-
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
+          title={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
+          className={cn('hidden rounded-xl p-2 text-faint hover:bg-raised hover:text-ink md:inline-flex', collapsed && 'md:absolute md:left-[23px] md:top-[83px]')}
+        >
+          {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+        </button>
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
-          className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-ink md:hidden"
           aria-label="메뉴 닫기"
+          className="rounded-xl p-2 text-muted hover:bg-raised hover:text-ink md:hidden"
         >
-          <X size={16} />
+          <X size={19} />
         </button>
       </div>
 
-      {collapsed ? (
-        <div className="hidden justify-center pb-2 md:flex">
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            aria-label="사이드바 펼치기"
-            title="사이드바 펼치기"
-            className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-ink"
-          >
-            <PanelLeftOpen size={15} />
-          </button>
-        </div>
-      ) : null}
-
-      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2.5 pb-3 pt-1" aria-label="주 메뉴">
-        <NavLink
-          to="/"
-          end
-          title="사진"
-          className={() =>
-            cn(
-              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
-              collapsed && 'md:justify-center md:px-0',
-              inPhotos
-                ? 'bg-accent/12 text-accent'
-                : 'text-muted hover:bg-raised/70 hover:text-ink',
-            )
-          }
-        >
-          <Images size={16} className={inPhotos ? 'text-accent' : 'text-faint'} />
-          <span className={cn('flex-1', collapsed && 'md:hidden')}>사진</span>
-          {typeof stats.data?.images === 'number' && stats.data.images > 0 ? (
-            <span className={cn('text-[10.5px] tabular-nums text-faint', collapsed && 'md:hidden')}>
-              {formatCount(stats.data.images)}
-            </span>
-          ) : null}
-        </NavLink>
-
-        <div>
+      <nav aria-label="주 메뉴" className={cn('min-h-0 flex-1 overflow-y-auto px-3 pb-5 pt-1', collapsed && 'md:px-2 md:pt-12')}>
+        <GroupLabel collapsed={collapsed}>라이브러리</GroupLabel>
+        <div className="space-y-1">
+          <MainLink to="/" label="사진" icon={<Images size={19} />} active={inPhotos} collapsed={collapsed} count={stats.data?.images} end />
+          <MainLink to="/videos" label="동영상" icon={<Film size={19} />} active={inVideos} collapsed={collapsed} count={stats.data?.videos} />
           <NavLink
-            to="/videos"
-            title="동영상"
-            className={() =>
-              cn(
-                'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
-                collapsed && 'md:justify-center md:px-0',
-                inVideos
-                  ? 'bg-accent/12 text-accent'
-                  : 'text-muted hover:bg-raised/70 hover:text-ink',
-              )
-            }
+            to="/videos/tags"
+            title="영상 태그"
+            className={({ isActive }) => cn(
+              'ml-10 flex min-h-9 items-center gap-2 rounded-xl px-3 text-[12.5px] transition-colors',
+              collapsed && 'md:hidden',
+              isActive ? 'bg-panel-2 font-semibold text-ink' : 'text-muted hover:bg-raised/60 hover:text-ink',
+            )}
           >
-            <Film size={16} className={inVideos ? 'text-accent' : 'text-faint'} />
-            <span className={cn('flex-1', collapsed && 'md:hidden')}>동영상</span>
-            {typeof stats.data?.videos === 'number' && stats.data.videos > 0 ? (
-              <span className={cn('text-[10.5px] tabular-nums text-faint', collapsed && 'md:hidden')}>
-                {formatCount(stats.data.videos)}
-              </span>
-            ) : null}
+            <Tag size={14} /> 태그로 모아보기
           </NavLink>
-
-          <div className={cn('mt-0.5 space-y-0.5 pl-6 pr-1', collapsed && 'md:hidden')}>
-            <NavLink
-              to="/videos"
-              end
-              className={({ isActive }) =>
-                cn(
-                  'flex h-7 items-center gap-2 rounded-md px-2 text-[12px] transition-colors',
-                  isActive
-                    ? 'bg-raised text-ink font-medium'
-                    : 'text-muted hover:bg-raised/60 hover:text-ink',
-                )
-              }
-            >
-              <span>전체 보기</span>
-            </NavLink>
-            <NavLink
-              to="/videos/tags"
-              className={({ isActive }) =>
-                cn(
-                  'flex h-7 items-center gap-2 rounded-md px-2 text-[12px] transition-colors',
-                  isActive
-                    ? 'bg-raised text-ink font-medium'
-                    : 'text-muted hover:bg-raised/60 hover:text-ink',
-                )
-              }
-            >
-              <Tag size={12} className="text-faint" />
-              <span>태그별 보기</span>
-            </NavLink>
-          </div>
         </div>
 
-        <NavLink
-          to="/duplicates"
-          title="중복 검토"
-          className={() =>
-            cn(
-              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
-              collapsed && 'md:justify-center md:px-0',
-              inDuplicates
-                ? 'bg-accent/12 text-accent'
-                : 'text-muted hover:bg-raised/70 hover:text-ink',
-            )
-          }
-        >
-          <Copy size={16} className={inDuplicates ? 'text-accent' : 'text-faint'} />
-          <span className={cn('flex-1', collapsed && 'md:hidden')}>중복 검토</span>
-        </NavLink>
-
-        <div>
-          <div className="flex items-center gap-0.5">
-            <NavLink
-              to="/journal"
-              title="일지"
-              className={() =>
-                cn(
-                  'flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
-                  collapsed && 'md:justify-center md:px-0',
-                  inJournal ? 'bg-accent/12 text-accent' : 'text-muted hover:bg-raised/70 hover:text-ink',
-                )
-              }
-            >
-              <BookOpenText size={16} className={inJournal ? 'text-accent' : 'text-faint'} />
-              <span className={cn('flex-1', collapsed && 'md:hidden')}>일지</span>
-            </NavLink>
+        <GroupLabel collapsed={collapsed}>기록과 정리</GroupLabel>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <MainLink to="/journal" label="일지" icon={<BookOpenText size={19} />} active={inJournal} collapsed={collapsed} />
+            </div>
             <button
               type="button"
               aria-label="새 일지 만들기"
               title="새 일지 만들기"
               disabled={createJournal.isPending}
               onClick={() => createJournal.mutate()}
-              className={cn(
-                'rounded-md p-1.5 text-faint hover:bg-raised hover:text-ink disabled:opacity-40',
-                collapsed && 'md:hidden',
-              )}
+              className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-faint hover:bg-raised hover:text-ink disabled:opacity-45', collapsed && 'md:hidden')}
             >
-              {createJournal.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              {createJournal.isPending ? <Loader2 size={16} className="animate-spin" /> : <Plus size={17} />}
             </button>
           </div>
           {inJournal && !collapsed && journal.data?.items.length ? (
-            <div className="mt-1 space-y-0.5 pl-6 pr-1 md:block">
-              {journal.data.items.slice(0, 12).map((entry) => (
+            <div className="space-y-0.5 pb-1 pl-10 pr-1">
+              {journal.data.items.slice(0, 10).map((entry) => (
                 <NavLink
                   key={entry.id}
-                  to={`/journal/${entry.id}`}
-                  className={({ isActive }) =>
-                    cn(
-                      'block truncate rounded-md px-2 py-1 text-[12px] transition-colors',
-                      isActive ? 'bg-raised font-medium text-ink' : 'text-muted hover:bg-raised/60 hover:text-ink',
-                    )
-                  }
+                  to={'/journal/' + entry.id}
                   title={entry.title || '제목 없음'}
+                  className={({ isActive }) => cn(
+                    'block truncate rounded-lg px-2.5 py-2 text-[12.5px] transition-colors',
+                    isActive ? 'bg-panel-2 font-medium text-ink' : 'text-muted hover:bg-raised/60 hover:text-ink',
+                  )}
                 >
-                  <span className="mr-1.5 text-faint">
-                    {new Date(entry.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
-                  </span>
                   {entry.title || '제목 없음'}
                 </NavLink>
               ))}
             </div>
           ) : null}
+          <MainLink to="/duplicates" label="중복 검토" icon={<Copy size={19} />} active={pathname.startsWith('/duplicates')} collapsed={collapsed} />
         </div>
 
-        <NavLink
-          to="/settings"
-          title="설정"
-          className={({ isActive }) =>
-            cn(
-              'flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] transition-colors',
-              collapsed && 'md:justify-center md:px-0',
-              isActive
-                ? 'bg-accent/12 text-accent'
-                : 'text-muted hover:bg-raised/70 hover:text-ink',
-            )
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <Settings2 size={16} className={isActive ? 'text-accent' : 'text-faint'} />
-              <span className={cn('flex-1', collapsed && 'md:hidden')}>설정</span>
-            </>
-          )}
-        </NavLink>
+        <GroupLabel collapsed={collapsed}>환경 설정</GroupLabel>
+        <MainLink to="/settings" label="설정" icon={<Settings2 size={19} />} active={pathname.startsWith('/settings')} collapsed={collapsed} />
       </nav>
 
-      <div className="border-t border-line px-3 py-2.5">
-        <div
-          className={cn(
-            'flex items-center gap-2 text-[11.5px] text-muted',
-            collapsed && 'md:justify-center',
-          )}
-        >
-          {activeJobs > 0 ? (
-            <>
-              <Loader2 size={12} className="shrink-0 animate-spin text-accent" />
-              <span className={cn(collapsed && 'md:hidden')}>
-                {formatCount(activeJobs)}개 작업 처리 중
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#4ade80]/70" />
-              <span className={cn(collapsed && 'md:hidden')}>준비됨</span>
-            </>
-          )}
+      <div className={cn('border-t border-line px-4 py-4', collapsed && 'md:px-2')}>
+        <div className={cn('flex min-h-12 items-center gap-3 rounded-2xl bg-canvas/70 px-3.5', collapsed && 'md:justify-center md:px-0')}>
+          {activeJobs > 0
+            ? <Loader2 size={17} className="shrink-0 animate-spin text-accent" />
+            : <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />}
+          <div className={cn('min-w-0', collapsed && 'md:hidden')}>
+            <span className="block text-[12.5px] font-semibold text-ink">{activeJobs > 0 ? '처리 중' : '모든 작업 준비됨'}</span>
+            <span className="block text-[11px] text-muted">{activeJobs > 0 ? formatCount(activeJobs) + '개 작업 진행 중' : '미디어를 둘러보세요'}</span>
+          </div>
         </div>
       </div>
     </aside>
