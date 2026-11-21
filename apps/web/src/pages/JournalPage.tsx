@@ -129,104 +129,165 @@ export function JournalIndexPage() {
   )
 }
 
-function JournalDocument({ entry }: { entry: JournalEntryDTO }) {
+function JournalDocument({ entry, userId }: { entry: JournalEntryDTO; userId: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
-  const [title, setTitle] = useState(entry.title)
-  const [body, setBody] = useState(entry.body)
-  const [status, setStatus] = useState<'saved' | 'editing' | 'saving' | 'error'>('saved')
+  const [status, setStatus] = useState<JournalSaveStatus>('saved')
+  const [editorEpoch, setEditorEpoch] = useState(0)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const latestRef = useRef({ title: entry.title, body: entry.body })
-  const persistedRef = useRef(JSON.stringify([entry.title, entry.body]))
-  const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
-  const deletingRef = useRef(false)
+  const [resolving, setResolving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const [model] = useState(() => {
+    let storage: JournalDraftStore | null = null
+    try {
+      storage = window.localStorage
+    } catch {
+      // Browser storage can be denied, but authenticated server saves still work.
+    }
+    return new JournalSaveCoordinator({
+      entry,
+      store: storage,
+      draftKey: journalDraftKey(userId, entry.id),
+      persist: (value) => api.updateJournalEntry(entry.id, value),
+      onStatus: setStatus,
+      onSaved: (saved) => {
+        // An outstanding save after logout must not repopulate another account's cache.
+        const activeUserId = queryClient.getQueryData<AuthStatusDTO>(['auth'])?.user?.id
+        if (activeUserId !== userId) return
+        queryClient.setQueryData(['journal', 'entry', entry.id], saved)
+        void queryClient.invalidateQueries({ queryKey: ['journal', 'recent'] })
+        void queryClient.invalidateQueries({ queryKey: ['journal', 'pages'] })
+      },
+      onError: (_error, conflict) => {
+        toast(
+          conflict
+            ? '다른 탭에서 일지가 변경됐습니다. 초안을 유지하고 충돌 해결을 요청합니다.'
+            : '저장에 실패했습니다. 브라우저 초안을 보관하고 재시도합니다.',
+          'error',
+        )
+      },
+    })
+  })
+  const [title, setTitle] = useState(model.initial.title)
+  const [body, setBody] = useState(model.initial.body)
+
+  useEffect(() => { setStatus(model.initialStatus) }, [model])
 
   const editTitle = (value: string) => {
     setTitle(value)
-    latestRef.current = { ...latestRef.current, title: value }
-    setStatus('editing')
+    if (!model.edit({ ...model.current, title: value })) {
+      toast('초안을 브라우저에 저장하지 못했습니다. 서버 저장 여부를 확인하세요.', 'error')
+    }
   }
-
   const editBody = (value: string) => {
     if (value.length > 100_000) {
-      toast('본문은 10만 글자까지 저장할 수 있습니다.', 'error')
+      toast('본문은 최대 10만 글자까지 저장할 수 있습니다.', 'error')
       return
     }
     setBody(value)
-    latestRef.current = { ...latestRef.current, body: value }
-    setStatus('editing')
+    if (!model.edit({ ...model.current, body: value })) {
+      toast('초안을 브라우저에 저장하지 못했습니다. 서버 저장 여부를 확인하세요.', 'error')
+    }
   }
 
-  const save = useCallback((): Promise<boolean> => {
-    const task = saveQueueRef.current.then(async () => {
-      if (deletingRef.current) return true
-      // Coalesce rapid edits: send the freshest text after any earlier save.
-      const value = latestRef.current
-      const serialized = JSON.stringify([value.title, value.body])
-      if (serialized === persistedRef.current) return true
-      setStatus('saving')
-      try {
-        await api.updateJournalEntry(entry.id, value)
-        persistedRef.current = serialized
-        if (JSON.stringify([latestRef.current.title, latestRef.current.body]) === serialized) {
-          setStatus('saved')
-        } else {
-          setStatus('editing')
-        }
-        void queryClient.invalidateQueries({ queryKey: ['journal'] })
-        return true
-      } catch {
-        setStatus('error')
-        toast('일지를 저장하지 못했습니다. 다시 저장해 주세요.', 'error')
-        return false
-      }
-    })
-    saveQueueRef.current = task.then(() => undefined, () => undefined)
-    return task
-  }, [entry.id, queryClient, toast])
-
   useEffect(() => {
-    if (JSON.stringify([title, body]) === persistedRef.current) return
-    const timer = window.setTimeout(() => { void save() }, 700)
+    if (!model.hasUnsavedChanges || model.isConflicted) return
+    const timer = window.setTimeout(() => { void model.save() }, 700)
     return () => window.clearTimeout(timer)
-  }, [title, body, save])
+  }, [title, body, model])
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+    if (status !== 'error' || model.isConflicted || model.failedAttempts >= 4) return
+    const delay = Math.min(15_000, 1500 * 2 ** Math.max(0, model.failedAttempts - 1))
+    const timer = window.setTimeout(() => { void model.save() }, delay)
+    return () => window.clearTimeout(timer)
+  }, [status, model])
+
+  useEffect(() => {
+    const keyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
         event.preventDefault()
-        void save()
+        void model.save()
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [save])
-
-  useEffect(() => () => { void save() }, [save])
+    const online = () => {
+      if (model.hasUnsavedChanges && !model.isConflicted) void model.save()
+    }
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!model.hasUnsavedChanges) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('keydown', keyDown)
+    window.addEventListener('online', online)
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => {
+      window.removeEventListener('keydown', keyDown)
+      window.removeEventListener('online', online)
+      window.removeEventListener('beforeunload', beforeUnload)
+      // A draft is already written synchronously on every edit; this is best effort.
+      void model.save()
+    }
+  }, [model])
 
   const exit = async () => {
-    if (await save()) navigate('/journal')
+    if (await model.save()) navigate('/journal')
   }
 
   const remove = async () => {
-    // Wait for in-flight writes so they never race the DELETE request.
-    await saveQueueRef.current
-    deletingRef.current = true
+    if (deleting) return
+    setDeleting(true)
+    await model.beginDelete()
     try {
       await api.deleteJournalEntry(entry.id)
-      void queryClient.invalidateQueries({ queryKey: ['journal'] })
+      model.forget()
       queryClient.removeQueries({ queryKey: ['journal', 'entry', entry.id] })
+      void queryClient.invalidateQueries({ queryKey: ['journal', 'recent'] })
+      void queryClient.invalidateQueries({ queryKey: ['journal', 'pages'] })
       navigate('/journal', { replace: true })
       toast('일지를 삭제했습니다.', 'success')
     } catch {
-      deletingRef.current = false
-      toast('일지를 삭제하지 못했습니다.', 'error')
+      model.cancelDelete()
+      setDeleting(false)
+      toast('일지 삭제에 실패했습니다.', 'error')
+    }
+  }
+
+  const resetFromServer = async () => {
+    if (!window.confirm('이 브라우저의 초안을 버리고 서버 내용을 불러올까요?')) return
+    setResolving(true)
+    try {
+      const latest = await api.journalEntry(entry.id)
+      model.resetToServer(latest)
+      queryClient.setQueryData(['journal', 'entry', entry.id], latest)
+      setTitle(latest.title)
+      setBody(latest.body)
+      setEditorEpoch((value) => value + 1)
+    } catch {
+      toast('서버의 최신 일지를 불러오지 못했습니다.', 'error')
+    } finally {
+      setResolving(false)
+    }
+  }
+
+  const overwriteServer = async () => {
+    if (!window.confirm('다른 탭의 수정 내용을 내 초안으로 덮어쓸까요?')) return
+    setResolving(true)
+    try {
+      const latest = await api.journalEntry(entry.id)
+      model.allowOverwrite(latest.updatedAt)
+      await model.save()
+    } catch {
+      toast('서버의 최신 일지를 확인하지 못했습니다.', 'error')
+    } finally {
+      setResolving(false)
     }
   }
 
   const openMention = async (mention: JournalMentionDTO) => {
-    if (!(await save())) return
+    if (!(await model.save())) return
     if (mention.type === 'album') {
       navigate('/folders/' + encodeURIComponent(mention.id))
       return
@@ -258,10 +319,19 @@ function JournalDocument({ entry }: { entry: JournalEntryDTO }) {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <span aria-live="polite" className={cn('flex items-center gap-1 text-[11.5px] text-faint', status === 'error' && 'text-danger')}>
+          <span aria-live="polite" className={cn('flex items-center gap-1 text-[11.5px] text-faint', (status === 'error' || status === 'conflict') && 'text-danger')}>
             {status === 'saving' ? <Loader2 size={12} className="animate-spin" /> : status === 'saved' ? <Check size={12} /> : null}
-            {status === 'saving' ? '저장 중' : status === 'saved' ? '저장됨' : status === 'error' ? '저장 실패' : '작성 중'}
+            {status === 'saving' ? '저장 중' : status === 'saved' ? '저장됨' : status === 'error' ? '저장 실패' : status === 'conflict' ? '편집 충돌' : '작성 중'}
           </span>
+          {(status === 'error' || status === 'editing') ? (
+            <button
+              type="button"
+              onClick={() => { void model.save() }}
+              className="rounded-md px-2 py-1 text-[12px] text-accent hover:bg-raised"
+            >
+              지금 저장
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
@@ -275,6 +345,21 @@ function JournalDocument({ entry }: { entry: JournalEntryDTO }) {
       </header>
 
       <div className="w-full px-[clamp(22px,7vw,120px)] pb-28 pt-[clamp(42px,7vw,96px)]">
+        {status === 'conflict' ? (
+          <div role="alert" className="mb-8 flex flex-wrap items-center gap-3 rounded-xl border border-danger/30 bg-panel-2 px-4 py-3">
+            <div className="min-w-[200px] flex-1 text-[13px] text-ink">
+              다른 탭이나 기기에서 수정된 일지야. 내 초안은 이 브라우저에 보관했어.
+            </div>
+            <Button disabled={resolving} onClick={() => { void resetFromServer() }}>서버 내용 사용</Button>
+            <Button disabled={resolving} onClick={() => { void overwriteServer() }}>내 초안으로 덮어쓰기</Button>
+          </div>
+        ) : null}
+        {status === 'error' ? (
+          <div role="alert" className="mb-8 rounded-xl border border-danger/30 bg-panel-2 px-4 py-3 text-[12px] text-danger">
+            저장 실패: 브라우저 초안을 보관하고 재시도 중이야.
+            <button type="button" onClick={() => { void model.save() }} className="ml-3 underline">다시 저장</button>
+          </div>
+        ) : null}
         <div className="mb-8 flex items-center gap-2 text-[13px] text-faint">
           <CalendarDays size={17} />
           <time dateTime={entry.createdAt} title="이 페이지를 만든 날짜입니다.">
@@ -294,10 +379,11 @@ function JournalDocument({ entry }: { entry: JournalEntryDTO }) {
         />
         <div className="mb-10 mt-7 h-px w-full bg-line" />
         <JournalEditor
+          key={entry.id + ':' + editorEpoch}
           entryId={entry.id}
-          initialBody={entry.body}
+          initialBody={body}
           onChange={editBody}
-          onBlurSave={() => { void save() }}
+          onBlurSave={() => { void model.save() }}
           onOpenMention={(mention) => { void openMention(mention) }}
         />
       </div>
@@ -310,7 +396,9 @@ function JournalDocument({ entry }: { entry: JournalEntryDTO }) {
         footer={
           <>
             <Button onClick={() => setConfirmDelete(false)}>취소</Button>
-            <Button variant="danger" onClick={() => { void remove() }}>일지 삭제</Button>
+            <Button variant="danger" disabled={deleting} onClick={() => { void remove() }}>
+              {deleting ? '삭제 중…' : '일지 삭제'}
+            </Button>
           </>
         }
       >
@@ -323,13 +411,16 @@ function JournalDocument({ entry }: { entry: JournalEntryDTO }) {
 export function JournalEditPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const userId = queryClient.getQueryData<AuthStatusDTO>(['auth'])?.user?.id ?? 'unknown'
   const entry = useQuery({
     queryKey: ['journal', 'entry', id],
     queryFn: () => api.journalEntry(id!),
     enabled: Boolean(id),
-    staleTime: Infinity,
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
-  if (entry.isPending) return <LoadingBlock label="일지 불러오는 중" />
+  if (entry.isPending || entry.isFetching) return <LoadingBlock label="일지 불러오는 중" />
   if (entry.isError) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-5">
@@ -338,5 +429,5 @@ export function JournalEditPage() {
       </div>
     )
   }
-  return <JournalDocument key={entry.data.id} entry={entry.data} />
+  return <JournalDocument key={entry.data.id} entry={entry.data} userId={userId} />
 }
