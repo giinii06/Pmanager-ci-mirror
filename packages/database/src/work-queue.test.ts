@@ -304,23 +304,31 @@ describe('work queue', () => {
   })
 
   test('signed GPU owners match their exact job, not a similar owner prefix', () => {
-    const db = seed()
-    asrJob(db, 'asr1', 'asset1', 1_000)
-    claimAsrJob(db, 'asr-w', 120_000, 10_000)
-    asrJob(db, 'asr2', 'asset2', 2_000)
-    claimAsrJob(db, 'asr-w:other', 120_000, 10_000)
-
+    // ASR admits only one running job per database; check distinct owners with
+    // independent databases rather than assuming a second concurrent claim.
+    const holderDb = seed()
+    asrJob(holderDb, 'asr1', 'asset1', 1_000)
+    expect(claimAsrJob(holderDb, 'asr-w', 120_000, 10_000)).not.toBeNull()
     expect(
       acquireGpuLease(
-        db,
+        holderDb,
         { resourceId: RESOURCE, owner: 'asr:asr-w:' + 'A'.repeat(43), taskKind: 'asr', leaseMs: 120_000 },
         20_000,
       ),
     ).toBe(true)
+    expect(workQueue(holderDb, 30_000, RESOURCE).running.find((item) => item.id === 'asr1')!.onGpu).toBe(true)
 
-    const queue = workQueue(db, 30_000, RESOURCE)
-    expect(queue.running.find((item) => item.id === 'asr1')!.onGpu).toBe(true)
-    expect(queue.running.find((item) => item.id === 'asr2')!.onGpu).toBe(false)
+    const otherDb = seed()
+    asrJob(otherDb, 'asr2', 'asset2', 2_000)
+    expect(claimAsrJob(otherDb, 'asr-w:other', 120_000, 10_000)).not.toBeNull()
+    expect(
+      acquireGpuLease(
+        otherDb,
+        { resourceId: RESOURCE, owner: 'asr:asr-w:' + 'A'.repeat(43), taskKind: 'asr', leaseMs: 120_000 },
+        20_000,
+      ),
+    ).toBe(true)
+    expect(workQueue(otherDb, 30_000, RESOURCE).running.find((item) => item.id === 'asr2')!.onGpu).toBe(false)
   })
 
   test('failures from different queues carry the asset name and the error', () => {
