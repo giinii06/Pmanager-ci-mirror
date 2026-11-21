@@ -18,6 +18,16 @@ export interface JournalEntryRecord {
 
 export type JournalEntrySummary = Omit<JournalEntryRecord, 'body'>
 
+export interface JournalEntryPage {
+  items: JournalEntrySummary[]
+  nextCursor: string | null
+}
+
+export type JournalUpdateResult =
+  | { kind: 'ok'; entry: JournalEntryRecord }
+  | { kind: 'missing' }
+  | { kind: 'conflict'; current: JournalEntryRecord }
+
 export interface JournalMentionRecord {
   type: 'video' | 'album'
   id: string
@@ -36,12 +46,37 @@ export function createJournalEntry(db: Db, userId: string, now: number): Journal
   return getJournalEntry(db, userId, id)!
 }
 
-export function listJournalEntries(db: Db, userId: string): JournalEntrySummary[] {
-  return db
-    .query<JournalEntrySummary, [string]>(
-      'SELECT id, user_id AS userId, title, created_at AS createdAt, updated_at AS updatedAt FROM journal_entries WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 500',
-    )
-    .all(userId)
+/**
+ * Stable keyset pagination (createdAt, id) avoids losing older entries when
+ * another tab creates a page while the user is scrolling the journal.
+ */
+export function listJournalEntries(
+  db: Db,
+  userId: string,
+  cursor: string | null = null,
+  limit = 50,
+): JournalEntryPage {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new RangeError('Journal page size must be between 1 and 100')
+  }
+  const match = cursor?.match(/^(\d{1,16}):([0-9a-z]{12})$/)
+  if (cursor && !match) throw new RangeError('Invalid journal cursor')
+  const after = match ? Number(match[1]) : null
+  const where = after === null ? '' : ' AND (created_at < ? OR (created_at = ? AND id < ?))'
+  const params: Params =
+    after === null ? [userId, limit + 1] : [userId, after, after, match![2]!, limit + 1]
+  const rows = db.query<JournalEntrySummary, Params>(
+    `SELECT id, user_id AS userId, title, created_at AS createdAt, updated_at AS updatedAt
+     FROM journal_entries
+     WHERE user_id = ?${where}
+     ORDER BY created_at DESC, id DESC LIMIT ?`,
+  ).all(...params)
+  const items = rows.slice(0, limit)
+  const last = items.at(-1)
+  return {
+    items,
+    nextCursor: rows.length > limit && last ? `${last.createdAt}:${last.id}` : null,
+  }
 }
 
 export function getJournalEntry(db: Db, userId: string, id: string): JournalEntryRecord | null {
@@ -57,8 +92,9 @@ export function updateJournalEntry(
   userId: string,
   id: string,
   input: { title?: string; body?: string },
+  expectedUpdatedAt: number,
   now: number,
-): JournalEntryRecord | null {
+): JournalUpdateResult {
   const sets: string[] = []
   const values: Params = []
   if (input.title !== undefined) {
@@ -71,11 +107,21 @@ export function updateJournalEntry(
     sets.push('body = ?')
     values.push(input.body)
   }
-  if (sets.length === 0) return getJournalEntry(db, userId, id)
-  db.query<null, Params>(
-    `UPDATE journal_entries SET ${sets.join(', ')}, updated_at = MAX(updated_at + 1, ?) WHERE id = ? AND user_id = ?`,
-  ).run(...values, now, id, userId)
-  return getJournalEntry(db, userId, id)
+  const current = getJournalEntry(db, userId, id)
+  if (!current) return { kind: 'missing' }
+  if (sets.length === 0) {
+    return current.updatedAt === expectedUpdatedAt
+      ? { kind: 'ok', entry: current }
+      : { kind: 'conflict', current }
+  }
+  // This conditional UPDATE is atomic even when two API processes share SQLite.
+  const result = db.query<{ id: string }, Params>(
+    `UPDATE journal_entries SET ${sets.join(', ')}, updated_at = MAX(updated_at + 1, ?)
+     WHERE id = ? AND user_id = ? AND updated_at = ? RETURNING id`,
+  ).get(...values, now, id, userId, expectedUpdatedAt)
+  const after = getJournalEntry(db, userId, id)
+  if (!after) return { kind: 'missing' }
+  return result ? { kind: 'ok', entry: after } : { kind: 'conflict', current: after }
 }
 
 export function deleteJournalEntry(db: Db, userId: string, id: string): boolean {

@@ -20,7 +20,7 @@ import type {
   HlsStatusDTO,
   JobDTO,
   JournalEntryDTO,
-  JournalEntrySummaryDTO,
+  JournalEntryPageDTO,
   JournalMentionDTO,
   JobSummaryDTO,
   LibraryDTO,
@@ -231,10 +231,11 @@ export const api = {
     }),
   getFileOperation: (id: string) => request<FileOperationDTO>(`/api/file-operations/${id}`),
 
-  journalEntries: () => request<{ items: JournalEntrySummaryDTO[] }>('/api/journal'),
+  journalEntries: (cursor?: string | null) =>
+    request<JournalEntryPageDTO>(`/api/journal${cursor ? '?cursor=' + encodeURIComponent(cursor) : ''}`),
   createJournalEntry: () => request<JournalEntryDTO>('/api/journal', { method: 'POST' }),
   journalEntry: (id: string) => request<JournalEntryDTO>(`/api/journal/${encodeURIComponent(id)}`),
-  updateJournalEntry: (id: string, body: { title: string; body: string }) =>
+  updateJournalEntry: (id: string, body: { title: string; body: string; expectedUpdatedAt: string }) =>
     request<JournalEntryDTO>(`/api/journal/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(body),

@@ -99,6 +99,11 @@ export interface JournalEntryDTO {
 
 export type JournalEntrySummaryDTO = Omit<JournalEntryDTO, 'body'>
 
+export interface JournalEntryPageDTO {
+  items: JournalEntrySummaryDTO[]
+  nextCursor: string | null
+}
+
 export interface JournalMentionDTO {
   type: 'video' | 'album'
   id: string
