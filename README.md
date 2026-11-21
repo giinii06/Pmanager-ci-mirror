@@ -155,6 +155,11 @@ GitLab `main`에 푸시하면 GitLab이 공개 GitHub 미러를 동기화합니�
 
 웹 빌드와 릴리스 검증은 같은 미러의 `ci` 워크플로에서 확인합니다. GitLab 파이프라인에는 Oracle ARM64 러너 점검과 Python 워커 테스트가 별도로 정의되어 있습니다.
 
+### CI 병렬 실행
+
+- Pmanager와 TDrive의 CI는 동시에 실행할 수 있습니다. 같은 프로젝트의 여러 푸시가 각각 실행을 시작하면 그 실행들도 겹칠 수 있습니다. 사용 가능한 러너가 모두 사용 중이면 실행은 대기열에 들어갑니다. [워크플로 동시 실행](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+- 현재 공통 워크플로는 실행마다 `build` 작업 하나에서 Bun 타입 검사와 테스트를 순서대로 실행합니다. 한 실행 안에서 병렬로 처리하려면 `ci-hub`에서 독립 검사를 별도 `jobs`로 나눕니다. 같은 검사를 여러 버전이나 운영체제에서 실행하려면 `strategy.matrix`를 사용합니다. 선행 결과가 필요한 작업에는 `needs`를 지정합니다. [작업 의존성](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-jobs) · [매트릭스 실행](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations)
+
 ## 설정
 
 `.env`(또는 셸 환경변수)로 제어한다.
