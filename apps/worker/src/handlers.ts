@@ -32,6 +32,7 @@ import {
 } from '@mediavault/media'
 import type { WorkerConfig } from './config'
 import { scanDuplicates } from './duplicates/scan'
+import { queueExactDuplicateCleanup } from './duplicates/auto-cleanup'
 import { withGpuLease } from './gpu'
 import { ScanInterruptedError, interruptionReason, scanLibrary, type ScanFenceContext } from './scan'
 
@@ -346,6 +347,12 @@ export async function executeJob(
     console.log(
       `[duplicates] candidates=${summary.candidates} hashed=${summary.hashed} reused=${summary.reused} groups=${summary.groups} members=${summary.members} hardlinked=${summary.hardlinked}`,
     )
+    // Scoped scans are not a complete view of the user's library; only a full,
+    // uninterrupted scan may schedule destructive cleanup.
+    if (config.fileMutationEnabled && !job.libraryId && !execCtx.signal?.aborted) {
+      const cleanup = queueExactDuplicateCleanup(db)
+      console.log(`[duplicates] automatic cleanup queued=${cleanup.queued} skipped=${cleanup.skipped}`)
+    }
     return
   }
 
