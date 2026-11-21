@@ -61,7 +61,7 @@ function createSessionSeed(): number {
 export function VideosPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const [sort, setSort] = useState<VideoSort>('rate')
+  const [sort, setSort] = useState<VideoSort>('latest')
   const sessionSeed = useRef(createSessionSeed())
   const sharedId = params.get('v')
   const openedFor = useRef<string | null>(null)
@@ -130,7 +130,7 @@ export function VideoTagsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
-  const [sort, setSort] = useState<VideoSort>('rate')
+  const [sort, setSort] = useState<VideoSort>('latest')
   const sessionSeed = useRef(createSessionSeed())
   const [newTagName, setNewTagName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
