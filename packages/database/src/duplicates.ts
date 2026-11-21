@@ -492,3 +492,36 @@ function hydrate(db: Db, rows: GroupRow[]): DuplicateGroupRecord[] {
     }
   })
 }
+
+/**
+ * An automatic deletion must never proceed after its keeper vanished,
+ * was scheduled for another mutation or stopped matching the target hash.
+ * Both fingerprints must match the currently indexed file version.
+ */
+export function hasExactDuplicateKeeper(
+  db: Db,
+  targetId: string,
+  targetVersion: number,
+  keeperId: string,
+  keeperVersion: number,
+): boolean {
+  if (targetId === keeperId) return false
+  const found = db.query<{ ok: number }, Params>(
+    `SELECT 1 AS ok
+     FROM assets target
+     JOIN file_fingerprints tf ON tf.asset_id = target.id AND tf.file_version = target.file_version
+     JOIN assets keeper ON keeper.id = ?
+     JOIN file_fingerprints kf ON kf.asset_id = keeper.id AND kf.file_version = keeper.file_version
+     WHERE target.id = ?
+       AND target.file_version = ?
+       AND keeper.file_version = ?
+       AND target.deleted_at IS NULL
+       AND keeper.deleted_at IS NULL
+       AND keeper.pending_delete_mutation_id IS NULL
+       AND tf.full_hash IS NOT NULL
+       AND tf.full_hash = kf.full_hash
+       AND tf.size_bytes = kf.size_bytes
+     LIMIT 1`,
+  ).get(keeperId, targetId, targetVersion, keeperVersion)
+  return found !== null
+}
