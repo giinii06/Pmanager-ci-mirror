@@ -39,3 +39,16 @@ oracle_runner_test:
     - echo "Oracle A1 Runner connected!"
     - test "$(uname -m)" = "aarch64"
     - bun --version
+
+python-worker-tests:
+  stage: verify
+  image: python:3.12-slim
+  before_script: []
+  script:
+    - python -m pip install --disable-pip-version-check --no-cache-dir 'pytest>=8.3,<10'
+    - python -m pytest -q scripts/tests/test_gpu_clients.py
+    # CPU-only modules: do not download CUDA, Torch, or model weights in CI.
+    - PYTHONPATH=apps/asr-worker/src python -m pytest -q apps/asr-worker/tests/test_language.py
+    - PYTHONPATH=apps/scene-worker/src python -m pytest -q apps/scene-worker/tests/test_checkpoint.py
+    - PYTHONPATH=apps/embedding-worker/src python -m pytest -q apps/embedding-worker/tests
+    - PYTHONPATH=apps/translation-worker/src python -m pytest -q apps/translation-worker/tests
