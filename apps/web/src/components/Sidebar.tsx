@@ -52,14 +52,14 @@ export function Sidebar() {
   const inDuplicates = location.pathname.startsWith('/duplicates')
   const inJournal = location.pathname.startsWith('/journal')
   const journal = useQuery({
-    queryKey: ['journal', 'list'],
+    queryKey: ['journal', 'recent'],
     queryFn: api.journalEntries,
     enabled: inJournal,
   })
   const createJournal = useMutation({
     mutationFn: api.createJournalEntry,
     onSuccess: (entry) => {
-      void queryClient.invalidateQueries({ queryKey: ['journal', 'list'] })
+      void queryClient.invalidateQueries({ queryKey: ['journal'] })
       navigate(`/journal/${entry.id}`)
     },
     onError: () => toast('새 일지를 만들지 못했습니다.', 'error'),

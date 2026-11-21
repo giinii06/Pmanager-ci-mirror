@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, BookOpenText, CalendarDays, Check, FileText, Loader2, Menu, Plus, Trash2 } from 'lucide-react'
-import type { JournalEntryDTO, JournalMentionDTO } from '@mediavault/shared'
+import type { AuthStatusDTO, JournalEntryDTO, JournalMentionDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
+import { JournalSaveCoordinator, journalDraftKey, type JournalDraftStore, type JournalSaveStatus } from '../lib/journalDraft'
 import { cn } from '../lib/cn'
 import { useUi } from '../store/ui'
 import { useViewer } from '../store/viewer'
@@ -49,11 +50,17 @@ export function JournalIndexPage() {
   const navigate = useNavigate()
   const toast = useUi((state) => state.toast)
   const queryClient = useQueryClient()
-  const list = useQuery({ queryKey: ['journal', 'list'], queryFn: api.journalEntries })
+  const list = useInfiniteQuery({
+    queryKey: ['journal', 'pages'],
+    queryFn: ({ pageParam }) => api.journalEntries(pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  })
+  const entries = list.data?.pages.flatMap((page) => page.items) ?? []
   const create = useMutation({
     mutationFn: api.createJournalEntry,
     onSuccess: (entry) => {
-      void queryClient.invalidateQueries({ queryKey: ['journal', 'list'] })
+      void queryClient.invalidateQueries({ queryKey: ['journal'] })
       navigate('/journal/' + entry.id)
     },
     onError: () => toast('일지를 생성하지 못했습니다.', 'error'),
@@ -80,7 +87,7 @@ export function JournalIndexPage() {
             <LoadingBlock />
           ) : list.isError ? (
             <p className="mt-12 text-danger">일지 목록을 불러오지 못했습니다.</p>
-          ) : list.data.items.length === 0 ? (
+          ) : entries.length === 0 ? (
             <div className="mt-14 flex flex-col items-start gap-5 rounded-2xl border border-dashed border-line p-9">
               <FileText size={26} className="text-faint" />
               <div>
@@ -91,7 +98,7 @@ export function JournalIndexPage() {
             </div>
           ) : (
             <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {list.data.items.map((entry) => (
+              {entries.map((entry) => (
                 <button
                   type="button"
                   key={entry.id}
@@ -109,6 +116,13 @@ export function JournalIndexPage() {
               ))}
             </div>
           )}
+          {list.hasNextPage ? (
+            <div className="mt-8 flex justify-center">
+              <Button disabled={list.isFetchingNextPage} onClick={() => { void list.fetchNextPage() }}>
+                {list.isFetchingNextPage ? '불러오는 중…' : '이전 일지 더 보기'}
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -160,7 +174,7 @@ function JournalDocument({ entry }: { entry: JournalEntryDTO }) {
         } else {
           setStatus('editing')
         }
-        void queryClient.invalidateQueries({ queryKey: ['journal', 'list'] })
+        void queryClient.invalidateQueries({ queryKey: ['journal'] })
         return true
       } catch {
         setStatus('error')
@@ -201,7 +215,7 @@ function JournalDocument({ entry }: { entry: JournalEntryDTO }) {
     deletingRef.current = true
     try {
       await api.deleteJournalEntry(entry.id)
-      void queryClient.invalidateQueries({ queryKey: ['journal', 'list'] })
+      void queryClient.invalidateQueries({ queryKey: ['journal'] })
       queryClient.removeQueries({ queryKey: ['journal', 'entry', entry.id] })
       navigate('/journal', { replace: true })
       toast('일지를 삭제했습니다.', 'success')
