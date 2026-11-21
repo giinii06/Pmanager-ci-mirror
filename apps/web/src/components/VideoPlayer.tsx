@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
-import { Expand, Shrink, Maximize, Minimize, Pause, Play, Volume2, VolumeX } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Expand, Shrink, Maximize, Minimize, Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import type { AssetDTO, HlsStatusDTO, SubtitleTrackDTO } from '@mediavault/shared'
 import { api, ApiError } from '../lib/api'
 import { patchAssetCounters } from '../lib/cachePatch'
@@ -31,6 +31,10 @@ export function VideoPlayer({
   fill = false,
   startMs = null,
   onPausedChange,
+  browserFill,
+  onBrowserFillChange,
+  onPrev,
+  onNext,
 }: {
   asset: AssetDTO
   subtitleUrl?: string | null
@@ -43,6 +47,10 @@ export function VideoPlayer({
   /** Optional explicit timestamp from a search hit or bookmark. Normal opens start at 0. */
   startMs?: number | null
   onPausedChange?: (paused: boolean) => void
+  browserFill: boolean
+  onBrowserFillChange: (enabled: boolean) => void
+  onPrev: () => void
+  onNext: () => void
 }) {
   const queryClient = useQueryClient()
   const localRef = useRef<HTMLVideoElement>(null)
@@ -60,7 +68,6 @@ export function VideoPlayer({
   const [controlsVisible, setControlsVisible] = useState(true)
   const [containerFullscreen, setContainerFullscreen] = useState(false)
   const [pseudoFullscreen, setPseudoFullscreen] = useState(false)
-  const [browserFill, setBrowserFill] = useState(false)
   const [nativeFullscreen, setNativeFullscreen] = useState(false)
   const [playbackPaused, setPlaybackPaused] = useState(true)
   const [currentTime, setCurrentTime] = useState(0)
@@ -544,7 +551,7 @@ export function VideoPlayer({
       // Escape leaves the app's fullscreen before the viewer sees it close.
       event.stopImmediatePropagation()
       setPseudoFullscreen(false)
-      setBrowserFill(false)
+      onBrowserFillChange(false)
     }
     const overflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -553,16 +560,16 @@ export function VideoPlayer({
       window.removeEventListener('keydown', onKey, true)
       document.body.style.overflow = overflow
     }
-  }, [pseudoFullscreen, browserFill])
+  }, [pseudoFullscreen, browserFill, onBrowserFillChange])
 
   const toggleBrowserFill = () => {
     if (appFullscreen) return
-    setBrowserFill((current) => !current)
+    onBrowserFillChange(!browserFill)
   }
 
   const toggleFullscreen = () => {
     // Real fullscreen is independent of the in-browser fill mode.
-    setBrowserFill(false)
+    onBrowserFillChange(false)
     const container = containerRef.current
     const fsDoc = document as Document & {
       webkitFullscreenElement?: Element | null
@@ -698,6 +705,8 @@ export function VideoPlayer({
     >
       <video
         ref={videoRef}
+        autoPlay
+        preload="auto"
         playsInline
         poster={asset.thumbnails.medium}
         onClick={togglePlay}
@@ -732,6 +741,35 @@ export function VideoPlayer({
           {language ? (
             <CaptionSizeMenu scale={captionScale} onChange={changeCaptionScale} />
           ) : null}
+        </div>
+      ) : null}
+
+      {browserFill && !appFullscreen && !preparing ? (
+        <div
+          className={cn(
+            'pointer-events-none absolute inset-x-3 top-1/2 z-20 flex -translate-y-1/2 items-center justify-between sm:inset-x-6',
+            'transition-opacity duration-200',
+            showBar ? 'opacity-100' : 'opacity-0',
+          )}
+        >
+          <button
+            type="button"
+            aria-label="이전 동영상"
+            title="이전 동영상 (←)"
+            onClick={onPrev}
+            className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <ChevronLeft size={26} />
+          </button>
+          <button
+            type="button"
+            aria-label="다음 동영상"
+            title="다음 동영상 (→)"
+            onClick={onNext}
+            className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <ChevronRight size={26} />
+          </button>
         </div>
       ) : null}
 

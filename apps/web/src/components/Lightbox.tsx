@@ -15,6 +15,8 @@ export function Lightbox() {
   const index = useViewer((state) => state.index)
   const startMs = useViewer((state) => state.startMs)
   const shuffle = useViewer((state) => state.shuffle)
+  const browserFill = useViewer((state) => state.browserFill)
+  const setBrowserFill = useViewer((state) => state.setBrowserFill)
   const toggleShuffle = useViewer((state) => state.toggleShuffle)
   const close = useViewer((state) => state.close)
   const next = useViewer((state) => state.next)
@@ -73,6 +75,10 @@ export function Lightbox() {
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
       if (event.key === 'Escape') {
         if (document.fullscreenElement) return
+        if (browserFill) {
+          setBrowserFill(false)
+          return
+        }
         close()
       }
       else if (event.key === 'ArrowRight') next()
@@ -82,7 +88,7 @@ export function Lightbox() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [asset, close, next, prev])
+  }, [asset, browserFill, setBrowserFill, close, next, prev])
 
   useEffect(() => {
     if (!open) return
@@ -114,6 +120,8 @@ export function Lightbox() {
               onToggleShuffle={toggleShuffle}
               onPrev={prev}
               onNext={next}
+              browserFill={browserFill}
+              onBrowserFillChange={setBrowserFill}
               onClose={close}
               onSelectAsset={select}
               subtitleUrl={subtitleUrl}

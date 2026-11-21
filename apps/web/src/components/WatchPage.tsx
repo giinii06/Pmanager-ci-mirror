@@ -52,6 +52,8 @@ export function WatchPage({
   onToggleShuffle,
   onPrev,
   onNext,
+  browserFill,
+  onBrowserFillChange,
   onClose,
   onSelectAsset,
   subtitleUrl,
@@ -72,6 +74,8 @@ export function WatchPage({
   onToggleShuffle: () => void
   onPrev: () => void
   onNext: () => void
+  browserFill: boolean
+  onBrowserFillChange: (enabled: boolean) => void
   onClose: () => void
   onSelectAsset: (asset: AssetDTO) => void
   subtitleUrl: string | null
@@ -283,6 +287,10 @@ export function WatchPage({
                 onSelectLanguage={onSelectLanguage}
                 videoRef={videoRef}
                 startMs={startMs}
+                browserFill={browserFill}
+                onBrowserFillChange={onBrowserFillChange}
+                onPrev={onPrev}
+                onNext={onNext}
               />
             </div>
 
