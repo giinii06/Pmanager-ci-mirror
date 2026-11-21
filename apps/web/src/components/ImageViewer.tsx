@@ -196,7 +196,7 @@ export function ImageViewer({
   return (
     <>
       {fullscreenActive ? null : (
-        <div className="relative z-20 flex items-center justify-between gap-4 bg-gradient-to-b from-black/70 to-transparent px-3 py-2.5 sm:px-5">
+        <div className="relative z-20 flex min-h-16 items-center justify-between gap-4 bg-gradient-to-b from-black/75 to-transparent px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2.5">
             <button
               ref={closeRef}
@@ -208,7 +208,7 @@ export function ImageViewer({
               <X size={19} />
             </button>
             <div className="min-w-0">
-              <p className="truncate text-[13px] font-medium text-white">{asset.filename}</p>
+              <p className="truncate text-[14px] font-semibold text-white">{asset.filename}</p>
               <p className="truncate text-[11.5px] text-white/45">
                 {formatDate(asset.takenAt)} · 조회수 {formatCount(asset.viewCount)}회
               </p>
@@ -340,7 +340,7 @@ export function ImageViewer({
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 24, opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="w-[300px] max-w-[86vw] shrink-0 overflow-y-auto border-l border-white/10 bg-[#0b0c0f]/97 px-5 py-6"
+              className="w-[340px] max-w-[86vw] shrink-0 overflow-y-auto border-l border-white/10 bg-[#0b0c0f]/97 px-6 py-7"
             >
               <h3 className="text-[13px] font-semibold text-ink">정보</h3>
               <dl className="mt-4 space-y-3.5 text-[12.5px]">

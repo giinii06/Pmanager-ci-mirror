@@ -43,7 +43,7 @@ import { TranscriptPanel } from './TranscriptPanel'
 import { VideoPlayer } from './VideoPlayer'
 
 const PILL =
-  'inline-flex h-9 items-center gap-2 rounded-full bg-white/10 px-4 text-[13px] font-medium text-white transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45'
+  'inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 text-[13.5px] font-medium text-white transition-colors hover:border-white/25 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-45'
 
 export function WatchPage({
   asset,
@@ -234,7 +234,7 @@ export function WatchPage({
 
   return (
     <div className="min-h-dvh bg-[#0f0f0f] text-white">
-      <header className="sticky top-0 z-30 flex h-12 items-center gap-1.5 border-b border-white/5 bg-[#0f0f0f]/95 px-3 backdrop-blur sm:px-4">
+      <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-white/10 bg-[#0f0f0f]/95 px-4 backdrop-blur sm:px-6">
         <button
           ref={closeRef}
           type="button"
@@ -269,10 +269,10 @@ export function WatchPage({
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1754px] px-6 py-4">
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_402px]">
+      <div className="mx-auto max-w-[1754px] px-4 py-6 sm:px-6 xl:px-9">
+        <div className="grid grid-cols-1 gap-7 xl:grid-cols-[minmax(0,1fr)_424px]">
           <div className="min-w-0">
-            <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
+            <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black">
               <VideoPlayer
                 key={asset.id}
                 fill
@@ -286,12 +286,12 @@ export function WatchPage({
               />
             </div>
 
-            <h1 className="mt-4 text-[20px] font-semibold leading-snug text-white">
+            <h1 className="mt-6 text-[clamp(22px,2.2vw,30px)] font-semibold leading-snug tracking-tight text-white">
               {asset.filename}
             </h1>
-            <p className="mt-1 text-[13px] text-white/55">{meta.join(' · ')}</p>
+            <p className="mt-2 text-[14px] text-white/60">{meta.join(' · ')}</p>
 
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-[13px]">
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-[13px] sm:px-5">
               <span className="tabular-nums text-white/85">
                 조회수: <strong>{formatCount(asset.viewCount)}회</strong>
               </span>
@@ -309,7 +309,7 @@ export function WatchPage({
               </span>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2.5">
               <button
                 type="button"
                 onClick={() => vote.mutate()}
@@ -394,7 +394,7 @@ export function WatchPage({
               </button>
             </div>
 
-            <div className="mt-4 rounded-xl bg-white/[0.04] p-3.5">
+            <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4 sm:p-5">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-white/75">
                   <TagIcon size={13} />
@@ -467,7 +467,7 @@ export function WatchPage({
               </div>
             </div>
 
-            <div ref={descriptionRef} className="mt-4 scroll-mt-16 rounded-xl bg-white/5 p-3">
+            <div ref={descriptionRef} className="mt-5 scroll-mt-20 rounded-2xl border border-white/10 bg-white/5 p-4 sm:p-5">
               <p className="text-[13px] font-medium text-white">
                 후기 {reviewCount}개 · {formatDay(asset.takenAt)}
               </p>
@@ -486,7 +486,7 @@ export function WatchPage({
 
           <div className="min-w-0">
             {showTranscript ? (
-              <div className="h-[560px] overflow-hidden rounded-xl">
+              <div className="h-[580px] overflow-hidden rounded-2xl border border-white/10">
                 <TranscriptPanel
                   asset={asset}
                   tracks={tracks}

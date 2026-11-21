@@ -196,10 +196,10 @@ export function TranscriptPanel({
 
   return (
     <aside className="flex h-full w-full flex-col border-l border-white/10 bg-[#0b0c0f]/97">
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+      <div className="flex min-h-14 items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
         <div className="flex items-center gap-2">
           <Sparkles size={15} className="text-accent" />
-          <h3 className="text-[13px] font-semibold text-ink">AI 자막</h3>
+          <h3 className="text-[15px] font-semibold text-ink">AI 자막</h3>
         </div>
         <button
           type="button"
@@ -278,7 +278,7 @@ export function TranscriptPanel({
         ) : (
           <>
             {tabs.length > 1 ? (
-              <div className="flex items-center gap-1 border-b border-white/10 px-3 py-2">
+              <div className="flex items-center gap-1.5 border-b border-white/10 px-3 py-3">
                 {tabs.map((tag) => (
                   <button
                     key={tag}
@@ -286,7 +286,7 @@ export function TranscriptPanel({
                     aria-pressed={tag === activeTab}
                     onClick={() => setTab(tag)}
                     className={cn(
-                      'rounded-md px-2.5 py-1 text-[12px] transition-colors',
+                      'rounded-lg px-3 py-2 text-[12.5px] transition-colors',
                       tag === activeTab
                         ? 'bg-white/10 text-ink'
                         : 'text-muted hover:bg-white/5 hover:text-ink',
@@ -351,13 +351,13 @@ export function TranscriptPanel({
             ) : (
               <>
                 <div className="border-b border-white/10 px-4 py-2.5">
-                  <label className="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-1.5">
+                  <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5">
                     <Search size={13} className="shrink-0 text-faint" />
                     <input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
                       placeholder="자막에서 찾기"
-                      className="min-w-0 flex-1 bg-transparent text-[12px] text-ink outline-none placeholder:text-faint"
+                      className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-faint"
                     />
                     {search.isFetching ? <Spinner className="text-faint" /> : null}
                   </label>
@@ -394,7 +394,7 @@ export function TranscriptPanel({
                         type="button"
                         onClick={() => seek(segment.startMs)}
                         className={cn(
-                          'flex w-full gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
+                          'flex w-full gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
                           'hover:bg-white/8 focus-visible:bg-white/8 focus-visible:outline-none',
                         )}
                       >

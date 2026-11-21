@@ -98,10 +98,10 @@ export function AssetTile({
 
         {asset.kind === 'video' ? (
           <>
-            <span className="absolute left-2 top-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10.5px] font-medium tabular-nums text-white/90 backdrop-blur-sm">
+            <span className="absolute left-2 top-2 rounded-lg bg-black/70 px-2 py-1 text-[11px] font-semibold tabular-nums text-white/95 backdrop-blur-sm">
               Rate {formatRate(asset.rate)}
             </span>
-            <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-white/90 backdrop-blur-sm">
+            <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-lg bg-black/70 px-2 py-1 text-[11px] font-semibold tabular-nums text-white/95 backdrop-blur-sm">
               <Play size={10} fill="currentColor" />
               {duration || '영상'}
             </span>

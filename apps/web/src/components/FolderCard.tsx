@@ -37,7 +37,7 @@ export function FolderCard({
     : '(min-width: 960px) 25vw, (min-width: 600px) 33vw, 50vw'
 
   return (
-    <div className="group relative overflow-hidden rounded-panel border border-line bg-panel transition-colors duration-150 hover:border-line-strong">
+    <div className="group relative overflow-hidden rounded-panel border border-line bg-panel shadow-[var(--ui-elevation)] transition-[border-color,box-shadow] duration-200 hover:border-line-strong hover:shadow-[var(--ui-elevation-hover)]">
       <Link
         to={`/folders/${folder.id}`}
         aria-label={`${folder.name} (${formatCount(photoCount)}장)`}
@@ -75,7 +75,7 @@ export function FolderCard({
                 : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:opacity-100',
             )}
           >
-            <p className="truncate text-[13.5px] font-semibold tracking-tight text-white">
+            <p className="truncate text-[15px] font-semibold tracking-tight text-white">
               {folder.name}
             </p>
             <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] tabular-nums text-white/85">
@@ -120,7 +120,7 @@ export function FolderCard({
           aria-label={`${folder.name} 정보 보기`}
           aria-pressed={infoOpen}
           className={cn(
-            'inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/75 text-white/95 transition-colors hover:bg-black/90',
+            'inline-flex h-9 w-9 items-center justify-center rounded-xl bg-black/75 text-white/95 transition-colors hover:bg-black/90',
             infoOpen && 'bg-accent text-white hover:bg-accent',
           )}
         >
@@ -135,7 +135,7 @@ export function FolderCard({
               onVote(folder.id)
             }}
             aria-label={`${folder.name} 폴더 Vote (${formatCount(folder.voteCount)})`}
-            className="inline-flex h-7 items-center gap-1 rounded-full bg-black/75 px-2 text-[11px] font-medium tabular-nums text-white transition-colors hover:bg-[#f97316]"
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-black/75 px-3 text-[12px] font-semibold tabular-nums text-white transition-colors hover:bg-[#f97316]"
           >
             <ThumbsUp size={11} />
             <span>{formatCount(folder.voteCount)}</span>

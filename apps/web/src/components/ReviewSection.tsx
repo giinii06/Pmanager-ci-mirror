@@ -72,9 +72,9 @@ export function ReviewSection({ asset }: { asset: AssetDTO }) {
 
   return (
     <section className="mt-8">
-      <h2 className="text-[16px] font-semibold text-white">후기 {review ? 1 : 0}개</h2>
+      <h2 className="text-[18px] font-semibold tracking-tight text-white">후기 {review ? 1 : 0}개</h2>
 
-      <div className="mt-3 rounded-xl bg-white/5 p-3">
+      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-center gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/20 text-[12.5px] font-semibold text-accent">
             나
@@ -111,7 +111,7 @@ export function ReviewSection({ asset }: { asset: AssetDTO }) {
               ? '후기를 고쳐 보세요.'
               : '이 영상에 대한 후기를 남겨 보세요.'
           }
-          className="mt-2.5 w-full resize-y rounded-lg bg-[#0f0f0f] px-3 py-2 text-[13px] leading-relaxed text-white outline-none transition-shadow placeholder:text-white/30 focus:ring-1 focus:ring-white/20"
+          className="mt-3 w-full resize-y rounded-xl border border-white/10 bg-[#0f0f0f] px-4 py-3 text-[14px] leading-relaxed text-white outline-none transition-shadow placeholder:text-white/40 focus:border-white/25 focus:ring-2 focus:ring-white/10"
         />
 
         <div className="mt-2 flex items-center justify-end gap-1.5">
@@ -130,7 +130,7 @@ export function ReviewSection({ asset }: { asset: AssetDTO }) {
             type="button"
             onClick={() => save.mutate()}
             disabled={!canSubmit || save.isPending}
-            className="h-8 rounded-full bg-accent px-4 text-[12.5px] font-semibold text-[#0b0c0f] transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
+            className="min-h-10 rounded-xl bg-accent px-4 text-[13px] font-semibold text-[#0b0c0f] transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
           >
             {save.isPending ? '저장 중' : review ? '수정' : '등록'}
           </button>

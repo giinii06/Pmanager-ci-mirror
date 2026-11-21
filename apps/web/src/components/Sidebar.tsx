@@ -120,7 +120,7 @@ export function Sidebar() {
           onClick={toggleCollapsed}
           aria-label={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
           title={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
-          className={cn('hidden rounded-xl p-2 text-faint hover:bg-raised hover:text-ink md:inline-flex', collapsed && 'md:absolute md:left-[23px] md:top-[83px]')}
+          className={cn('hidden rounded-xl p-2 text-faint hover:bg-raised hover:text-ink md:inline-flex', collapsed && 'md:hidden')}
         >
           {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
         </button>
@@ -134,7 +134,18 @@ export function Sidebar() {
         </button>
       </div>
 
-      <nav aria-label="주 메뉴" className={cn('min-h-0 flex-1 overflow-y-auto px-3 pb-5 pt-1', collapsed && 'md:px-2 md:pt-12')}>
+      <nav aria-label="주 메뉴" className={cn('min-h-0 flex-1 overflow-y-auto px-3 pb-5 pt-1', collapsed && 'md:px-2')}>
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label="사이드바 펼치기"
+            title="사이드바 펼치기"
+            className="mx-auto mt-2 hidden h-10 w-10 items-center justify-center rounded-xl text-muted hover:bg-raised hover:text-ink md:flex"
+          >
+            <PanelLeftOpen size={18} />
+          </button>
+        ) : null}
         <GroupLabel collapsed={collapsed}>라이브러리</GroupLabel>
         <div className="space-y-1">
           <MainLink to="/" label="사진" icon={<Images size={19} />} active={inPhotos} collapsed={collapsed} count={stats.data?.images} end />

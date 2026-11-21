@@ -425,10 +425,10 @@ export function ProcessingPanel() {
   const eta = data ? overallEta(data) : null
 
   return (
-    <section className="mb-6 overflow-hidden rounded-panel border border-line bg-panel">
-      <div className="border-b border-line px-4 py-3">
-        <h2 className="text-[13.5px] font-semibold text-ink">처리 현황</h2>
-        <p className="mt-0.5 text-[11.5px] text-muted">
+    <section className="mb-7 overflow-hidden rounded-panel border border-line bg-panel shadow-[var(--ui-elevation)]">
+      <div className="border-b border-line px-5 py-4 sm:px-6">
+        <h2 className="text-[16px] font-semibold text-ink">처리 현황</h2>
+        <p className="mt-1 text-[12.5px] text-muted">
           지금 처리 중인 작업과 남은 시간을 최근 처리 기록으로 계산합니다.
         </p>
       </div>

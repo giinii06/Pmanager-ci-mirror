@@ -17,9 +17,9 @@ export function Toasts() {
             'pointer-events-auto flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-left text-[14px] shadow-[var(--ui-elevation-hover)] backdrop-blur',
             'animate-rise',
             toast.tone === 'error'
-              ? 'border-[#4a2a2e] bg-[#241518]/95 text-[#ffc9c9]'
+              ? 'border-danger/35 bg-panel/95 text-danger'
               : toast.tone === 'success'
-                ? 'border-[#24402f] bg-[#12211a]/95 text-[#b9f0cf]'
+                ? 'border-emerald-500/35 bg-panel/95 text-emerald-500'
                 : 'border-line-strong bg-panel/95 text-ink',
           )}
         >

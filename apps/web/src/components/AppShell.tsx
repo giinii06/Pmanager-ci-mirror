@@ -18,6 +18,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-full overflow-hidden bg-canvas">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[90] focus:rounded-xl focus:bg-accent focus:px-4 focus:py-2 focus:font-semibold focus:text-[var(--ui-on-accent)]">본문으로 건너뛰기</a>
       <Sidebar />
       {sidebarOpen ? (
         <div
