@@ -16,7 +16,6 @@ import { Button } from './components/ui/Button'
 import { LoginPage, SetupPage } from './pages/AuthPages'
 import { FolderPage, FoldersPage } from './pages/FolderPages'
 import { VideoTagsPage, VideosPage } from './pages/GalleryPages'
-import { DuplicatesPage } from './pages/DuplicatesPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { SearchPage } from './pages/SearchPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -85,7 +84,7 @@ export function App() {
           <Route path="folders" element={<Navigate to="/" replace />} />
           <Route path="folders/:folderId" element={<FolderPage />} />
           <Route path="search" element={<SearchRoute />} />
-          <Route path="duplicates" element={<DuplicatesPage />} />
+          <Route path="duplicates" element={<Navigate to="/" replace />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="journal" element={<JournalIndexPage />} />
