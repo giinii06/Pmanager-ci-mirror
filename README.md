@@ -151,9 +151,13 @@ Windows 무인 부팅 구성은 [docs/WINDOWS-OPERATIONS.md](docs/WINDOWS-OPERAT
 GitLab `main`에 푸시하면 GitLab이 공개 GitHub 미러를 동기화합니다. GitHub-hosted Runner가 중앙 `ci-hub`의 공통 워크플로에서 Bun 타입 검사와 테스트를 실행합니다.
 
 - [GitHub Actions 실행 로그](https://github.com/giinii06/Pmanager-ci-mirror/actions/workflows/gitlab-bridge.yml)를 확인합니다. 즉시 재실행하려면 해당 실행의 **Re-run jobs**를 선택합니다.
-- GitLab 커밋 상세에서 같은 SHA의 `github-actions/ci-hub` 상태를 확인합니다. 상태 보고는 브리지가 실행 중일 때 5분 주기로 반영됩니다.
+- GitLab 커밋 상세에서 같은 SHA의 `github-actions/ci-hub` 상태를 확인합니다. GitHub의 호스팅된 컨트롤러가 5분 주기로 결과를 GitLab에 반영합니다.
 
-웹 빌드와 릴리스 검증은 같은 미러의 `ci` 워크플로에서 확인합니다. GitLab 파이프라인에는 Oracle ARM64 러너 점검과 Python 워커 테스트가 별도로 정의되어 있습니다.
+웹 빌드와 릴리스 검증은 같은 미러의 `ci` 워크플로에서 확인합니다. Oracle ARM64 러너 점검과 Python 워커 테스트 정의는 저장소의 `.gitlab-ci.yml`에서 확인합니다.
+
+### ChatGPT 웹에서 CI 요청
+
+GitLab 플러그인에서 이 프로젝트의 브랜치 또는 태그를 지정해 파이프라인을 생성합니다. GitHub 컨트롤러가 해당 SHA를 검사한 뒤 필요한 이력을 공개 미러에 전달하고 CI를 예약합니다. GitLab 파이프라인에서 `github-actions/ci-hub-request`의 상태와 GitHub 실행 링크를 확인합니다. [프로젝트 공통 CI 안내](https://github.com/giinii06/ci-hub#chatgpt-웹에서-ci-요청)
 
 ### CI 병렬 실행
 
