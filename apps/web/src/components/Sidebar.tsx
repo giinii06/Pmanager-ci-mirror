@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Aperture, BookOpenText, Film, Images, Loader2, PanelLeftClose,
+  Aperture, BookOpenText, Film, Images, Loader2,
   PanelLeftOpen, Plus, Settings2, Tag, X,
 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -114,15 +114,6 @@ export function Sidebar() {
             <span className="block truncate text-[16px] font-bold tracking-tight text-ink">MediaVault</span>
             <span className="block truncate text-[11px] text-faint">나만의 미디어 공간</span>
           </span>
-        </button>
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
-          title={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
-          className={cn('hidden rounded-xl p-2 text-faint hover:bg-raised hover:text-ink md:inline-flex', collapsed && 'md:hidden')}
-        >
-          {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
         </button>
         <button
           type="button"
