@@ -282,6 +282,23 @@ export function VideoPlayer({
     }
   }, [asset.streamUrl, hlsState, playlistUrl, useHls])
 
+  // Each new clip requests playback once its source is ready. The browser may
+  // still refuse sound-on autoplay; the Play control remains available.
+  // Re-attach on a direct-to-HLS fallback without resuming a manually paused clip.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    let attempted = false
+    const start = () => {
+      if (attempted) return
+      attempted = true
+      if (video.paused) void video.play().catch(() => undefined)
+    }
+    video.addEventListener('canplay', start)
+    if (video.readyState >= 3) start()
+    return () => video.removeEventListener('canplay', start)
+  }, [asset.id, videoRef, useHls, playlistUrl])
+
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
