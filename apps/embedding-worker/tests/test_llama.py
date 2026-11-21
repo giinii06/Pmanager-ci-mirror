@@ -90,10 +90,14 @@ def test_a_server_left_by_a_killed_worker_is_killed_by_the_next_start(monkeypatc
         path.write_text(str(orphan.pid))
         # The real orphan lost its parent, so something else reaps it. Play that part,
         # otherwise it stays a zombie that still answers kill(pid, 0).
-        threading.Thread(target=orphan.wait, daemon=True).start()
+        reaper = threading.Thread(target=orphan.wait, daemon=True)
+        reaper.start()
 
         reap_stale_server(8080, "sleep", timeout=5.0)
 
+        # Popen.poll() returns None while another thread holds its waitpid lock,
+        # even if the child has already exited. Join the reaper before asserting.
+        reaper.join(timeout=5.0)
         assert orphan.poll() is not None
         assert not path.exists()
     finally:
