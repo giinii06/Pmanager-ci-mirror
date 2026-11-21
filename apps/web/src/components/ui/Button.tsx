@@ -6,16 +6,16 @@ type Size = 'sm' | 'md'
 
 const variants: Record<Variant, string> = {
   primary:
-    'bg-accent text-[#0b0c0f] hover:bg-accent-strong active:translate-y-px font-semibold shadow-[0_1px_0_rgba(255,255,255,0.2)_inset]',
+    'border border-transparent bg-accent text-[var(--ui-on-accent)] shadow-sm hover:bg-accent-strong active:scale-[0.985] font-semibold',
   secondary:
-    'bg-raised text-ink border border-line-strong hover:bg-[#242832] hover:border-[#3a3f4b] active:translate-y-px',
-  ghost: 'text-muted hover:text-ink hover:bg-raised',
-  danger: 'bg-transparent text-danger border border-[#4a2a2e] hover:bg-[#2a1719]',
+    'border border-line bg-panel text-ink shadow-sm hover:border-line-strong hover:bg-panel-2 active:scale-[0.985] font-medium',
+  ghost: 'border border-transparent text-muted hover:bg-panel-2 hover:text-ink',
+  danger: 'border border-danger/25 bg-danger/10 text-danger hover:bg-danger/15 font-medium',
 }
 
 const sizes: Record<Size, string> = {
-  sm: 'h-8 px-3 text-[13px] rounded-lg gap-1.5',
-  md: 'h-9 px-4 text-[13px] rounded-lg gap-2',
+  sm: 'min-h-9 px-3.5 text-[13px] gap-1.5',
+  md: 'min-h-11 px-4.5 text-[14px] gap-2',
 }
 
 export function Button({
@@ -29,7 +29,9 @@ export function Button({
     <button
       type={type}
       className={cn(
-        'inline-flex select-none items-center justify-center whitespace-nowrap transition-colors duration-150 disabled:pointer-events-none disabled:opacity-45',
+        'inline-flex select-none items-center justify-center whitespace-nowrap rounded-xl transition-[background-color,border-color,color,transform] duration-150',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        'disabled:pointer-events-none disabled:opacity-45',
         variants[variant],
         sizes[size],
         className,

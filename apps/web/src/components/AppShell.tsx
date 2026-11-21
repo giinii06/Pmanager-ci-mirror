@@ -17,18 +17,18 @@ export function AppShell() {
   const journalOpen = useLocation().pathname.startsWith('/journal')
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden bg-canvas">
       <Sidebar />
       {sidebarOpen ? (
         <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-[1px] md:hidden"
+          className="fixed inset-0 z-40 bg-black/65 backdrop-blur-[3px] md:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden
         />
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col">
         {!journalOpen ? <Topbar /> : null}
-        <main className="min-h-0 flex-1">
+        <main id="main-content" className="min-h-0 flex-1 overflow-hidden">
           <Outlet />
         </main>
       </div>

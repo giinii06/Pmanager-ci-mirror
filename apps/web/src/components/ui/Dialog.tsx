@@ -42,7 +42,7 @@ export function Dialog({
     <dialog
       ref={ref}
       className={cn(
-        'm-auto max-h-[85dvh] w-[min(460px,92vw)] overflow-y-auto rounded-panel border border-line bg-panel p-0 text-ink shadow-2xl',
+        'm-auto max-h-[85dvh] w-[min(540px,calc(100vw-32px))] overflow-y-auto rounded-[26px] border border-line bg-panel p-0 text-ink shadow-2xl',
         'backdrop:bg-black/65 backdrop:backdrop-blur-[2px]',
         'animate-rise',
         className,
@@ -51,22 +51,22 @@ export function Dialog({
         if (event.target === ref.current) onClose()
       }}
     >
-      <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+      <div className="flex items-start justify-between gap-5 border-b border-line px-6 py-5">
         <div>
-          <h2 className="text-[15px] font-semibold tracking-tight">{title}</h2>
-          {description ? <p className="mt-0.5 text-[12.5px] text-muted">{description}</p> : null}
+          <h2 className="text-[19px] font-semibold tracking-tight">{title}</h2>
+          {description ? <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p> : null}
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="닫기"
-          className="-mr-1 rounded-md p-1 text-muted transition-colors hover:bg-raised hover:text-ink"
+          className="-mr-2 rounded-xl p-2 text-muted transition-colors hover:bg-raised hover:text-ink"
         >
           <X size={16} />
         </button>
       </div>
-      <div className="px-5 py-4">{children}</div>
-      {footer ? <div className="flex justify-end gap-2 border-t border-line px-5 py-3">{footer}</div> : null}
+      <div className="px-6 py-5">{children}</div>
+      {footer ? <div className="flex flex-wrap justify-end gap-2.5 border-t border-line px-6 py-4">{footer}</div> : null}
     </dialog>
   )
 }

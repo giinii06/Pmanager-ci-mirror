@@ -4,8 +4,8 @@ import type { FolderDTO } from '@mediavault/shared'
 
 export function Breadcrumbs({ trail }: { trail: FolderDTO[] }) {
   return (
-    <nav className="flex flex-wrap items-center gap-1 pt-5 text-[12px] text-muted">
-      <Link to="/" className="transition-colors hover:text-ink">
+    <nav className="flex flex-wrap items-center gap-1.5 pt-7 text-[13px] text-muted">
+      <Link to="/" className="rounded-lg px-1.5 py-1 transition-colors hover:bg-panel-2 hover:text-ink">
         사진 모음
       </Link>
       {trail.map((folder, index) => {
