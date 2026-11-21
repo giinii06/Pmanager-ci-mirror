@@ -67,6 +67,7 @@ describe('authenticated journal routes', () => {
       payload: {
         title: '여행 일지',
         body: '오늘은 @[Trip movie.mp4](video:video1)와 @[Trip album](album:photos)를 봤다.',
+        expectedUpdatedAt: page.updatedAt,
         createdAt: '2000-01-01T00:00:00Z',
       },
     })
@@ -78,10 +79,20 @@ describe('authenticated journal routes', () => {
       payload: {
         title: '여행 일지',
         body: '오늘은 @[Trip movie.mp4](video:video1)와 @[Trip album](album:photos)를 봤다.',
+        expectedUpdatedAt: page.updatedAt,
       },
     })
     expect(edited.statusCode).toBe(200)
     expect((edited.json() as JournalEntryDTO).createdAt).toBe(page.createdAt)
+    const conflict = await app.inject({
+      method: 'PATCH',
+      url: '/api/journal/' + page.id,
+      headers: owner,
+      payload: { title: 'other tab overwrite', expectedUpdatedAt: page.updatedAt },
+    })
+    expect(conflict.statusCode).toBe(409)
+    expect(conflict.json().error).toBe('journal_conflict')
+    expect(conflict.json().current.title).toBe('여행 일지')
 
     const mine = await app.inject({ method: 'GET', url: '/api/journal', headers: owner })
     expect(mine.statusCode).toBe(200)
@@ -92,7 +103,7 @@ describe('authenticated journal routes', () => {
       method: 'PATCH',
       url: '/api/journal/' + page.id,
       headers: guest,
-      payload: { title: 'attack' },
+      payload: { title: 'attack', expectedUpdatedAt: page.updatedAt },
     })).statusCode).toBe(404)
     expect((await app.inject({
       method: 'DELETE',

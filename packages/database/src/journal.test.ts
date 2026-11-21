@@ -50,12 +50,14 @@ describe('journal entries', () => {
     const edited = updateJournalEntry(db, 'u1', first.id, {
       title: '오늘의 일지',
       body: '오늘은 좋았다.',
-    }, 1_700_000_060_000)
-    expect(edited?.title).toBe('오늘의 일지')
-    expect(edited?.body).toBe('오늘은 좋았다.')
-    expect(edited?.createdAt).toBe(first.createdAt)
-    expect(edited?.updatedAt).toBe(1_700_000_060_000)
-    expect(listJournalEntries(db, 'u1').map((item) => item.id)).toEqual([second.id, first.id])
+    }, first.updatedAt, 1_700_000_060_000)
+    expect(edited.kind).toBe('ok')
+    if (edited.kind !== 'ok') throw new Error('update rejected')
+    expect(edited.entry.title).toBe('오늘의 일지')
+    expect(edited.entry.body).toBe('오늘은 좋았다.')
+    expect(edited.entry.createdAt).toBe(first.createdAt)
+    expect(edited.entry.updatedAt).toBe(1_700_000_060_000)
+    expect(listJournalEntries(db, 'u1').items.map((item) => item.id)).toEqual([second.id, first.id])
     expect(deleteJournalEntry(db, 'u1', first.id)).toBe(true)
     expect(getJournalEntry(db, 'u1', first.id)).toBeNull()
     expect(deleteJournalEntry(db, 'u1', first.id)).toBe(false)
@@ -68,10 +70,53 @@ describe('journal entries', () => {
     createUser(db, { id: 'u2', username: 'user2', passwordHash: 'hash', createdAt: 1 })
     const entry = createJournalEntry(db, 'u1', 1234)
     expect(getJournalEntry(db, 'u2', entry.id)).toBeNull()
-    expect(listJournalEntries(db, 'u2')).toEqual([])
-    expect(updateJournalEntry(db, 'u2', entry.id, { title: 'stolen' }, 1235)).toBeNull()
+    expect(listJournalEntries(db, 'u2').items).toEqual([])
+    expect(updateJournalEntry(db, 'u2', entry.id, { title: 'stolen' }, entry.updatedAt, 1235)).toEqual({ kind: 'missing' })
     expect(deleteJournalEntry(db, 'u2', entry.id)).toBe(false)
     expect(getJournalEntry(db, 'u1', entry.id)?.title).toBe('')
+    db.close()
+  })
+
+  test('concurrent edits cannot silently overwrite another tab', () => {
+    const db = openDatabase(':memory:')
+    createUser(db, { id: 'u1', username: 'user1', passwordHash: 'hash', createdAt: 1 })
+    const entry = createJournalEntry(db, 'u1', 100)
+    const first = updateJournalEntry(db, 'u1', entry.id, { title: 'first tab' }, 100, 101)
+    expect(first.kind).toBe('ok')
+    const stale = updateJournalEntry(db, 'u1', entry.id, { title: 'stale second tab' }, 100, 102)
+    expect(stale.kind).toBe('conflict')
+    if (stale.kind !== 'conflict') throw new Error('expected version conflict')
+    expect(stale.current.title).toBe('first tab')
+    expect(getJournalEntry(db, 'u1', entry.id)?.title).toBe('first tab')
+    const fresh = updateJournalEntry(db, 'u1', entry.id, { body: 'new body' }, stale.current.updatedAt, 103)
+    expect(fresh.kind).toBe('ok')
+    db.close()
+  })
+
+  test('keyset pagination finds every page after 500 entries, even tied timestamps', () => {
+    const db = openDatabase(':memory:')
+    createUser(db, { id: 'u1', username: 'user1', passwordHash: 'hash', createdAt: 1 })
+    const ids = new Set<string>()
+    for (let index = 0; index < 510; index++) {
+      ids.add(createJournalEntry(db, 'u1', 1000).id)
+    }
+    const seen: string[] = []
+    let cursor: string | null = null
+    for (let page = 0; page < 20; page++) {
+      const result = listJournalEntries(db, 'u1', cursor)
+      seen.push(...result.items.map((item) => item.id))
+      cursor = result.nextCursor
+      if (!cursor) break
+      if (page === 0) {
+        // A new entry added after pagination begins doesn't shift old pages.
+        createJournalEntry(db, 'u1', 2000)
+      }
+    }
+    expect(seen.length).toBe(510)
+    expect(new Set(seen).size).toBe(510)
+    expect(seen.every((id) => ids.has(id))).toBe(true)
+    expect(cursor).toBeNull()
+    expect(() => listJournalEntries(db, 'u1', 'oops')).toThrow()
     db.close()
   })
 
