@@ -53,7 +53,7 @@ export function Sidebar() {
   const inJournal = location.pathname.startsWith('/journal')
   const journal = useQuery({
     queryKey: ['journal', 'recent'],
-    queryFn: api.journalEntries,
+    queryFn: () => api.journalEntries(),
     enabled: inJournal,
   })
   const createJournal = useMutation({

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Film, Images, Loader2 } from 'lucide-react'
 import type { JournalMentionDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
+import { useDebounced } from '../lib/hooks'
 import { encodeJournalMention, splitJournalBody } from '../lib/journalMentions'
 
 interface JournalEditorProps {
@@ -63,13 +64,15 @@ export function JournalEditor({
   const [mentionTerm, setMentionTerm] = useState<string | null>(null)
   const [choice, setChoice] = useState(0)
   const [popup, setPopup] = useState({ top: 0, left: 0 })
+  const debouncedMention = useDebounced(mentionTerm, 180)
+  const searching = mentionTerm !== debouncedMention
   const suggestions = useQuery({
-    queryKey: ['journal', 'mentions', mentionTerm],
-    queryFn: () => api.journalMentions(mentionTerm ?? ''),
-    enabled: mentionTerm !== null,
+    queryKey: ['journal', 'mentions', debouncedMention],
+    queryFn: () => api.journalMentions(debouncedMention ?? ''),
+    enabled: debouncedMention !== null && !searching,
     staleTime: 15_000,
   })
-  const items = suggestions.data?.items ?? []
+  const items = searching ? [] : (suggestions.data?.items ?? [])
 
   // Never replace content while typing: only rebuild the DOM on page navigation.
   useEffect(() => {
@@ -241,7 +244,7 @@ export function JournalEditor({
           onMouseDown={(event) => event.preventDefault()}
         >
           <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-faint">동영상 · 사진 앨범</p>
-          {suggestions.isFetching && items.length === 0 ? (
+          {(searching || suggestions.isFetching) && items.length === 0 ? (
             <div className="flex items-center gap-2 px-3 py-3 text-[12px] text-muted">
               <Loader2 size={13} className="animate-spin" /> 찾는 중…
             </div>
