@@ -146,6 +146,15 @@ bun run dev        # API :8787 + Worker + Vite :5173
 배포와 릴리스 판정 절차는 [docs/RELEASE.md](docs/RELEASE.md)를 따릅니다.
 Windows 무인 부팅 구성은 [docs/WINDOWS-OPERATIONS.md](docs/WINDOWS-OPERATIONS.md)에 있습니다.
 
+## CI 실행과 결과 확인
+
+GitLab `main`에 푸시하면 GitLab이 공개 GitHub 미러를 동기화합니다. GitHub-hosted Runner가 중앙 `ci-hub`의 공통 워크플로에서 Bun 타입 검사와 테스트를 실행합니다.
+
+- [GitHub Actions 실행 로그](https://github.com/giinii06/Pmanager-ci-mirror/actions/workflows/gitlab-bridge.yml)를 확인합니다. 즉시 재실행하려면 해당 실행의 **Re-run jobs**를 선택합니다.
+- GitLab 커밋 상세에서 같은 SHA의 `github-actions/ci-hub` 상태를 확인합니다. 상태 보고는 브리지가 실행 중일 때 5분 주기로 반영됩니다.
+
+웹 빌드와 릴리스 검증은 같은 미러의 `ci` 워크플로에서 확인합니다. GitLab 파이프라인에는 Oracle ARM64 러너 점검과 Python 워커 테스트가 별도로 정의되어 있습니다.
+
 ## 설정
 
 `.env`(또는 셸 환경변수)로 제어한다.
