@@ -151,7 +151,7 @@ Windows 무인 부팅 구성은 [docs/WINDOWS-OPERATIONS.md](docs/WINDOWS-OPERAT
 GitLab `main`에 푸시하면 GitLab이 공개 GitHub 미러를 동기화합니다. GitHub-hosted Runner가 중앙 `ci-hub`의 공통 워크플로에서 Bun 타입 검사와 테스트를 실행합니다.
 
 - [GitHub Actions 실행 로그](https://github.com/giinii06/Pmanager-ci-mirror/actions/workflows/gitlab-bridge.yml)를 확인합니다. 즉시 재실행하려면 해당 실행의 **Re-run jobs**를 선택합니다.
-- GitLab 커밋 상세에서 같은 SHA의 `github-actions/ci-hub` 상태를 확인합니다. GitHub의 호스팅된 컨트롤러가 5분 주기로 결과를 GitLab에 반영합니다.
+- GitLab 커밋 상세에서 같은 SHA의 `github-actions/ci-hub` 상태를 확인합니다. GitHub에서 완료하면 호스팅된 컨트롤러가 결과를 GitLab에 반영합니다.
 
 웹 빌드와 릴리스 검증은 같은 미러의 `ci` 워크플로에서 확인합니다. Oracle ARM64 러너 점검과 Python 워커 테스트 정의는 저장소의 `.gitlab-ci.yml`에서 확인합니다.
 
