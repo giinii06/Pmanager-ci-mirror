@@ -5,6 +5,7 @@ import {
   claimNextJob,
   completeJob,
   createDatabaseBackup,
+  enqueueJob,
   failJob,
   getLatestBackupLog,
   heartbeatJob,
@@ -30,6 +31,7 @@ const HEARTBEAT_INTERVAL_MS = 20_000
 const RECOVERY_INTERVAL_MS = 15_000
 const HLS_GC_INTERVAL_MS = 10 * 60_000
 const BACKUP_INTERVAL_MS = 24 * 60 * 60_000
+const DUPLICATE_SCAN_INTERVAL_MS = 6 * 60 * 60_000
 const BACKUP_FAILURE_BACKOFF_MS = 15 * 60_000
 const JOB_RETENTION_MS = 14 * 24 * 60 * 60_000
 
@@ -86,6 +88,7 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
   let lastBackupCheck = Date.now()
   let backupRetryAfter = 0
   let lastHlsGc = 0
+  let lastDuplicateScan = 0
 
   try {
     while (!stopping) {
@@ -102,6 +105,18 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
             recoveredJobs: periodic.recoveredJobs,
           })
         }
+      }
+
+      if (!config.once && config.fileMutationEnabled && now - lastDuplicateScan >= DUPLICATE_SCAN_INTERVAL_MS) {
+        // Full hash scan is deduped against any already-running manual request.
+        // The mutation worker performs each validated deletion separately.
+        lastDuplicateScan = now
+        enqueueJob(db, {
+          dedupeKey: 'duplicates:all',
+          kind: 'maintenance',
+          priority: 4,
+          payload: { task: 'duplicates' },
+        }, now)
       }
 
       if (!config.once && now - lastHlsGc >= HLS_GC_INTERVAL_MS) {
