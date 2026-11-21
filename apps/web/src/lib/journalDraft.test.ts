@@ -40,12 +40,20 @@ describe('journal durable editing', () => {
     const storage = store()
     const key = journalDraftKey('owner', entry.id)
     let revision = 1
+    let firstStarted!: () => void
+    let releaseFirst!: () => void
+    const firstRunning = new Promise<void>((resolve) => { firstStarted = resolve })
+    const firstAllowed = new Promise<void>((resolve) => { releaseFirst = resolve })
     const payloads: string[] = []
     const saved: JournalEntryDTO[] = []
     const model = new JournalSaveCoordinator({
       entry, store: storage, draftKey: key,
       persist: async (value) => {
         payloads.push(value.expectedUpdatedAt)
+        if (revision === 1) {
+          firstStarted()
+          await firstAllowed
+        }
         const updated = { ...entry, ...value, updatedAt: 'revision-' + revision++ }
         return updated
       },
@@ -53,8 +61,10 @@ describe('journal durable editing', () => {
     })
     model.edit({ title: 'Newest', body: 'First version' })
     const one = model.save()
+    await firstRunning
     model.edit({ title: 'Newest', body: 'Latest version' })
     const two = model.save()
+    releaseFirst()
     expect(await one).toBe(true)
     expect(await two).toBe(true)
     expect(payloads).toEqual([entry.updatedAt, 'revision-1'])
