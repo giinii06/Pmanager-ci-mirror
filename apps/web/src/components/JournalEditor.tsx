@@ -213,7 +213,7 @@ export function JournalEditor({
         suppressContentEditableWarning
         spellCheck
         data-placeholder="오늘 있었던 일을 자유롭게 기록해 보세요. @를 입력해 동영상이나 사진 앨범을 연결할 수 있어요."
-        className="journal-editor min-h-[40vh] w-full whitespace-pre-wrap break-words text-[16px] leading-[1.95] text-ink outline-none focus:outline-none"
+        className="journal-editor min-h-[40vh] w-full whitespace-pre-wrap break-words text-[17px] leading-[1.95] text-ink outline-none focus:outline-none"
         onInput={report}
         onBeforeInput={(event) => {
           const root = editorRef.current
@@ -239,7 +239,7 @@ export function JournalEditor({
 
       {mentionTerm !== null ? (
         <div
-          className="absolute z-20 w-[min(360px,90vw)] overflow-hidden rounded-xl border border-line bg-panel p-1.5 shadow-xl"
+          className="absolute z-20 w-[min(360px,90vw)] overflow-hidden rounded-2xl border border-line bg-panel p-2 shadow-[var(--ui-elevation-hover)]"
           style={{ top: popup.top, left: popup.left }}
           onMouseDown={(event) => event.preventDefault()}
         >

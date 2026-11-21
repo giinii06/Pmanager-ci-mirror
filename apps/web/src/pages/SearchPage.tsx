@@ -55,7 +55,7 @@ export function SearchPage({ query }: { query: string }) {
 
   if (!query.trim()) {
     return (
-      <div className="px-6 pb-24">
+      <div className="workspace-page">
         <PageHeading title="검색" />
         <EmptyState
           title="검색어를 입력하세요"
@@ -76,8 +76,8 @@ export function SearchPage({ query }: { query: string }) {
   }
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
-      <div className="sticky top-0 z-10 -mx-6 mb-2 border-b border-line/60 bg-canvas/90 px-6 py-2 backdrop-blur-md">
+    <div className="h-full overflow-y-auto overscroll-contain workspace-page">
+      <div className="sticky top-0 z-10 mb-4 border-b border-line/60 bg-canvas/90 py-2 backdrop-blur-md">
         <PageHeading title={`검색: ${query}`} />
       </div>
       {results.isPending ? (
@@ -104,15 +104,15 @@ export function SearchPage({ query }: { query: string }) {
               ? '장면·대사·파일 이름을 함께 찾았습니다.'
               : '장면 검색을 쓸 수 없어 대사와 파일 이름만 찾았습니다.'}
           </p>
-          <ul className="space-y-1.5">
+          <ul className="space-y-3">
             {results.data.hits.map((hit) => (
               <li key={`${hit.kind}:${hit.sceneId ?? hit.assetId}:${hit.startMs ?? 0}:${hit.text.slice(0, 16)}`}>
                 <button
                   type="button"
                   onClick={() => open(hit)}
-                  className="group flex w-full items-center gap-3 rounded-xl border border-line/70 bg-panel/60 p-2 text-left transition-colors hover:border-line hover:bg-raised/70"
+                  className="group flex w-full items-center gap-4 rounded-2xl border border-line bg-panel p-3 text-left shadow-sm transition-[background-color,border-color] hover:border-line-strong hover:bg-panel-2 sm:p-4"
                 >
-                  <span className="relative h-[54px] w-[96px] shrink-0 overflow-hidden rounded-lg bg-panel-2">
+                  <span className="relative h-[72px] w-[112px] shrink-0 overflow-hidden rounded-xl bg-panel-2 sm:h-[84px] sm:w-[140px]">
                     <img
                       src={thumbnailFor(hit)}
                       alt=""
@@ -132,7 +132,7 @@ export function SearchPage({ query }: { query: string }) {
 
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <span className="truncate text-[13px] font-medium text-ink">
+                      <span className="truncate text-[14px] font-semibold text-ink sm:text-[15px]">
                         {hit.asset.filename}
                       </span>
                       <span
@@ -147,7 +147,7 @@ export function SearchPage({ query }: { query: string }) {
                         <Volume2 size={12} className="shrink-0 text-faint" />
                       ) : null}
                     </span>
-                    <span className="mt-0.5 block truncate text-[12px] text-muted">
+                    <span className="mt-1.5 block truncate text-[13px] text-muted">
                       {subtitleFor(hit)}
                     </span>
                   </span>

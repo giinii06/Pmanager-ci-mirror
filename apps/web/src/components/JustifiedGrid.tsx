@@ -25,7 +25,7 @@ interface JustifiedGridProps {
   selection?: { ids: Set<string>; onToggle: (id: string) => void }
 }
 
-const GAP = 3
+const GAP = 8
 
 export function JustifiedGrid({
   items,
@@ -88,7 +88,7 @@ export function JustifiedGrid({
   }, [lastIndex, entries.length, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   return (
-    <div className="px-6 pb-24">
+    <div className="workspace-page">
       <div ref={headerRef}>{header}</div>
 
       {loading && items.length === 0 ? <LoadingBlock label="불러오는 중" /> : null}
@@ -109,7 +109,7 @@ export function JustifiedGrid({
               >
                 {entry.kind === 'header' ? (
                   <div className="flex h-[52px] items-end pb-2">
-                    <h2 className="text-[17px] font-semibold tracking-tight text-ink">{entry.label}</h2>
+                    <h2 className="text-[19px] font-semibold tracking-tight text-ink">{entry.label}</h2>
                   </div>
                 ) : (
                   <div className="flex" style={{ gap: GAP }}>

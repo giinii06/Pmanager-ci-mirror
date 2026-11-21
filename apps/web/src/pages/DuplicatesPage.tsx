@@ -91,7 +91,7 @@ export function DuplicatesPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
+    <div className="h-full overflow-y-auto overscroll-contain workspace-page">
       <PageHeading
         title="중복 검토"
         meta={
@@ -107,14 +107,14 @@ export function DuplicatesPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+      <div className="mb-5 flex flex-wrap items-center gap-2">
         {FILTERS.map((option) => (
           <button
             key={option.id}
             type="button"
             onClick={() => setFilter(option.id)}
             className={cn(
-              'h-8 rounded-lg px-3 text-[12.5px] transition-colors',
+              'min-h-10 rounded-xl px-4 text-[13px] font-medium transition-colors',
               filter === option.id
                 ? 'bg-accent/15 font-medium text-accent'
                 : 'text-muted hover:bg-raised/70 hover:text-ink',
@@ -125,7 +125,7 @@ export function DuplicatesPage() {
         ))}
       </div>
 
-      <p className="mb-4 flex items-start gap-1.5 rounded-lg border border-line/60 bg-panel/50 px-3 py-2 text-[12px] leading-relaxed text-muted">
+      <p className="mb-6 flex items-start gap-3 rounded-2xl border border-line bg-panel/50 px-4 py-3.5 text-[13px] leading-relaxed text-muted">
         <Copy size={13} className="mt-0.5 shrink-0 text-faint" />
         이 화면은 검토만 합니다. 파일을 지우거나 옮기지 않으며, 삭제는 파일 작업 엔진이 켜진 뒤
         별도 확인을 거칩니다. 해상도나 길이가 다른 편집본은 여기에 나오지 않습니다.
@@ -153,14 +153,14 @@ export function DuplicatesPage() {
         />
       ) : (
         <>
-          <ul className="space-y-4">
+          <ul className="space-y-5">
             {list.map((group) => (
               <li
                 key={group.id}
-                className="overflow-hidden rounded-panel border border-line/70 bg-panel/60"
+                className="overflow-hidden rounded-panel border border-line bg-panel shadow-[var(--ui-elevation)]"
               >
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line/60 px-4 py-2.5">
-                  <span className="text-[13px] font-medium text-ink">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-5 py-4">
+                  <span className="text-[15px] font-semibold text-ink">
                     {group.memberCount}개 파일 · {formatBytes(group.members[0]?.sizeBytes ?? 0)}
                   </span>
                   <span className="text-[12px] text-faint">
@@ -176,16 +176,16 @@ export function DuplicatesPage() {
                   </span>
                 </div>
 
-                <div className="grid gap-3 p-3 sm:grid-cols-2">
+                <div className="grid gap-4 p-4 sm:grid-cols-2">
                   {group.members.map((member) => (
                     <div
                       key={member.assetId}
-                      className="flex min-w-0 gap-3 rounded-xl border border-line/60 bg-canvas/40 p-2"
+                      className="flex min-w-0 gap-3.5 rounded-2xl border border-line bg-canvas/60 p-3"
                     >
                       <button
                         type="button"
                         onClick={() => open(member)}
-                        className="relative h-[72px] w-[112px] shrink-0 overflow-hidden rounded-lg bg-panel-2"
+                        className="relative h-[82px] w-[122px] shrink-0 overflow-hidden rounded-xl bg-panel-2 sm:h-[92px] sm:w-[138px]"
                         title="열기"
                       >
                         <img
@@ -197,7 +197,7 @@ export function DuplicatesPage() {
                         />
                       </button>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[12.5px] font-medium text-ink" title={member.filename}>
+                        <p className="truncate text-[14px] font-semibold text-ink" title={member.filename}>
                           {member.filename}
                         </p>
                         <p
@@ -222,7 +222,7 @@ export function DuplicatesPage() {
                 </div>
 
                 {group.state === 'open' ? (
-                  <div className="flex justify-end gap-2 border-t border-line/60 px-4 py-2.5">
+                  <div className="flex flex-wrap justify-end gap-3 border-t border-line px-5 py-4">
                     <Button
                       size="sm"
                       variant="ghost"

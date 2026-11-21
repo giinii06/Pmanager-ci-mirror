@@ -18,18 +18,18 @@ function AuthShell({
   footer?: ReactNode
 }) {
   return (
-    <div className="relative flex min-h-full items-center justify-center overflow-hidden px-5 py-12">
+    <div className="relative flex min-h-full items-center justify-center overflow-hidden bg-canvas px-5 py-12">
       <div className="pointer-events-none absolute left-1/2 top-[-200px] h-[440px] w-[760px] -translate-x-1/2 rounded-full bg-accent/10 blur-[130px]" />
-      <div className="animate-rise relative w-full max-w-[360px]">
-        <div className="mb-9 flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent/15 text-accent">
-            <Aperture size={18} />
+      <div className="animate-rise relative w-full max-w-[450px] rounded-[28px] border border-line bg-panel px-7 py-9 shadow-[var(--ui-elevation-hover)] sm:px-10 sm:py-11">
+        <div className="mb-9 flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-[var(--ui-on-accent)]">
+            <Aperture size={23} />
           </span>
-          <span className="text-[15px] font-semibold tracking-tight">MediaVault</span>
+          <span className="text-[17px] font-bold tracking-tight">MediaVault</span>
         </div>
-        <h1 className="text-[24px] font-semibold leading-tight tracking-tight text-ink">{title}</h1>
-        <p className="mt-2 text-[13px] leading-relaxed text-muted">{subtitle}</p>
-        <div className="mt-7">{children}</div>
+        <h1 className="text-[30px] font-bold leading-tight tracking-tight text-ink">{title}</h1>
+        <p className="mt-2 text-[14px] leading-relaxed text-muted">{subtitle}</p>
+        <div className="mt-8">{children}</div>
         {footer}
       </div>
     </div>
@@ -47,7 +47,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[12px] text-muted">{label}</span>
+      <span className="mb-2 block text-[13px] font-medium text-muted">{label}</span>
       {children}
       {hint ? <span className="mt-1.5 block text-[11.5px] text-faint">{hint}</span> : null}
     </label>
@@ -56,7 +56,7 @@ function Field({
 
 function ErrorNote({ message }: { message: string }) {
   return (
-    <p className="rounded-lg border border-[#4a2a2e] bg-[#241518] px-3 py-2 text-[12px] text-[#ffc9c9]">
+    <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
       {message}
     </p>
   )
@@ -88,7 +88,7 @@ export function SetupPage() {
       subtitle="이 서버의 관리자 계정을 만듭니다. 사진과 영상은 원본 위치에 그대로 남습니다."
     >
       <form
-        className="space-y-4"
+        className="space-y-5"
         onSubmit={(event) => {
           event.preventDefault()
           setError(null)
@@ -162,7 +162,7 @@ export function LoginPage() {
   return (
     <AuthShell title="다시 오셨네요" subtitle="MediaVault에 로그인합니다.">
       <form
-        className="space-y-4"
+        className="space-y-5"
         onSubmit={(event) => {
           event.preventDefault()
           setError(null)

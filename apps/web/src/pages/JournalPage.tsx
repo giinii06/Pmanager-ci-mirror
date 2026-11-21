@@ -31,7 +31,7 @@ function MobileMenu() {
       onClick={() => setSidebarOpen(true)}
       title="사이드바 열기"
       aria-label="사이드바 열기"
-      className="rounded-lg p-2 text-muted hover:bg-raised md:hidden"
+      className="rounded-xl p-2.5 text-muted hover:bg-raised md:hidden"
     >
       <Menu size={19} />
     </button>
@@ -64,19 +64,19 @@ export function JournalIndexPage() {
   return (
     <div className="h-full overflow-y-auto overscroll-contain bg-canvas">
       <div className="flex min-h-full flex-col">
-        <header className="flex min-h-14 items-center justify-between border-b border-line px-5 sm:px-10">
+        <header className="flex min-h-[76px] items-center justify-between border-b border-line px-5 sm:px-8 lg:px-10">
           <div className="flex items-center gap-2">
             <MobileMenu />
-            <BookOpenText size={17} className="text-accent" />
-            <span className="text-[13px] font-semibold text-ink">일지</span>
+            <BookOpenText size={20} className="text-accent" />
+            <span className="text-[15px] font-semibold text-ink">일지</span>
           </div>
           <Button onClick={createPage} disabled={create.isPending}>
             <Plus size={15} /> 새 일지
           </Button>
         </header>
-        <main className="w-full flex-1 px-5 pb-20 pt-10 sm:px-10 sm:pt-14 lg:px-[min(7vw,100px)]">
-          <h1 className="text-[clamp(30px,4vw,46px)] font-bold tracking-tight text-ink">나의 일지</h1>
-          <p className="mt-2 text-[13px] text-muted">생각을 페이지로 기록하고, 언제든 다시 열어보세요.</p>
+        <main className="workspace-page w-full flex-1 pt-12 sm:pt-14">
+          <h1 className="text-[clamp(34px,4.5vw,52px)] font-bold tracking-tight text-ink">나의 일지</h1>
+          <p className="mt-3 text-[15px] text-muted">생각을 페이지로 기록하고, 언제든 다시 열어보세요.</p>
           {list.isPending ? (
             <LoadingBlock />
           ) : list.isError ? (
@@ -273,7 +273,7 @@ function JournalDocument({ entry, userId }: { entry: JournalEntryDTO; userId: st
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain bg-canvas">
-      <header className="sticky top-0 z-10 flex h-14 items-center justify-between gap-3 border-b border-line bg-canvas/95 px-4 backdrop-blur-sm sm:px-7">
+      <header className="sticky top-0 z-10 flex h-[76px] items-center justify-between gap-3 border-b border-line bg-canvas/95 px-5 backdrop-blur-sm sm:px-8">
         <div className="flex min-w-0 items-center gap-1.5">
           <MobileMenu />
           <button
@@ -315,7 +315,7 @@ function JournalDocument({ entry, userId }: { entry: JournalEntryDTO; userId: st
         </div>
       </header>
 
-      <div className="w-full px-[clamp(22px,7vw,120px)] pb-28 pt-[clamp(42px,7vw,96px)]">
+      <div className="mx-auto w-full max-w-[1120px] px-[clamp(24px,6vw,96px)] pb-28 pt-[clamp(44px,6vw,86px)]">
         {status === 'conflict' ? (
           <div role="alert" className="mb-8 flex flex-wrap items-center gap-3 rounded-xl border border-danger/30 bg-panel-2 px-4 py-3">
             <div className="min-w-[200px] flex-1 text-[13px] text-ink">

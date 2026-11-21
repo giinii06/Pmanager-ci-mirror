@@ -88,7 +88,7 @@ export function AssetGallery({
   return (
     <div ref={scrollRef} className="h-full overflow-y-auto">
       {query.isError ? (
-        <div className="px-6 pb-24">
+        <div className="workspace-page">
           {heading}
           <EmptyState
             title="불러오지 못했습니다"

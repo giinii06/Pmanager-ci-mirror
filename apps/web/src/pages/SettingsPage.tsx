@@ -83,12 +83,12 @@ const ARCHIVE_STATE_LABEL: Record<ArchiveJobState, { text: string; tone: string 
 
 function StatCard({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
   return (
-    <div className="rounded-panel border border-line bg-panel px-4 py-3">
+    <div className="rounded-panel border border-line bg-panel px-5 py-4 shadow-[var(--ui-elevation)]">
       <div className="flex items-center gap-1.5 text-[11.5px] text-muted">
         {icon}
         {label}
       </div>
-      <p className="mt-1.5 text-[20px] font-semibold tabular-nums tracking-tight text-ink">
+      <p className="mt-1.5 text-[24px] font-semibold tabular-nums tracking-tight text-ink">
         {formatCount(value)}
       </p>
     </div>
@@ -309,7 +309,7 @@ export function SettingsPage() {
     : 0
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
+    <div className="h-full overflow-y-auto overscroll-contain workspace-page">
       <PageHeading
         title="설정"
         meta="테마, 라이브러리, 기여·Vote 통계, 서버 복구 및 백업 관리"
@@ -325,7 +325,7 @@ export function SettingsPage() {
         title="화면 테마 (Appearance)"
         description="Discord의 기본 테마 4종 중에서 선택합니다. 변경 사항은 이 브라우저에 저장됩니다."
       >
-        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4" role="group" aria-label="화면 테마">
+        <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-4 sm:p-6" role="group" aria-label="화면 테마">
           {APPEARANCE_THEMES.map(({ id, label, description }) => {
             const active = themeMode === id
             return (
@@ -335,7 +335,7 @@ export function SettingsPage() {
                 aria-pressed={active}
                 onClick={() => setThemeMode(id)}
                 className={cn(
-                  'rounded-xl border p-2 text-left transition-colors',
+                  'rounded-2xl border p-3 text-left transition-colors',
                   active
                     ? 'border-accent bg-accent/10'
                     : 'border-line bg-panel-2 hover:border-line-strong',
@@ -344,9 +344,9 @@ export function SettingsPage() {
                 <span
                   data-theme-preview={id}
                   aria-hidden="true"
-                  className="mb-2 block overflow-hidden rounded-lg border border-line bg-canvas"
+                  className="mb-3 block overflow-hidden rounded-xl border border-line bg-canvas"
                 >
-                  <span className="flex h-20 gap-1.5 p-2">
+                  <span className="flex h-24 gap-2 p-2.5">
                     <span className="w-1/3 rounded-md bg-panel" />
                     <span className="flex-1 rounded-md bg-panel-2 p-1.5">
                       <span className="mb-1.5 block h-1.5 w-4/5 rounded bg-ink/75" />
@@ -355,18 +355,18 @@ export function SettingsPage() {
                     </span>
                   </span>
                 </span>
-                <span className="flex items-center justify-between gap-1 text-[12.5px] font-semibold text-ink">
+                <span className="flex items-center justify-between gap-2 text-[14px] font-semibold text-ink">
                   {label}
                   {active ? <Check size={15} className="shrink-0 text-accent" aria-hidden="true" /> : null}
                 </span>
-                <span className="block text-[11px] text-muted">{description}</span>
+                <span className="mt-1 block text-[12px] text-muted">{description}</span>
               </button>
             )
           })}
         </div>
       </Section>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-7 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={<Images size={13} />} label="사진" value={stats.data?.images ?? 0} />
         <StatCard icon={<Film size={13} />} label="동영상" value={stats.data?.videos ?? 0} />
         <StatCard icon={<FolderTree size={13} />} label="폴더" value={stats.data?.folders ?? 0} />

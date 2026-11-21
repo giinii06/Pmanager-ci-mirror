@@ -161,13 +161,13 @@ export function FoldersPage() {
   const loading = libraries.isPending || folders.isPending
 
   return (
-    <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
+    <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain workspace-page">
       <div ref={attachHeader}>
         <PageHeading
           title="사진"
           meta={loading ? '불러오는 중' : `${formatCount(collections.length)}개 폴더`}
           actions={
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="폴더 정렬">
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="폴더 정렬">
               {FOLDER_SORTS.map((option) => (
                 <button
                   key={option.value}
@@ -175,7 +175,7 @@ export function FoldersPage() {
                   onClick={() => setSort(option.value)}
                   aria-pressed={sort === option.value}
                   className={cn(
-                    'h-8 rounded-lg border px-2.5 text-[12px] font-medium transition-colors',
+                    'min-h-10 rounded-xl border px-3.5 text-[13px] font-medium transition-colors',
                     sort === option.value
                       ? 'border-accent/50 bg-accent/15 text-accent'
                       : 'border-line bg-panel text-muted hover:border-line-strong hover:text-ink',
@@ -210,7 +210,7 @@ export function FoldersPage() {
                   transform: `translate3d(0, ${node.top}px, 0)`,
                 }}
               >
-                <h2 className="text-[14px] font-semibold text-ink">{node.libraryName}</h2>
+                <h2 className="text-[16px] font-semibold text-ink">{node.libraryName}</h2>
                 <span className="text-[11.5px] text-muted">
                   {formatCount(node.folderCount)}개 폴더
                 </span>
@@ -266,7 +266,7 @@ export function FolderPage() {
 
   if (!folderId) {
     return (
-      <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
+      <div className="h-full overflow-y-auto overscroll-contain workspace-page">
         <EmptyState title="폴더를 찾을 수 없습니다" body="폴더 목록에서 다시 선택해 주세요." />
       </div>
     )
@@ -274,7 +274,7 @@ export function FolderPage() {
 
   if (detail.isPending) {
     return (
-      <div className="h-full overflow-y-auto overscroll-contain px-6">
+      <div className="h-full overflow-y-auto overscroll-contain workspace-page">
         <LoadingBlock />
       </div>
     )
@@ -282,7 +282,7 @@ export function FolderPage() {
 
   if (detail.isError || !detail.data) {
     return (
-      <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24 pt-6">
+      <div className="h-full overflow-y-auto overscroll-contain workspace-page pt-6">
         <EmptyState
           title="폴더를 찾을 수 없습니다"
           body="스캔 후 삭제되었을 수 있습니다."

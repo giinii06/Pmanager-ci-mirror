@@ -67,7 +67,7 @@ export function NotificationsPage() {
   const unread = notifications.filter((item) => item.state === 'open' && item.readAt === null).length
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
+    <div className="h-full overflow-y-auto overscroll-contain workspace-page">
       <PageHeading
         title="알림"
         meta="드라이브, 백업, 디스크, 작업 실패를 한 곳에서 확인합니다."
@@ -82,7 +82,7 @@ export function NotificationsPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+      <div className="mb-5 flex flex-wrap items-center gap-2">
         {(['open', 'resolved', 'dismissed', 'all'] as Filter[]).map((value) => (
           <button
             key={value}
@@ -90,7 +90,7 @@ export function NotificationsPage() {
             aria-pressed={filter === value}
             onClick={() => setFilter(value)}
             className={cn(
-              'rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-colors',
+              'min-h-10 rounded-xl border px-4 text-[13px] font-medium transition-colors',
               filter === value
                 ? 'border-accent/60 bg-accent/15 text-accent'
                 : 'border-line bg-panel-2 text-muted hover:border-line-strong hover:text-ink',
@@ -131,10 +131,10 @@ export function NotificationsPage() {
         ) : (
           <div className="divide-y divide-line/70">
             {notifications.map((notification) => (
-              <article key={notification.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
+              <article key={notification.id} className="flex flex-wrap items-start gap-4 px-5 py-4 sm:px-6 sm:py-5">
                 <span
                   className={cn(
-                    'mt-0.5 shrink-0 rounded-full border px-2 py-0.5 text-[10.5px] font-medium',
+                    'mt-0.5 shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold',
                     SEVERITY_TONE[notification.severity],
                   )}
                 >
@@ -147,7 +147,7 @@ export function NotificationsPage() {
                       <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-label="읽지 않음" />
                     ) : null}
                   </p>
-                  <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{notification.body}</p>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{notification.body}</p>
                   <p className="mt-1 text-[11px] text-faint">
                     {STATE_LABEL[notification.state]} · 발생 {formatCount(notification.occurrences)}회
                     · 마지막 확인 {formatAgo(notification.lastSeenAt)}

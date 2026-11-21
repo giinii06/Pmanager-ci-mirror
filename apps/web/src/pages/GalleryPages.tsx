@@ -41,7 +41,7 @@ function SortBar({
           onClick={() => onChange(option.value)}
           aria-pressed={sort === option.value}
           className={cn(
-            'h-8 rounded-lg border px-2.5 text-[12px] font-medium transition-colors',
+            'min-h-10 rounded-xl border px-3.5 text-[13px] font-medium transition-colors',
             sort === option.value
               ? 'border-accent/50 bg-accent/15 text-accent'
               : 'border-line bg-panel text-muted hover:border-line-strong hover:text-ink',
@@ -212,7 +212,7 @@ export function VideoTagsPage() {
   const populatedTags = tags.filter((tag) => tag.assetCount > 0)
 
   return (
-    <div className="h-full overflow-y-auto px-6 pb-24">
+    <div className="h-full overflow-y-auto workspace-page">
       <PageHeading
         title="태그별 보기"
         meta={`${formatCount(populatedTags.length)}개 태그 폴더 · 전체 ${formatCount(tags.length)}개 태그`}
@@ -223,7 +223,7 @@ export function VideoTagsPage() {
         }
       />
 
-      <div className="mb-6 rounded-panel border border-line bg-panel p-4">
+      <div className="mb-7 rounded-panel border border-line bg-panel p-5 shadow-[var(--ui-elevation)] sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <form
             className="flex items-center gap-2"
@@ -237,7 +237,7 @@ export function VideoTagsPage() {
               value={newTagName}
               onChange={(event) => setNewTagName(event.target.value)}
               placeholder="새 태그 이름"
-              className="h-8 w-52"
+              className="w-full min-w-0 sm:w-64"
             />
             <Button type="submit" size="sm" variant="primary" disabled={!newTagName.trim() || createTag.isPending}>
               <Plus size={13} />
