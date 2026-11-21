@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, Menu, PanelLeft, Search, Settings2 } from 'lucide-react'
+import { Bell, Menu, PanelLeft, Search } from 'lucide-react'
 import { api } from '../lib/api'
 import { useDebounced } from '../lib/hooks'
 import { useUi } from '../store/ui'
@@ -129,14 +129,6 @@ export function Topbar() {
             ) : null}
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={() => navigate('/settings')}
-          aria-label="설정"
-          className="flex h-11 w-11 items-center justify-center rounded-xl text-muted hover:bg-panel-2 hover:text-ink"
-        >
-          <Settings2 size={20} />
-        </button>
       </div>
     </header>
   )
