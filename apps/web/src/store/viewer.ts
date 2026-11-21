@@ -14,6 +14,8 @@ interface ViewerState {
   index: number
   startMs: number | null
   shuffle: boolean
+  /** Browser-contained video viewport mode; survives next/previous selections. */
+  browserFill: boolean
   filter: AssetQuery | null
   sessionId: number
   navigationRequestId: number
@@ -22,6 +24,7 @@ interface ViewerState {
   open: (items: AssetDTO[], index: number, startMsOrOpts?: number | null | OpenViewerOptions) => void
   close: () => void
   toggleShuffle: () => void
+  setBrowserFill: (enabled: boolean) => void
   next: () => void
   prev: () => void
   select: (asset: AssetDTO, startMs?: number | null) => void
@@ -81,6 +84,7 @@ function focusAsset(state: ViewerState, asset: AssetDTO): Partial<ViewerState> {
   if (existing >= 0) {
     return {
       index: existing,
+      browserFill: asset.kind === 'video' && state.browserFill,
       startMs: null,
       loadingNext: false,
       recentIds: recordRecent(state.recentIds, asset.id),
@@ -96,6 +100,7 @@ function focusAsset(state: ViewerState, asset: AssetDTO): Partial<ViewerState> {
   return {
     items,
     index,
+    browserFill: asset.kind === 'video' && state.browserFill,
     startMs: null,
     loadingNext: false,
     recentIds: recordRecent(state.recentIds, asset.id),
@@ -177,6 +182,7 @@ async function navigateRandom(get: () => ViewerState, set: SetState): Promise<vo
     if (!pick) return
     set((s) => ({
       index: s.items.indexOf(pick),
+      browserFill: pick.kind === 'video' && s.browserFill,
       startMs: null,
       navigationRequestId: s.navigationRequestId + 1,
       recentIds: recordRecent(s.recentIds, pick.id),
@@ -206,6 +212,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
   index: 0,
   startMs: null,
   shuffle: false,
+  browserFill: false,
   filter: null,
   sessionId: 0,
   navigationRequestId: 0,
@@ -222,6 +229,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     set((state) => ({
       items,
       index,
+      browserFill: false,
       startMs: opts.startMs ?? null,
       filter: opts.filter ?? null,
       sessionId: state.sessionId + 1,
@@ -236,6 +244,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     set((state) => ({
       items: [],
       index: 0,
+      browserFill: false,
       startMs: null,
       filter: null,
       sessionId: state.sessionId + 1,
@@ -247,6 +256,10 @@ export const useViewer = create<ViewerState>((set, get) => ({
 
   toggleShuffle: () => set((state) => ({ shuffle: !state.shuffle })),
 
+  setBrowserFill: (enabled) => set((state) => ({
+    browserFill: enabled && state.items[state.index]?.kind === 'video',
+  })),
+
   next: () => {
     const state = get()
     if (state.shuffle) {
@@ -256,6 +269,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     if (state.index + 1 < state.items.length) {
       set((s) => ({
         index: s.index + 1,
+        browserFill: s.items[s.index + 1]?.kind === 'video' && s.browserFill,
         startMs: null,
         navigationRequestId: s.navigationRequestId + 1,
         recentIds: recordRecent(s.recentIds, s.items[s.index + 1]?.id),
@@ -274,6 +288,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
     if (state.index > 0) {
       set((s) => ({
         index: s.index - 1,
+        browserFill: s.items[s.index - 1]?.kind === 'video' && s.browserFill,
         startMs: null,
         navigationRequestId: s.navigationRequestId + 1,
         recentIds: recordRecent(s.recentIds, s.items[s.index - 1]?.id),
@@ -291,18 +306,20 @@ export const useViewer = create<ViewerState>((set, get) => ({
       if (index >= 0) {
         return {
           index,
+          browserFill: asset.kind === 'video' && state.browserFill,
           startMs,
           navigationRequestId,
           recentIds: recordRecent(state.recentIds, asset.id),
         }
       }
       if (state.items.length === 0) {
-        return { items: [asset], index: 0, startMs, navigationRequestId, recentIds: [asset.id] }
+        return { items: [asset], index: 0, browserFill: false, startMs, navigationRequestId, recentIds: [asset.id] }
       }
       const items = [...state.items]
       items[state.index] = asset
       return {
         items,
+        browserFill: asset.kind === 'video' && state.browserFill,
         startMs,
         navigationRequestId,
         recentIds: recordRecent(state.recentIds, asset.id),
@@ -325,6 +342,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
         return {
           items: [],
           index: 0,
+          browserFill: false,
           startMs: null,
           navigationRequestId,
           recentIds: nextRecent,
@@ -334,6 +352,7 @@ export const useViewer = create<ViewerState>((set, get) => ({
       return {
         items: nextItems,
         index: nextIndex,
+        browserFill: nextItems[nextIndex]?.kind === 'video' && state.browserFill,
         startMs: null,
         navigationRequestId,
         recentIds: nextRecent,

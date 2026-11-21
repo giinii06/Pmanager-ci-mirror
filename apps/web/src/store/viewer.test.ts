@@ -38,6 +38,7 @@ beforeEach(() => {
     index: 0,
     startMs: null,
     shuffle: false,
+    browserFill: false,
     filter: null,
     sessionId: 0,
     navigationRequestId: 0,
@@ -76,6 +77,45 @@ describe('viewer navigation', () => {
     useViewer.getState().close()
     useViewer.getState().open([asset('a')], 0)
     expect(useViewer.getState().startMs).toBeNull()
+  })
+
+
+  test('keeps browser-fill during both local navigation directions and resets only on close or a fresh open', () => {
+    const first = asset('a')
+    const second = asset('b')
+    useViewer.getState().open([first, second], 0)
+    useViewer.getState().setBrowserFill(true)
+    useViewer.getState().next()
+    expect(useViewer.getState().items[useViewer.getState().index]?.id).toBe('b')
+    expect(useViewer.getState().browserFill).toBe(true)
+    useViewer.getState().prev()
+    expect(useViewer.getState().browserFill).toBe(true)
+    useViewer.getState().close()
+    expect(useViewer.getState().browserFill).toBe(false)
+    useViewer.getState().open([first], 0)
+    expect(useViewer.getState().browserFill).toBe(false)
+  })
+
+  test('preserves browser-fill through a server-fetched next video and a selected video', async () => {
+    useViewer.getState().open([asset('a')], 0, { filter: { kind: 'video' } })
+    useViewer.getState().setBrowserFill(true)
+    useViewer.getState().next()
+    pending[0]!.resolve({ asset: asset('b') })
+    await flush()
+    expect(useViewer.getState().items[useViewer.getState().index]?.id).toBe('b')
+    expect(useViewer.getState().browserFill).toBe(true)
+    useViewer.getState().select(asset('c'))
+    expect(useViewer.getState().browserFill).toBe(true)
+  })
+
+  test('does not carry video fill mode onto photos or into an unrelated session', () => {
+    useViewer.getState().open([asset('a')], 0)
+    useViewer.getState().setBrowserFill(true)
+    const image = { ...asset('photo'), kind: 'image' as const }
+    useViewer.getState().select(image)
+    expect(useViewer.getState().browserFill).toBe(false)
+    useViewer.getState().setBrowserFill(true)
+    expect(useViewer.getState().browserFill).toBe(false)
   })
 
   test('sequential navigation clears an explicit seek timestamp', async () => {
