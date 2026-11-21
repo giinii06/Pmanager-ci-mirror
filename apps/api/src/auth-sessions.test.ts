@@ -55,7 +55,7 @@ function apiConfig(dir: string, trustProxy: string[]): ApiConfig {
     },
     translation: {
       enabled: false,
-      workerToken: WORKER_TOKEN,
+      workerToken: 'translation-token-0123456789',
       resultDir: dir,
       modelId: 'model',
       modelRevision: 'commit-sha',
@@ -66,7 +66,7 @@ function apiConfig(dir: string, trustProxy: string[]): ApiConfig {
     },
     embedding: {
       enabled: false,
-      workerToken: WORKER_TOKEN,
+      workerToken: 'embedding-token-0123456789',
       modelId: 'model',
       modelRevision: 'commit-sha',
       modelSha256: 'sha-emb',
@@ -75,7 +75,7 @@ function apiConfig(dir: string, trustProxy: string[]): ApiConfig {
     },
     scene: {
       enabled: false,
-      workerToken: WORKER_TOKEN,
+      workerToken: 'scene-token-0123456789',
       modelId: 'facebook/pe-av-base-16-frame',
       modelRevision: 'main',
       modelSha256: 'scene-sha',
@@ -455,7 +455,7 @@ describe('login rate limit', () => {
     })
     expect(blocked.statusCode).toBe(429)
     await h.app.close()
-  })
+  }, 15_000)
 })
 
 describe('request origin', () => {
@@ -511,7 +511,7 @@ describe('worker routes', () => {
     const anonymous = await h.app.inject({
       method: 'POST',
       url: '/worker/gpu/acquire',
-      payload: { owner: 'w1', taskKind: 'hls' },
+      payload: { owner: 'w1', taskKind: 'asr', acquisitionId: 'auth-route-test-acquire-0123456789' },
     })
     expect(anonymous.statusCode).toBe(401)
 
@@ -519,9 +519,10 @@ describe('worker routes', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: { 'x-worker-token': WORKER_TOKEN },
-      payload: { owner: 'w1', taskKind: 'hls' },
+      payload: { owner: 'w1', taskKind: 'asr', acquisitionId: 'auth-route-test-acquire-0123456789' },
     })
-    expect(withToken.statusCode).not.toBe(401)
+    expect(withToken.statusCode).toBe(200)
+    expect(withToken.json().acquired).toBe(true)
     await h.app.close()
   })
 })

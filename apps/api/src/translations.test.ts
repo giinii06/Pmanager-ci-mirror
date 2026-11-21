@@ -655,7 +655,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: worker(),
-      payload: { owner: 'worker-a', taskKind: 'translation' },
+      payload: { owner: 'worker-a', taskKind: 'translation', acquisitionId: 'tr-worker-a-attempt-0123456789' }
     })
     expect(first.json().acquired).toBe(true)
 
@@ -663,7 +663,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: worker(),
-      payload: { owner: 'worker-b', taskKind: 'translation' },
+      payload: { owner: 'worker-b', taskKind: 'translation', acquisitionId: 'tr-worker-b-attempt-0123456789' }
     })
     expect(second.json().acquired).toBe(false)
 
@@ -671,7 +671,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/release',
       headers: worker(),
-      payload: { owner: 'worker-a' },
+      payload: { owner: 'worker-a', leaseToken: first.json().leaseToken },
     })
     expect(released.statusCode).toBe(204)
 
@@ -679,7 +679,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: worker(),
-      payload: { owner: 'worker-b', taskKind: 'translation' },
+      payload: { owner: 'worker-b', taskKind: 'translation', acquisitionId: 'tr-worker-b-attempt-0123456789' }
     })
     expect(third.json().acquired).toBe(true)
     await h.app.close()
@@ -692,7 +692,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: worker(),
-      payload: { owner: 'translation-worker', taskKind: 'translation' },
+      payload: { owner: 'translation-worker', taskKind: 'translation', acquisitionId: 'tr-worker-initial-0123456789' }
     })
     expect(first.json().acquired).toBe(true)
 
@@ -700,7 +700,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/release',
       headers: worker(),
-      payload: { owner: 'translation-worker' },
+      payload: { owner: 'translation-worker', leaseToken: first.json().leaseToken },
     })
     expect(released.statusCode).toBe(204)
 
@@ -724,7 +724,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: worker(),
-      payload: { owner: 'translation-worker', taskKind: 'translation' },
+      payload: { owner: 'translation-worker', taskKind: 'translation', acquisitionId: 'tr-worker-initial-0123456789' }
     })
     expect(again.json().acquired).toBe(false)
 
@@ -732,7 +732,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: { 'x-worker-token': ASR_TOKEN },
-      payload: { owner: 'asr-worker', taskKind: 'asr' },
+      payload: { owner: 'asr-worker', taskKind: 'asr', acquisitionId: 'asr-worker-attempt-0123456789' }
     })
     expect(asr.json().acquired).toBe(true)
     await h.app.close()
@@ -744,7 +744,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: { 'x-worker-token': ASR_TOKEN },
-      payload: { owner: 'asr-worker', taskKind: 'asr' },
+      payload: { owner: 'asr-worker', taskKind: 'asr', acquisitionId: 'asr-worker-attempt-0123456789' }
     })
     expect(asr.json().acquired).toBe(true)
 
@@ -752,7 +752,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: worker(),
-      payload: { owner: 'translation-worker', taskKind: 'translation' },
+      payload: { owner: 'translation-worker', taskKind: 'translation', acquisitionId: 'tr-worker-initial-0123456789' }
     })
     expect(translation.json().acquired).toBe(false)
 
@@ -760,7 +760,7 @@ describe('translation routes', () => {
       method: 'POST',
       url: '/worker/gpu/release',
       headers: { 'x-worker-token': ASR_TOKEN },
-      payload: { owner: 'asr-worker' },
+      payload: { owner: 'asr-worker', leaseToken: asr.json().leaseToken },
     })
     expect(released.statusCode).toBe(204)
     await h.app.close()

@@ -436,7 +436,7 @@ describe('worker scene lane', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: { 'x-worker-token': SCENE_TOKEN },
-      payload: { owner: 'scene-worker', taskKind: 'scene' },
+      payload: { owner: 'scene-worker', taskKind: 'scene', acquisitionId: 'scene-worker-acquire-0123456789' },
     })
     expect(acquired.json().acquired).toBe(true)
 
@@ -444,7 +444,7 @@ describe('worker scene lane', () => {
       method: 'POST',
       url: '/worker/gpu/acquire',
       headers: { 'x-worker-token': 'wrong-token-000000' },
-      payload: { owner: 'other-worker', taskKind: 'scene' },
+      payload: { owner: 'other-worker', taskKind: 'scene', acquisitionId: 'other-worker-acquire-0123456789' },
     })
     expect(wrong.statusCode).toBe(401)
     await h.app.close()
