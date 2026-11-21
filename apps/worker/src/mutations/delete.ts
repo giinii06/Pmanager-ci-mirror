@@ -4,6 +4,7 @@ import {
   clearAssetPendingDelete,
   commitPermanentDelete,
   getAssetDeletePlan,
+  hasExactDuplicateKeeper,
   getLibraryHealth,
   getMutationAsset,
   markAssetPendingDelete,
@@ -193,9 +194,55 @@ async function retryLater(
   })
 }
 
+/**
+ * The automatic duplicate path cannot use a stale scan as permission to delete.
+ * Verify both current indexed hashes and the keeper file's on-disk identity.
+ * This runs before validation and again immediately before quarantine.
+ */
+async function verifyAutoDuplicateKeeper(
+  ctx: MutationContext,
+  mutation: FileMutationRecord,
+): Promise<void> {
+  if (!mutation.requestKey.startsWith('auto-duplicate:')) return
+  const parts = mutation.requestKey.split(':')
+  if (parts.length !== 5 || !mutation.assetId || parts[1] !== mutation.assetId) {
+    throw new MutationBlockedError('invalid_auto_duplicate', 'invalid automatic duplicate request')
+  }
+  const targetVersion = Number(parts[2])
+  const keeperId = parts[3]!
+  const keeperVersion = Number(parts[4])
+  if (!Number.isSafeInteger(targetVersion) || !Number.isSafeInteger(keeperVersion)) {
+    throw new MutationBlockedError('invalid_auto_duplicate', 'invalid file version in duplicate request')
+  }
+  if (!hasExactDuplicateKeeper(ctx.db, mutation.assetId, targetVersion, keeperId, keeperVersion, mutation.id)) {
+    throw new MutationBlockedError('duplicate_keeper_missing', 'the retained exact duplicate is not available')
+  }
+  const keeper = getMutationAsset(ctx.db, keeperId)
+  if (!keeper || keeper.deletedAt !== null || keeper.pendingDeleteMutationId !== null) {
+    throw new MutationBlockedError('duplicate_keeper_missing', 'the retained duplicate changed')
+  }
+  const libraryRoot = resolveInside(ctx.config.mediaRoot, keeper.libraryRoot)
+  const location = libraryRoot ? resolveInside(libraryRoot, keeper.relativePath) : null
+  if (!libraryRoot || !location || location === libraryRoot) {
+    throw new MutationBlockedError('duplicate_keeper_path', 'the retained duplicate path is invalid')
+  }
+  try {
+    const [realLibrary, realFile, info] = await Promise.all([
+      realpath(libraryRoot), realpath(location), lstat(location),
+    ])
+    if (!isWithin(realFile, realLibrary) || !info.isFile() || info.isSymbolicLink()
+        || info.size !== keeper.sizeBytes || Math.round(info.mtimeMs) !== keeper.mtimeMs) {
+      throw new Error('keeper fingerprint changed')
+    }
+  } catch {
+    throw new MutationBlockedError('duplicate_keeper_unavailable', 'the retained duplicate is not a verified file')
+  }
+}
+
 async function prepare(ctx: MutationContext, mutation: FileMutationRecord): Promise<void> {
   const { db, config } = ctx
   if (!mutation.assetId) throw new MutationBlockedError('asset_missing', 'mutation has no asset')
+  await verifyAutoDuplicateKeeper(ctx, mutation)
   const asset = getMutationAsset(db, mutation.assetId)
   if (!asset) throw new MutationBlockedError('asset_missing', 'asset no longer exists')
   if (asset.pendingDeleteMutationId && asset.pendingDeleteMutationId !== mutation.id) {
@@ -275,6 +322,7 @@ async function prepare(ctx: MutationContext, mutation: FileMutationRecord): Prom
 }
 
 async function quarantine(ctx: MutationContext, mutation: FileMutationRecord): Promise<void> {
+  await verifyAutoDuplicateKeeper(ctx, mutation)
   const manifest = readManifest(mutation)
   if (!manifest) throw new MutationBlockedError('manifest_missing', 'mutation has no manifest')
   const qAbs = quarantinePath(mutation)
