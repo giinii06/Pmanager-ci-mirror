@@ -3,22 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0B0C0F" />
+    <meta name="theme-color" content="#1A1A1E" />
     <meta name="color-scheme" content="dark light" />
     <title>MediaVault</title>
     <script>
       ;(() => {
         try {
-          var saved = localStorage.getItem('mediavault.themeMode') || 'system'
+          var saved = localStorage.getItem('mediavault.themeMode')
           var prefersDark =
             window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-          var resolved = saved === 'light' || saved === 'dark' ? saved : prefersDark ? 'dark' : 'light'
+          var mode = ['light', 'ash', 'dark', 'onyx'].includes(saved)
+            ? saved
+            : prefersDark ? 'dark' : 'light'
           var root = document.documentElement
-          root.dataset.theme = resolved
-          root.dataset.themeMode = saved
-          root.style.colorScheme = resolved
+          root.dataset.theme = mode
+          root.dataset.themeMode = mode
+          root.style.colorScheme = mode === 'light' ? 'light' : 'dark'
+          var backgrounds = { light: '#fbfbfb', ash: '#2e2e34', dark: '#1a1a1e', onyx: '#070709' }
           var meta = document.querySelector('meta[name="theme-color"]')
-          if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0B0C0F' : '#FFFFFF')
+          if (meta) meta.setAttribute('content', backgrounds[mode])
         } catch {}
       })()
     </script>

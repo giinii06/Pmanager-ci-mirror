@@ -2,18 +2,18 @@
 @import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
 
 @theme {
-  --color-canvas: #0b0c0f;
-  --color-panel: #111318;
-  --color-panel-2: #16181d;
-  --color-raised: #1c1f26;
-  --color-line: #23262e;
-  --color-line-strong: #2f333d;
-  --color-ink: #f4f4f5;
-  --color-muted: #9296a0;
-  --color-faint: #6b6f79;
-  --color-accent: #8b9eff;
-  --color-accent-strong: #a8b6ff;
-  --color-danger: #ff8f8f;
+  --color-canvas: #1a1a1e;
+  --color-panel: #131316;
+  --color-panel-2: #242429;
+  --color-raised: #2e2e34;
+  --color-line: #303036;
+  --color-line-strong: #404047;
+  --color-ink: #f2f3f5;
+  --color-muted: #b5bac1;
+  --color-faint: #949ba4;
+  --color-accent: #949cf7;
+  --color-accent-strong: #c9cdfb;
+  --color-danger: #f23f43;
 
   --font-sans:
     'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
@@ -26,19 +26,69 @@
   --animate-fade: fade 180ms ease-out;
 }
 
-:root[data-theme='light'] {
-  --color-canvas: #ffffff;
+/* Discord-inspired surfaces. Public references do not expose the full official theme token set. */
+:root[data-theme='light'],
+[data-theme-preview='light'] {
+  --color-canvas: #fbfbfb;
   --color-panel: #ffffff;
-  --color-panel-2: #f8f9fc;
-  --color-raised: #f1f3f7;
-  --color-line: #e5e7eb;
-  --color-line-strong: #cbd5e1;
-  --color-ink: #14161a;
-  --color-muted: #505763;
-  --color-faint: #78808e;
-  --color-accent: #4c62e6;
-  --color-accent-strong: #394fd4;
-  --color-danger: #dc2626;
+  --color-panel-2: #f2f3f5;
+  --color-raised: #e3e5e8;
+  --color-line: #e3e5e8;
+  --color-line-strong: #c4c9ce;
+  --color-ink: #1a1a1e;
+  --color-muted: #5c6068;
+  --color-faint: #80848e;
+  --color-accent: #4752c4;
+  --color-accent-strong: #5865f2;
+  --color-danger: #da373c;
+}
+
+:root[data-theme='ash'],
+[data-theme-preview='ash'] {
+  --color-canvas: #2e2e34;
+  --color-panel: #25252b;
+  --color-panel-2: #393a41;
+  --color-raised: #404249;
+  --color-line: #484950;
+  --color-line-strong: #555760;
+  --color-ink: #f2f3f5;
+  --color-muted: #b5bac1;
+  --color-faint: #949ba4;
+  --color-accent: #949cf7;
+  --color-accent-strong: #c9cdfb;
+  --color-danger: #f23f43;
+}
+
+:root[data-theme='dark'],
+[data-theme-preview='dark'] {
+  --color-canvas: #1a1a1e;
+  --color-panel: #131316;
+  --color-panel-2: #242429;
+  --color-raised: #2e2e34;
+  --color-line: #303036;
+  --color-line-strong: #404047;
+  --color-ink: #f2f3f5;
+  --color-muted: #b5bac1;
+  --color-faint: #949ba4;
+  --color-accent: #949cf7;
+  --color-accent-strong: #c9cdfb;
+  --color-danger: #f23f43;
+}
+
+:root[data-theme='onyx'],
+[data-theme-preview='onyx'] {
+  --color-canvas: #070709;
+  --color-panel: #0b0b0d;
+  --color-panel-2: #131416;
+  --color-raised: #1c1d22;
+  --color-line: #232327;
+  --color-line-strong: #333338;
+  --color-ink: #f2f3f5;
+  --color-muted: #b5bac1;
+  --color-faint: #949ba4;
+  --color-accent: #949cf7;
+  --color-accent-strong: #c9cdfb;
+  --color-danger: #f23f43;
 }
 
 @keyframes rise {

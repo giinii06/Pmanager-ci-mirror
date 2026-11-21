@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 export type ToastTone = 'info' | 'success' | 'error'
-export type ThemeMode = 'dark' | 'light' | 'system'
+export type ThemeMode = 'light' | 'ash' | 'dark' | 'onyx'
 export type ResolvedTheme = 'dark' | 'light'
 
 export interface Toast {
@@ -32,28 +32,35 @@ function loadCollapsed(): boolean {
 }
 
 export function resolveTheme(mode: ThemeMode): ResolvedTheme {
-  if (mode === 'dark' || mode === 'light') return mode
-  if (typeof window !== 'undefined' && window.matchMedia) {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  }
-  return 'dark'
+  return mode === 'light' ? 'light' : 'dark'
+}
+
+const THEME_BACKGROUNDS: Record<ThemeMode, string> = {
+  light: '#fbfbfb',
+  ash: '#2e2e34',
+  dark: '#1a1a1e',
+  onyx: '#070709',
 }
 
 function loadThemeMode(): ThemeMode {
   const raw = safeStorageGet(THEME_MODE_KEY)
-  if (raw === 'dark' || raw === 'light' || raw === 'system') return raw
-  return 'system'
+  if (raw === 'light' || raw === 'ash' || raw === 'dark' || raw === 'onyx') return raw
+  // Migrate the previous "system" setting to a concrete one of the four presets.
+  return typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light'
 }
 
 function applyThemeToDom(mode: ThemeMode): ResolvedTheme {
   const resolved = resolveTheme(mode)
   if (typeof document !== 'undefined') {
     const root = document.documentElement
-    root.dataset.theme = resolved
+    root.dataset.theme = mode
     root.dataset.themeMode = mode
     root.style.colorScheme = resolved
     const meta = document.querySelector('meta[name="theme-color"]')
-    if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0B0C0F' : '#FFFFFF')
+    if (meta) meta.setAttribute('content', THEME_BACKGROUNDS[mode])
   }
   return resolved
 }
@@ -104,14 +111,3 @@ export const useUi = create<UiState>((set) => ({
   dismiss: (id) => set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) })),
 }))
 
-if (typeof window !== 'undefined' && window.matchMedia) {
-  const mq = window.matchMedia('(prefers-color-scheme: dark)')
-  const handleOsThemeChange = () => {
-    const current = useUi.getState()
-    if (current.themeMode === 'system') {
-      const resolved = applyThemeToDom('system')
-      useUi.setState({ resolvedTheme: resolved })
-    }
-  }
-  mq.addEventListener?.('change', handleOsThemeChange)
-}

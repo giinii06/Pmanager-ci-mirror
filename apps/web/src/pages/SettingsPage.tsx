@@ -6,6 +6,7 @@ import {
   Activity,
   Archive,
   CalendarDays,
+  Check,
   DatabaseBackup,
   Film,
   Flame,
@@ -14,12 +15,9 @@ import {
   Images,
   Loader2,
   LogOut,
-  Monitor,
-  Moon,
   Plus,
   RefreshCw,
   ShieldCheck,
-  Sun,
   Tag,
   Trash2,
 } from 'lucide-react'
@@ -42,6 +40,13 @@ import { Spinner } from '../components/ui/Spinner'
 import { Section, MetricPill } from '../components/ui/Section'
 import { ProcessingPanel } from '../components/ProcessingPanel'
 import { DiagnosticsSection } from './DiagnosticsPage'
+
+const APPEARANCE_THEMES: Array<{ id: ThemeMode; label: string; description: string }> = [
+  { id: 'light', label: '밝은 테마', description: 'Light' },
+  { id: 'ash', label: '애시', description: 'Ash' },
+  { id: 'dark', label: '어두운 테마', description: 'Dark' },
+  { id: 'onyx', label: '오닉스', description: 'Onyx' },
+]
 
 const CALENDAR_THEME = {
   light: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
@@ -316,15 +321,12 @@ export function SettingsPage() {
         }
       />
 
-      <Section title="화면 테마 (Appearance)" description="다크, 라이트 또는 시스템 OS 설정을 따릅니다.">
-        <div className="flex flex-wrap items-center gap-2 p-4">
-          {(
-            [
-              { id: 'dark', label: 'Dark', Icon: Moon },
-              { id: 'light', label: 'Light', Icon: Sun },
-              { id: 'system', label: 'System (OS 자동)', Icon: Monitor },
-            ] as Array<{ id: ThemeMode; label: string; Icon: typeof Moon }>
-          ).map(({ id, label, Icon }) => {
+      <Section
+        title="화면 테마 (Appearance)"
+        description="Discord의 기본 테마 4종 중에서 선택합니다. 변경 사항은 이 브라우저에 저장됩니다."
+      >
+        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4" role="group" aria-label="화면 테마">
+          {APPEARANCE_THEMES.map(({ id, label, description }) => {
             const active = themeMode === id
             return (
               <button
@@ -333,14 +335,31 @@ export function SettingsPage() {
                 aria-pressed={active}
                 onClick={() => setThemeMode(id)}
                 className={cn(
-                  'inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-[12.5px] font-medium transition-colors',
+                  'rounded-xl border p-2 text-left transition-colors',
                   active
-                    ? 'border-accent/60 bg-accent/15 text-accent'
-                    : 'border-line bg-panel-2 text-muted hover:border-line-strong hover:text-ink',
+                    ? 'border-accent bg-accent/10'
+                    : 'border-line bg-panel-2 hover:border-line-strong',
                 )}
               >
-                <Icon size={14} />
-                {label}
+                <span
+                  data-theme-preview={id}
+                  aria-hidden="true"
+                  className="mb-2 block overflow-hidden rounded-lg border border-line bg-canvas"
+                >
+                  <span className="flex h-20 gap-1.5 p-2">
+                    <span className="w-1/3 rounded-md bg-panel" />
+                    <span className="flex-1 rounded-md bg-panel-2 p-1.5">
+                      <span className="mb-1.5 block h-1.5 w-4/5 rounded bg-ink/75" />
+                      <span className="block h-1.5 w-3/5 rounded bg-muted/70" />
+                      <span className="mt-3 block h-2 w-2 rounded-full bg-accent" />
+                    </span>
+                  </span>
+                </span>
+                <span className="flex items-center justify-between gap-1 text-[12.5px] font-semibold text-ink">
+                  {label}
+                  {active ? <Check size={15} className="shrink-0 text-accent" aria-hidden="true" /> : null}
+                </span>
+                <span className="block text-[11px] text-muted">{description}</span>
               </button>
             )
           })}

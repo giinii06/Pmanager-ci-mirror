@@ -9,19 +9,16 @@ import {
   BookOpenText,
   Plus,
   Loader2,
-  Monitor,
-  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Settings2,
-  Sun,
   Tag,
   X,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
-import { useUi, type ThemeMode } from '../store/ui'
+import { useUi } from '../store/ui'
 
 export function Sidebar() {
   const navigate = useNavigate()
@@ -32,8 +29,6 @@ export function Sidebar() {
   const setSidebarOpen = useUi((state) => state.setSidebarOpen)
   const collapsed = useUi((state) => state.sidebarCollapsed)
   const toggleCollapsed = useUi((state) => state.toggleSidebarCollapsed)
-  const themeMode = useUi((state) => state.themeMode)
-  const setThemeMode = useUi((state) => state.setThemeMode)
 
   const stats = useQuery({ queryKey: ['stats'], queryFn: api.stats })
   const jobs = useQuery({
@@ -307,45 +302,7 @@ export function Sidebar() {
         </NavLink>
       </nav>
 
-      <div className="space-y-2 border-t border-line px-3 py-2.5">
-        <div
-          className={cn(
-            'flex items-center gap-1 rounded-lg border border-line bg-panel-2 p-0.5',
-            collapsed && 'md:flex-col',
-          )}
-          role="group"
-          aria-label="테마 선택"
-        >
-          {(
-            [
-              { id: 'dark', label: '다크', Icon: Moon },
-              { id: 'light', label: '라이트', Icon: Sun },
-              { id: 'system', label: '시스템', Icon: Monitor },
-            ] as Array<{ id: ThemeMode; label: string; Icon: typeof Moon }>
-          ).map(({ id, label, Icon }) => {
-            const active = themeMode === id
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setThemeMode(id)}
-                title={`${label} 테마`}
-                aria-pressed={active}
-                className={cn(
-                  'flex flex-1 items-center justify-center gap-1 rounded-md py-1 text-[11px] font-medium transition-colors',
-                  collapsed && 'md:w-full md:px-0',
-                  active
-                    ? 'bg-panel text-ink shadow-xs'
-                    : 'text-faint hover:text-ink',
-                )}
-              >
-                <Icon size={12} />
-                <span className={cn(collapsed && 'md:hidden')}>{label}</span>
-              </button>
-            )
-          })}
-        </div>
-
+      <div className="border-t border-line px-3 py-2.5">
         <div
           className={cn(
             'flex items-center gap-2 text-[11.5px] text-muted',
