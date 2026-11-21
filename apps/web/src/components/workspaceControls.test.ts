@@ -25,6 +25,34 @@ describe('clean workspace controls', () => {
     expect(player).toContain("'h-full w-full object-contain'")
   })
 
+  test('in-browser fill is owned by the viewer and forwarded across keyed video changes', () => {
+    const store = file('../store/viewer.ts')
+    const overlay = file('./Lightbox.tsx')
+    const watch = file('./WatchPage.tsx')
+    const player = file('./VideoPlayer.tsx')
+    expect(store).toContain('browserFill: boolean')
+    expect(store).toContain('setBrowserFill: (enabled: boolean) => void')
+    expect(overlay).toContain('browserFill={browserFill}')
+    expect(overlay).toContain('onBrowserFillChange={setBrowserFill}')
+    expect(watch).toContain('key={asset.id}')
+    expect(watch).toContain('onPrev={onPrev}')
+    expect(watch).toContain('onNext={onNext}')
+    expect(player).not.toContain('const [browserFill, setBrowserFill]')
+    expect(player).toContain('onClick={onPrev}')
+    expect(player).toContain('onClick={onNext}')
+    expect(player).toContain('이전 동영상')
+    expect(player).toContain('다음 동영상')
+  })
+
+  test('next clip requests automatic playback including HLS-ready streams', () => {
+    const player = file('./VideoPlayer.tsx')
+    expect(player).toContain('autoPlay')
+    expect(player).toContain('video.addEventListener(\'canplay\', start)')
+    expect(player).toContain('video.play().catch(() => undefined)')
+    expect(player).toContain('asset.id, videoRef, useHls, playlistUrl')
+    expect(player).toContain('hls.attachMedia(video)')
+  })
+
   test('photo and video galleries default to newest order', () => {
     const photos = file('../pages/FolderPages.tsx')
     const videos = file('../pages/GalleryPages.tsx')
