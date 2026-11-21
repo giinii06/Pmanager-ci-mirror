@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
-import { Maximize, Minimize, Pause, Play, Volume2, VolumeX } from 'lucide-react'
+import { Expand, Shrink, Maximize, Minimize, Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import type { AssetDTO, HlsStatusDTO, SubtitleTrackDTO } from '@mediavault/shared'
 import { api, ApiError } from '../lib/api'
 import { patchAssetCounters } from '../lib/cachePatch'
@@ -60,6 +60,7 @@ export function VideoPlayer({
   const [controlsVisible, setControlsVisible] = useState(true)
   const [containerFullscreen, setContainerFullscreen] = useState(false)
   const [pseudoFullscreen, setPseudoFullscreen] = useState(false)
+  const [browserFill, setBrowserFill] = useState(false)
   const [nativeFullscreen, setNativeFullscreen] = useState(false)
   const [playbackPaused, setPlaybackPaused] = useState(true)
   const [currentTime, setCurrentTime] = useState(0)
@@ -536,13 +537,14 @@ export function VideoPlayer({
   }, [videoRef])
 
   useEffect(() => {
-    if (!pseudoFullscreen) return
+    if (!pseudoFullscreen && !browserFill) return
 
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       // Escape leaves the app's fullscreen before the viewer sees it close.
       event.stopImmediatePropagation()
       setPseudoFullscreen(false)
+      setBrowserFill(false)
     }
     const overflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -551,9 +553,16 @@ export function VideoPlayer({
       window.removeEventListener('keydown', onKey, true)
       document.body.style.overflow = overflow
     }
-  }, [pseudoFullscreen])
+  }, [pseudoFullscreen, browserFill])
+
+  const toggleBrowserFill = () => {
+    if (appFullscreen) return
+    setBrowserFill((current) => !current)
+  }
 
   const toggleFullscreen = () => {
+    // Real fullscreen is independent of the in-browser fill mode.
+    setBrowserFill(false)
     const container = containerRef.current
     const fsDoc = document as Document & {
       webkitFullscreenElement?: Element | null
@@ -680,6 +689,7 @@ export function VideoPlayer({
       className={cn(
         'relative flex items-center justify-center select-none',
         fill ? 'h-full w-full' : 'max-h-full max-w-full',
+        browserFill && !appFullscreen && 'fixed inset-0 z-[80] h-[100dvh] w-screen bg-black',
         appFullscreen &&
           (pseudoFullscreen
             ? 'fixed inset-0 z-[80] h-[100dvh] w-screen bg-black'
@@ -694,7 +704,7 @@ export function VideoPlayer({
         onDoubleClick={toggleFullscreen}
         className={cn(
           'cursor-pointer bg-black',
-          appFullscreen || fill
+          appFullscreen || browserFill || fill
             ? 'h-full w-full object-contain'
             : 'max-h-[calc(100vh-170px)] max-w-[calc(100vw-140px)] rounded-lg shadow-2xl',
         )}
@@ -795,6 +805,18 @@ export function VideoPlayer({
               </span>
             </div>
 
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label={browserFill ? '브라우저 화면 채우기 종료' : '브라우저 화면 꽉 채우기'}
+                title={browserFill ? '화면 채우기 종료 (Esc)' : '브라우저 안에서 화면 꽉 채우기'}
+                aria-pressed={browserFill}
+                disabled={appFullscreen}
+                onClick={toggleBrowserFill}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/15 hover:text-white disabled:opacity-40"
+              >
+                {browserFill ? <Shrink size={16} /> : <Expand size={16} />}
+              </button>
             <button
               type="button"
               aria-label={appFullscreen ? '전체 화면 종료' : '전체 화면'}
@@ -803,6 +825,7 @@ export function VideoPlayer({
             >
               {appFullscreen ? <Minimize size={15} /> : <Maximize size={15} />}
             </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -814,7 +837,7 @@ export function VideoPlayer({
       {!nativeFullscreen && captionLines ? (
         <div
           className="pointer-events-none absolute inset-x-0 z-10 flex justify-center px-3"
-          style={{ bottom: showBar ? (appFullscreen ? 104 : 74) : appFullscreen ? 32 : 24 }}
+          style={{ bottom: showBar ? (appFullscreen || browserFill ? 104 : 74) : (appFullscreen || browserFill) ? 32 : 24 }}
         >
           <span
             className="max-w-[86%] rounded-md bg-black/75 px-3 py-1.5 text-center font-medium leading-[1.4] whitespace-pre-line text-white [overflow-wrap:anywhere] [word-break:keep-all]"
