@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Aperture, BookOpenText, Copy, Film, Images, Loader2, PanelLeftClose,
+  Aperture, BookOpenText, Film, Images, Loader2, PanelLeftClose,
   PanelLeftOpen, Plus, Settings2, Tag, X,
 } from 'lucide-react'
 import { api } from '../lib/api'
@@ -197,7 +197,6 @@ export function Sidebar() {
               ))}
             </div>
           ) : null}
-          <MainLink to="/duplicates" label="중복 검토" icon={<Copy size={19} />} active={pathname.startsWith('/duplicates')} collapsed={collapsed} />
         </div>
 
         <GroupLabel collapsed={collapsed}>환경 설정</GroupLabel>
