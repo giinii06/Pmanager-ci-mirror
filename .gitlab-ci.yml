@@ -27,3 +27,13 @@ web-build:
   stage: verify
   script:
     - bun run --cwd apps/web build
+
+oracle_runner_test:
+  stage: verify
+  tags:
+    - oracle-arm64
+  before_script: []
+  script:
+    - echo "Oracle A1 Runner connected!"
+    - test "$(uname -m)" = "aarch64"
+    - bun --version
