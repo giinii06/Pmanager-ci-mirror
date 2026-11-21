@@ -504,6 +504,7 @@ export function hasExactDuplicateKeeper(
   targetVersion: number,
   keeperId: string,
   keeperVersion: number,
+  targetMutationId: string | null = null,
 ): boolean {
   if (targetId === keeperId) return false
   const found = db.query<{ ok: number }, Params>(
@@ -515,13 +516,13 @@ export function hasExactDuplicateKeeper(
      WHERE target.id = ?
        AND target.file_version = ?
        AND keeper.file_version = ?
-       AND target.deleted_at IS NULL
+       AND (target.deleted_at IS NULL OR target.pending_delete_mutation_id = ?)
        AND keeper.deleted_at IS NULL
        AND keeper.pending_delete_mutation_id IS NULL
        AND tf.full_hash IS NOT NULL
        AND tf.full_hash = kf.full_hash
        AND tf.size_bytes = kf.size_bytes
      LIMIT 1`,
-  ).get(keeperId, targetId, targetVersion, keeperVersion)
+  ).get(keeperId, targetId, targetVersion, keeperVersion, targetMutationId)
   return found !== null
 }
