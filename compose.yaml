@@ -23,10 +23,6 @@ services:
       HLS_GENERATIONS_ENABLED: ${HLS_GENERATIONS_ENABLED:-0}
       # Trigram index for the search box; 0 keeps every query on the LIKE scan.
       SEARCH_FTS_ENABLED: ${SEARCH_FTS_ENABLED:-1}
-      # Saved filters; 0 turns the smart-album routes off.
-      SMART_ALBUMS_ENABLED: ${SMART_ALBUMS_ENABLED:-1}
-      # Bulk operations; 0 turns the routes off. Delete/move also need the mutation engine.
-      BULK_OPERATIONS_ENABLED: ${BULK_OPERATIONS_ENABLED:-0}
       # Notification inbox; 0 hides the routes and the bell. The worker also has to be on.
       NOTIFICATIONS_ENABLED: ${NOTIFICATIONS_ENABLED:-0}
     volumes:
@@ -61,7 +57,6 @@ services:
       SCAN_DELETE_FORCE: ${SCAN_DELETE_FORCE:-0}
       WATCH_POLLING: ${WATCH_POLLING:-1}
       FILE_MUTATION_ENGINE_ENABLED: ${FILE_MUTATION_ENGINE_ENABLED:-0}
-      BULK_OPERATIONS_ENABLED: ${BULK_OPERATIONS_ENABLED:-0}
       # Alerts, the inbox and optional Discord delivery. Off by default (spec I-05).
       NOTIFICATIONS_ENABLED: ${NOTIFICATIONS_ENABLED:-0}
       # Worker-only secret. Never exposed by the API; leave empty to keep alerts in-app.

@@ -6,9 +6,9 @@
 - 사진: 320/640 WebP 썸네일 + 1600px 프리뷰를 미리 생성
 - 영상: 브라우저가 재생할 수 있으면 Direct Play, 아니면(HEVC/MKV 등) HLS로 변환
 - 검색: 파일 이름과 대사는 SQLite FTS5 trigram으로, 장면은 임베딩으로 찾는다. 인덱스가 없거나 깨지면 LIKE 검색으로 응답한다
-- 정리: 정확 중복 검토, 스마트 앨범·재생목록·북마크, 선택 항목 일괄 작업
+- 정리: 정확 중복 검토, 영상 북마크, 단일 파일 관리
 - 자막(선택): 한국어 음성 인식 + 단어 단위 시간 정렬로 VTT/SRT 생성
-- 운영: 진단 리포트, 요청 id, 캐시 정리, 알림 인박스(선택)
+- 운영: 설정 하단의 진단 리포트(서버에서 60초 주기로 사전 계산), 요청 id, 캐시 정리, 알림 인박스(선택)
 - 웹은 원본 디스크를 직접 훑지 않고 인덱스만 조회. 무거운 작업은 별도 Worker
 - 사용자 요청에 의한 영구 삭제와 감지된 `.rar` 아카이브 추출/변환은 `FILE_MUTATION_ENGINE_ENABLED=1`일 때만 원본 폴더를 변경한다. 기본값은 꺼짐이고, 캐시는 지워도 다시 만들어진다
 
@@ -168,10 +168,11 @@ Windows 무인 부팅 구성은 [docs/WINDOWS-OPERATIONS.md](docs/WINDOWS-OPERAT
 | --- | --- | --- |
 | `FILE_MUTATION_ENGINE_ENABLED` | `0` | 영구 삭제·이동·`.rar` 추출이 실제 파일을 변경 |
 | `HLS_GENERATIONS_ENABLED` | `0` | 세대별 HLS 게시와 교체 |
-| `BULK_OPERATIONS_ENABLED` | `0` | 선택 항목 일괄 작업 |
 | `NOTIFICATIONS_ENABLED` | `0` | 알림 인박스와 Discord 전달 |
 | `SEARCH_FTS_ENABLED` | `1` | trigram 검색 색인. 끄면 LIKE로 응답 |
-| `SMART_ALBUMS_ENABLED` | `1` | 스마트 앨범 |
+
+
+> 기존 데이터베이스에 저장된 재생목록·스마트 앨범·일괄 작업의 이전 테이블은 마이그레이션 호환성과 데이터 보존을 위해 유지되지만, 화면/API/워커에서는 더 이상 사용되지 않습니다.
 
 ## 데이터와 백업
 

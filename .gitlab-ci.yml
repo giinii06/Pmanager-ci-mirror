@@ -1,0 +1,29 @@
+image: oven/bun:1.4.3
+
+stages:
+  - verify
+
+default:
+  before_script:
+    - bun install --frozen-lockfile
+
+typecheck:
+  stage: verify
+  script:
+    - bun run typecheck
+
+unit-tests:
+  stage: verify
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq ffmpeg
+    - bun install --frozen-lockfile
+  script:
+    # CI checks out sources as root; a few fixture tests chmod source files.
+    - chown -R bun:bun .
+    # Permissions tests must not run as root: root bypasses chmod(000).
+    - su -s /bin/sh bun -c 'LOG_LEVEL=error bun test'
+
+web-build:
+  stage: verify
+  script:
+    - bun run --cwd apps/web build

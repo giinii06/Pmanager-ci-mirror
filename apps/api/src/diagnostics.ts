@@ -237,7 +237,7 @@ export async function buildDiagnosticsReport(ctx: AppContext): Promise<Diagnosti
     flags: {
       fileMutation: ctx.config.fileMutationEnabled,
       hlsGenerations: ctx.config.hlsGenerationsEnabled,
-      bulkOperations: ctx.config.bulkOperationsEnabled === true,
+      bulkOperations: false,
       notifications: ctx.config.notificationsEnabled === true,
       searchFts: ctx.config.search.ftsEnabled,
     },

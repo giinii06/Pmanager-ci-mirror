@@ -270,7 +270,7 @@ describe('diagnostics', () => {
     })
     expect(response.statusCode).toBe(200)
     const report = response.json() as DiagnosticsReportDTO
-    expect(report.database.schemaVersion).toBe(26)
+    expect(report.database.schemaVersion).toBe(27)
     expect(report.database.journalMode).toBe('wal')
     expect(report.app.version).toBe(APP_VERSION)
     expect(report.libraries[0]!.lastError).toBe('<media>/Lib/boom')
@@ -291,6 +291,16 @@ describe('diagnostics', () => {
 
     // Only a download is an audit event; a page poll is not.
     expect(listDiagnosticsRuns(h.db)).toHaveLength(1)
+  })
+})
+
+describe('removed features', () => {
+  test('retired bulk, playlist and smart album API routes return 404', async () => {
+    const h = await createHarness()
+    for (const url of ['/api/bulk-operations', '/api/playlists', '/api/smart-albums']) {
+      const response = await h.app.inject({ method: 'GET', url, headers: h.headers })
+      expect(response.statusCode).toBe(404)
+    }
   })
 })
 

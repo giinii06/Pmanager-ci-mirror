@@ -33,15 +33,44 @@ const cleanBody = z.object({
 })
 
 export function registerDiagnosticsRoutes(app: FastifyInstance, ctx: AppContext): void {
-  // A full report walks the cache and stats every volume, so the page poll
-  // shares one snapshot; an explicit refresh bypasses it.
-  let cached: { expiresAt: number; report: DiagnosticsReportDTO } | null = null
+  // Compute on the server after listen and periodically. Normal reads never traverse
+  // the filesystem; they return the latest completed (possibly aging) snapshot.
+  const SNAPSHOT_INTERVAL_MS = 60_000
+  let cached: DiagnosticsReportDTO | null = null
+  let computing: Promise<DiagnosticsReportDTO> | null = null
+
+  const compute = (): Promise<DiagnosticsReportDTO> => {
+    if (computing) return computing
+    computing = buildDiagnosticsReport(ctx)
+      .then((report) => {
+        cached = report
+        return report
+      })
+      .finally(() => {
+        computing = null
+      })
+    return computing
+  }
+
+  const logFailure = (error: unknown) =>
+    app.log.warn({ err: error }, 'diagnostics snapshot refresh failed')
+
+  let interval: ReturnType<typeof setInterval> | null = null
+  app.addHook('onListen', () => {
+    void compute().catch(logFailure)
+    interval = setInterval(() => {
+      void compute().catch(logFailure)
+    }, SNAPSHOT_INTERVAL_MS)
+    interval.unref?.()
+  })
+  app.addHook('onClose', async () => {
+    if (interval) clearInterval(interval)
+  })
+
   const reportFor = async (refresh: boolean): Promise<DiagnosticsReportDTO> => {
-    const now = Date.now()
-    if (!refresh && cached && now < cached.expiresAt) return cached.report
-    const report = await buildDiagnosticsReport(ctx)
-    cached = { expiresAt: now + 30_000, report }
-    return report
+    if (refresh && cached) void compute().catch(logFailure)
+    // First boot is the only unavoidable cold path (also used by app.inject tests).
+    return cached ?? await compute()
   }
 
   app.get('/api/system/capabilities', async (_request, reply) => {
@@ -49,10 +78,10 @@ export function registerDiagnosticsRoutes(app: FastifyInstance, ctx: AppContext)
     const payload: CapabilitiesDTO = {
       fileMutation: ctx.config.fileMutationEnabled,
       hlsGenerations: ctx.config.hlsGenerationsEnabled,
-      bulkOperations: ctx.config.bulkOperationsEnabled === true,
+      bulkOperations: false,
       notifications: ctx.config.notificationsEnabled === true,
       searchFts: ctx.config.search.ftsEnabled,
-      smartAlbums: ctx.config.smartAlbumsEnabled,
+      smartAlbums: false,
       version: APP_VERSION,
       schemaVersion: schema?.user_version ?? 0,
     }

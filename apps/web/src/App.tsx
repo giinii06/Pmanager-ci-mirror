@@ -14,16 +14,13 @@ import { EmptyState } from './components/EmptyState'
 import { Spinner } from './components/ui/Spinner'
 import { Button } from './components/ui/Button'
 import { LoginPage, SetupPage } from './pages/AuthPages'
-import { BulkOperationPage, BulkOperationsPage } from './pages/BulkPages'
 import { FolderPage, FoldersPage } from './pages/FolderPages'
 import { VideoTagsPage, VideosPage } from './pages/GalleryPages'
 import { DuplicatesPage } from './pages/DuplicatesPage'
-import { DiagnosticsPage } from './pages/DiagnosticsPage'
 import { NotificationsPage } from './pages/NotificationsPage'
-import { PlaylistPage, PlaylistsPage } from './pages/PlaylistsPage'
 import { SearchPage } from './pages/SearchPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { SmartAlbumPage, SmartAlbumsPage } from './pages/SmartAlbumsPage'
+import { JournalIndexPage, JournalEditPage } from './pages/JournalPage'
 
 function Splash() {
   return (
@@ -89,15 +86,10 @@ export function App() {
           <Route path="folders/:folderId" element={<FolderPage />} />
           <Route path="search" element={<SearchRoute />} />
           <Route path="duplicates" element={<DuplicatesPage />} />
-          <Route path="bulk" element={<BulkOperationsPage />} />
-          <Route path="bulk/:id" element={<BulkOperationPage />} />
-          <Route path="smart-albums" element={<SmartAlbumsPage />} />
-          <Route path="smart-albums/:id" element={<SmartAlbumPage />} />
-          <Route path="playlists" element={<PlaylistsPage />} />
-          <Route path="playlists/:id" element={<PlaylistPage />} />
-          <Route path="diagnostics" element={<DiagnosticsPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="journal" element={<JournalIndexPage />} />
+          <Route path="journal/:id" element={<JournalEditPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

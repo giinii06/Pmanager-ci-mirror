@@ -11,10 +11,9 @@ import { PageHeading } from '../components/PageHeading'
 import { MetricPill, Section } from '../components/ui/Section'
 import { Spinner } from '../components/ui/Spinner'
 
-const FLAG_LABEL: Record<keyof DiagnosticsReportDTO['flags'], string> = {
+const FLAG_LABEL: Partial<Record<keyof DiagnosticsReportDTO['flags'], string>> = {
   fileMutation: '파일 삭제 엔진',
   hlsGenerations: 'HLS 세대',
-  bulkOperations: '일괄 작업',
   notifications: '알림',
   searchFts: '검색 FTS',
 }
@@ -48,7 +47,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 function downloadClass(): string {
-  return 'inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-line-strong bg-raised px-3 text-[13px] text-ink transition-colors hover:border-[#3a3f4b] hover:bg-[#242832]'
+  return 'inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-line-strong bg-raised px-3 text-[13px] text-ink transition-colors hover:border-line-strong hover:bg-panel-2'
 }
 
 function StateBadge({ label, ok }: { label: string; ok: boolean }) {
@@ -269,7 +268,7 @@ function SearchIndexPanel() {
   )
 }
 
-export function DiagnosticsPage() {
+export function DiagnosticsSection() {
   const queryClient = useQueryClient()
   const report = useQuery({
     queryKey: ['diagnostics'],
@@ -283,7 +282,7 @@ export function DiagnosticsPage() {
   })
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain px-6 pb-24">
+    <section id="diagnostics" className="mt-8 scroll-mt-6">
       <PageHeading
         title="진단"
         meta="서버, 데이터베이스, 워커, 큐, 저장 공간, 캐시 상태를 한 번에 확인합니다."
@@ -515,12 +514,12 @@ export function DiagnosticsPage() {
             </div>
             <dl className="px-4 pb-3">
               {(Object.keys(FLAG_LABEL) as Array<keyof DiagnosticsReportDTO['flags']>).map((flag) => (
-                <Row key={flag} label={FLAG_LABEL[flag]} value={report.data.flags[flag] ? '켜짐' : '꺼짐'} />
+                <Row key={flag} label={FLAG_LABEL[flag] ?? flag} value={report.data.flags[flag] ? '켜짐' : '꺼짐'} />
               ))}
             </dl>
           </Section>
         </>
       )}
-    </div>
+    </section>
   )
 }

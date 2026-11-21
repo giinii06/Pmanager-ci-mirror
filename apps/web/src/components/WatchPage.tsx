@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Download,
   Info,
-  ListPlus,
   Plus,
   Share2,
   Shuffle,
@@ -22,6 +21,7 @@ import { extensionOf, type AssetDTO, type SubtitleTrackDTO } from '@mediavault/s
 import { api } from '../lib/api'
 import { invalidateVoteCaches, patchAssetInCaches, removeAssetFromCaches } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
+import { monitorBackgroundDelete } from '../lib/backgroundDelete'
 import {
   formatBytes,
   formatCount,
@@ -32,7 +32,6 @@ import {
 } from '../lib/format'
 import { randomToken } from '../lib/random'
 import { useUi } from '../store/ui'
-import { AddToPlaylistDialog } from './AddToPlaylistDialog'
 import { BookmarkDialog } from './BookmarkDialog'
 import { PosterDialog } from './PosterDialog'
 import { Dialog } from './ui/Dialog'
@@ -94,7 +93,6 @@ export function WatchPage({
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [bookmarkOpen, setBookmarkOpen] = useState(false)
   const [posterOpen, setPosterOpen] = useState(false)
-  const [playlistOpen, setPlaylistOpen] = useState(false)
   const copyTimer = useRef<number | null>(null)
   const descriptionRef = useRef<HTMLDivElement>(null)
 
@@ -147,31 +145,40 @@ export function WatchPage({
 
   const destroyAsset = useMutation({
     mutationFn: async () => {
-      const created = await api.createDeleteOperation(asset.id, deleteKeyRef.current)
-      let current = created
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        if (current.state === 'completed') return current
-        if (current.state === 'blocked' || current.state === 'cancelled_pre_commit') {
-          throw new Error('삭제를 진행할 수 없습니다. 라이브러리 상태를 확인해 주세요.')
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 500))
-        current = await api.getFileOperation(created.id)
+      const assetId = asset.id
+      const operation = await api.createDeleteOperation(assetId, deleteKeyRef.current)
+      if (operation.state === 'blocked' || operation.state === 'cancelled_pre_commit') {
+        throw new Error('삭제를 진행할 수 없습니다. 라이브러리 상태를 확인해 주세요.')
       }
-      return current
+      return { assetId, operation }
     },
-    onSuccess: () => {
+    onSuccess: ({ assetId, operation }) => {
+      // The server has durably queued the delete; don't hold the UI until the
+      // worker quarantines, commits and purges the original file.
       setDeleteOpen(false)
-      removeAssetFromCaches(queryClient, asset.id)
-      toast('동영상을 영구 삭제했습니다.')
+      removeAssetFromCaches(queryClient, assetId)
+      toast('동영상을 목록에서 제거했습니다. 파일은 백그라운드에서 영구 삭제 중입니다.', 'success')
+
+      if (operation.state === 'completed') return
+      void monitorBackgroundDelete(
+        () => api.getFileOperation(operation.id).then((status) => status.state),
+        (ms) => new Promise<void>((resolve) => window.setTimeout(resolve, ms)),
+      ).then((outcome) => {
+        if (outcome !== 'failed') return
+        // A blocked pre-commit delete may restore its asset tombstone.
+        toast('백그라운드 영구 삭제가 실패했습니다. 라이브러리 상태를 확인해 주세요.', 'error')
+        void queryClient.invalidateQueries({ queryKey: ['assets'] })
+        void queryClient.invalidateQueries({ queryKey: ['stats'] })
+        void queryClient.invalidateQueries({ queryKey: ['folders'] })
+      })
     },
     onError: (err) =>
-      toast(err instanceof Error ? err.message : '영구 삭제하지 못했습니다.', 'error'),
+      toast(err instanceof Error ? err.message : '삭제 요청을 접수하지 못했습니다.', 'error'),
   })
 
   useEffect(() => {
     setDeleteOpen(false)
     setBookmarkOpen(false)
-    setPlaylistOpen(false)
     setTagInput('')
   }, [asset.id])
 
@@ -368,16 +375,6 @@ export function WatchPage({
 
               <button
                 type="button"
-                onClick={() => setPlaylistOpen(true)}
-                title="이 영상을 재생목록에 담습니다."
-                className={PILL}
-              >
-                <ListPlus size={16} />
-                재생목록
-              </button>
-
-              <button
-                type="button"
                 onClick={onToggleShuffle}
                 aria-pressed={shuffle}
                 title="Shuffle 모드 전환"
@@ -513,7 +510,7 @@ export function WatchPage({
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         title="동영상을 영구 삭제할까요?"
-        description="이 작업은 되돌릴 수 없습니다. 원본 동영상 파일과 모든 관련 기록이 완전히 삭제됩니다."
+        description="요청이 접수되면 목록에서 즉시 제거되고, 서버가 원본 파일과 관련 데이터를 백그라운드에서 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다."
         footer={
           <>
             <Button onClick={() => setDeleteOpen(false)}>취소</Button>
@@ -522,7 +519,7 @@ export function WatchPage({
               disabled={destroyAsset.isPending}
               onClick={() => destroyAsset.mutate()}
             >
-              {destroyAsset.isPending ? '삭제 중...' : '영구 삭제'}
+              {destroyAsset.isPending ? '삭제 요청 중...' : '영구 삭제'}
             </Button>
           </>
         }
@@ -545,12 +542,6 @@ export function WatchPage({
         onClose={() => setPosterOpen(false)}
         asset={asset}
         videoRef={videoRef}
-      />
-
-      <AddToPlaylistDialog
-        open={playlistOpen}
-        onClose={() => setPlaylistOpen(false)}
-        asset={asset}
       />
     </div>
   )

@@ -54,7 +54,6 @@ function neighborScope(filter: AssetQuery): AssetQuery {
   if (filter.folderId) scope.folderId = filter.folderId
   if (filter.kind) scope.kind = filter.kind
   if (filter.tagId) scope.tagId = filter.tagId
-  if (filter.albumId) scope.albumId = filter.albumId
   if (filter.sort) scope.sort = filter.sort
   if (filter.seed !== undefined) scope.seed = filter.seed
   if (filter.q) scope.q = filter.q

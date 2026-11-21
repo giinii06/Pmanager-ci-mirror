@@ -15,7 +15,6 @@ import {
 } from '@mediavault/database'
 import { StructuredLogger } from '@mediavault/media'
 import type { WorkerConfig } from './config'
-import { runBulkLoop } from './bulk/worker'
 import { createDiskPolicy } from './disk-policy'
 import { executeJob } from './handlers'
 import { classifyJobError } from './job-errors'
@@ -65,12 +64,6 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
     : runMutationLoop(db, config, logger, mutationController.signal).catch((error) => {
         logger.error('worker.mutation_loop.crashed', { errorMessage: (error as Error).message })
       })
-  const bulkController = new AbortController()
-  const bulkLoop = config.once
-    ? null
-    : runBulkLoop(db, config, logger, bulkController.signal).catch((error) => {
-        logger.error('worker.bulk_loop.crashed', { errorMessage: (error as Error).message })
-      })
   const alertController = new AbortController()
   const alertLoop = config.once
     ? null
@@ -83,7 +76,6 @@ export async function runWorker(db: Db, config: WorkerConfig): Promise<void> {
     stopping = true
     activeController?.abort('shutdown')
     mutationController.abort('shutdown')
-    bulkController.abort('shutdown')
     alertController.abort('shutdown')
     heartbeat.stop()
   }

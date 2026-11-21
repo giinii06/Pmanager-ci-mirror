@@ -43,6 +43,8 @@ MediaVault는 Windows 11 호스트(WSL2 Ubuntu 24.04 + 네이티브 Docker Engin
 - `v25` — `notifications`/`notification_delivery_attempts`, `diagnostics_runs`, `worker_heartbeats`(Docker가 `worker_id`를 재사용하므로 부팅마다 새 `instance_id`), `cache_cleanup_runs`, 그리고 `jobs.request_id` + 부분 인덱스.
 - `v26` — `search_index_builds`/`search_index_active`. 색인을 만든 출처(`bootstrap`/`operator`/`boot-repair`), 검증 시각, 자산·구간 워터마크를 행으로 남기고, 활성 포인터가 `ready` 행만 가리키도록 네 개 트리거가 강제합니다. FTS5 외부 콘텐츠 테이블(`asset_search`, `segment_search`)과 동기화 트리거는 스키마가 아니라 `configureSearchFts()`가 만듭니다.
 
+이전 버전의 `smart_albums`, `playlists`, `playlist_items`, `bulk_operations`, `bulk_operation_items` 테이블은 데이터 보호와 마이그레이션 연속성을 위해 보존합니다. **현재는 대응 페이지, API 라우트 및 일괄 작업 워커가 제거되어 사용되지 않습니다.**
+
 ## 3. 호스트 드라이브 노출 구조
 
 `compose.yaml`은 기존 `/media` 및 `/media/extra`를 보존한 채 호스트의 Windows 드라이브를 `/media/drives/c`, `/media/drives/d`, `/media/drives/e`로 마운트합니다. 기본 샘플 미디어 경로와 분리되므로 기존 라이브러리 ID(`npgghj7vxgn4`, `extra/d`)와 데이터가 그대로 유지됩니다.

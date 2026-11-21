@@ -70,6 +70,23 @@ afterEach(() => {
 })
 
 describe('viewer navigation', () => {
+  test('reopening a video without a timestamp discards the previous explicit timestamp', () => {
+    useViewer.getState().open([asset('a')], 0, 54_000)
+    expect(useViewer.getState().startMs).toBe(54_000)
+    useViewer.getState().close()
+    useViewer.getState().open([asset('a')], 0)
+    expect(useViewer.getState().startMs).toBeNull()
+  })
+
+  test('sequential navigation clears an explicit seek timestamp', async () => {
+    useViewer.getState().open([asset('a')], 0, { startMs: 54_000, filter: { kind: 'video' } })
+    useViewer.getState().next()
+    pending[0]!.resolve({ asset: asset('b') })
+    await flush()
+    expect(useViewer.getState().items[useViewer.getState().index]?.id).toBe('b')
+    expect(useViewer.getState().startMs).toBeNull()
+  })
+
   test('fetches the next asset from the server at the end of the loaded list', async () => {
     useViewer.getState().open([asset('a'), asset('b')], 1, { filter: { kind: 'video' } })
     useViewer.getState().next()

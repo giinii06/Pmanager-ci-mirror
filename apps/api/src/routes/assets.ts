@@ -39,7 +39,7 @@ import {
   resolveInside,
 } from '@mediavault/media'
 import { readAssetPage } from '../asset-page'
-import { applyAlbum, assetFilterQuery, toAssetFilter } from '../asset-filter'
+import { assetFilterQuery, toAssetFilter } from '../asset-filter'
 import type { AppContext } from '../context'
 import { toAssetDTO, toEmbeddingJobDTO, toFileOperationDTO, toPlaybackDTO, toReviewDTO } from '../dto'
 import { enqueueEmbedding } from '../embedding-trigger'
@@ -67,7 +67,6 @@ const randomBody = z.object({
   kind: z.enum(['image', 'video']).optional(),
   tagId: z.string().max(64).optional(),
   q: z.string().max(200).optional(),
-  albumId: z.string().max(64).optional(),
   currentAssetId: z.string().min(1).max(64).optional(),
   recentIds: z.array(z.string().min(1).max(64)).max(50).optional(),
   seed: z.number().int().min(0).max(2_147_483_647).optional(),
@@ -119,7 +118,6 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     if (!query) return
 
     const filter = toAssetFilter(query)
-    if (!applyAlbum(ctx, query.albumId, filter, request.user!.id, reply)) return
 
     const page = readAssetPage(ctx.db, filter, query.cursor ?? null, query.limit ?? DEFAULT_PAGE_SIZE)
     if (page.kind === 'invalid_cursor') {
@@ -164,7 +162,6 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     const query = parseInput(idsQuery, request.query, reply)
     if (!query) return
     const filter = toAssetFilter(query)
-    if (!applyAlbum(ctx, query.albumId, filter, request.user!.id, reply)) return
     reply.send({ ids: listMatchingAssetIds(ctx.db, filter, query.limit ?? 10_000) })
   })
 
@@ -177,7 +174,6 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     if (body.kind) filter.kind = body.kind
     if (body.tagId) filter.tagId = body.tagId
     if (body.q) filter.query = body.q
-    if (!applyAlbum(ctx, body.albumId, filter, request.user!.id, reply)) return
     const asset = pickRandomAsset(ctx.db, filter, {
       currentAssetId: body.currentAssetId ?? null,
       recentIds: body.recentIds ?? [],
@@ -207,7 +203,6 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     const query = parseInput(neighborQuery, request.query, reply)
     if (!query) return
     const filter = toAssetFilter(query)
-    if (!applyAlbum(ctx, query.albumId, filter, request.user!.id, reply)) return
     const result = getAssetNeighbor(ctx.db, params.id, filter, query.direction)
     if (result.kind === 'missing') {
       reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })

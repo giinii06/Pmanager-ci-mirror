@@ -104,10 +104,10 @@ describe('schema v26 search index builds', () => {
   test('a fresh database has both tables and the four triggers', () => {
     const db = openDatabase(':memory:')
 
-    expect(SCHEMA_VERSION).toBe(26)
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(26)
     expect(
       db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version,
-    ).toBe(26)
+    ).toBe(SCHEMA_VERSION)
 
     const tables = db
       .query<{ name: string }, []>(
