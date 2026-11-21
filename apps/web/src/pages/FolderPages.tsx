@@ -93,7 +93,7 @@ export function FoldersPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
-  const [sort, setSort] = useState<FolderSort>('views')
+  const [sort, setSort] = useState<FolderSort>('date')
   const scrollRef = useRef<HTMLDivElement>(null)
   const { attach: attachHeader, height: headerHeight } = useMeasuredElement<HTMLDivElement>()
   const [widthRef, width] = useElementWidth<HTMLDivElement>()
