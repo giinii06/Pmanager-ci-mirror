@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, BookOpenText, CalendarDays, Check, FileText, Loader2, Menu, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, BookOpenText, CalendarDays, Check, Loader2, Menu, Plus, Trash2 } from 'lucide-react'
 import type { AuthStatusDTO, JournalEntryDTO, JournalMentionDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { JournalSaveCoordinator, journalDraftKey, type JournalDraftStore, type JournalSaveStatus } from '../lib/journalDraft'
@@ -9,6 +9,7 @@ import { cn } from '../lib/cn'
 import { useUi } from '../store/ui'
 import { useViewer } from '../store/viewer'
 import { JournalEditor } from '../components/JournalEditor'
+import { JournalTable } from '../components/JournalTable'
 import { Button } from '../components/ui/Button'
 import { Dialog } from '../components/ui/Dialog'
 import { LoadingBlock } from '../components/ui/Spinner'
@@ -19,15 +20,6 @@ function pageDate(timestamp: string): string {
     month: 'long',
     day: 'numeric',
     weekday: 'long',
-  }).format(new Date(timestamp))
-}
-
-function shortDate(timestamp: string): string {
-  return new Intl.DateTimeFormat('ko-KR', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   }).format(new Date(timestamp))
 }
 
@@ -65,6 +57,9 @@ export function JournalIndexPage() {
     },
     onError: () => toast('일지를 생성하지 못했습니다.', 'error'),
   })
+  const createPage = () => {
+    if (!create.isPending) create.mutate()
+  }
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain bg-canvas">
@@ -75,55 +70,31 @@ export function JournalIndexPage() {
             <BookOpenText size={17} className="text-accent" />
             <span className="text-[13px] font-semibold text-ink">일지</span>
           </div>
-          <Button onClick={() => create.mutate()} disabled={create.isPending}>
+          <Button onClick={createPage} disabled={create.isPending}>
             <Plus size={15} /> 새 일지
           </Button>
         </header>
-        <div className="w-full flex-1 px-[min(7vw,100px)] py-12">
-          <p className="mb-2 text-[12px] font-medium tracking-widest text-faint">MY JOURNAL</p>
-          <h1 className="text-[clamp(30px,4vw,48px)] font-bold tracking-tight text-ink">나의 일지</h1>
-          <p className="mt-3 text-[14px] text-muted">기록한 날짜와 함께 생각을 모아두세요. 새 페이지의 날짜는 만드는 순간 정해집니다.</p>
+        <main className="w-full flex-1 px-5 pb-20 pt-10 sm:px-10 sm:pt-14 lg:px-[min(7vw,100px)]">
+          <h1 className="text-[clamp(30px,4vw,46px)] font-bold tracking-tight text-ink">나의 일지</h1>
+          <p className="mt-2 text-[13px] text-muted">생각을 페이지로 기록하고, 언제든 다시 열어보세요.</p>
           {list.isPending ? (
             <LoadingBlock />
           ) : list.isError ? (
-            <p className="mt-12 text-danger">일지 목록을 불러오지 못했습니다.</p>
-          ) : entries.length === 0 ? (
-            <div className="mt-14 flex flex-col items-start gap-5 rounded-2xl border border-dashed border-line p-9">
-              <FileText size={26} className="text-faint" />
-              <div>
-                <p className="font-semibold text-ink">아직 작성한 일지가 없어요.</p>
-                <p className="mt-1 text-[13px] text-muted">+ 버튼으로 첫 페이지를 만들어 보세요.</p>
-              </div>
-              <Button onClick={() => create.mutate()} disabled={create.isPending}><Plus size={15} /> 첫 일지 만들기</Button>
+            <div role="alert" className="mt-10 flex items-center gap-4 text-[13px] text-danger">
+              <span>일지 목록을 불러오지 못했습니다.</span>
+              <Button onClick={() => { void list.refetch() }}>다시 시도</Button>
             </div>
           ) : (
-            <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {entries.map((entry) => (
-                <button
-                  type="button"
-                  key={entry.id}
-                  onClick={() => navigate('/journal/' + entry.id)}
-                  className="group min-h-36 rounded-2xl border border-line bg-panel p-5 text-left transition-colors hover:border-line-strong hover:bg-panel-2"
-                >
-                  <span className="flex items-center gap-1.5 text-[12px] text-faint">
-                    <CalendarDays size={13} /> {pageDate(entry.createdAt)}
-                  </span>
-                  <span className="mt-5 block truncate text-[17px] font-semibold text-ink">
-                    {entry.title || '제목 없음'}
-                  </span>
-                  <span className="mt-2 block text-[11px] text-faint">수정 {shortDate(entry.updatedAt)}</span>
-                </button>
-              ))}
-            </div>
+            <JournalTable entries={entries} creating={create.isPending} onCreate={createPage} />
           )}
           {list.hasNextPage ? (
-            <div className="mt-8 flex justify-center">
+            <div className="mt-7 flex justify-center">
               <Button disabled={list.isFetchingNextPage} onClick={() => { void list.fetchNextPage() }}>
                 {list.isFetchingNextPage ? '불러오는 중…' : '이전 일지 더 보기'}
               </Button>
             </div>
           ) : null}
-        </div>
+        </main>
       </div>
     </div>
   )
