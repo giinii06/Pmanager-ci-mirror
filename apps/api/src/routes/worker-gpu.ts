@@ -64,12 +64,13 @@ function leaseCapability(secret: string, resourceId: string, signed: string): st
  * even for another process that knows the same worker API token and owner name.
  */
 export function registerWorkerGpuRoutes(app: FastifyInstance, ctx: AppContext): void {
-  const workers: Array<{ kind: WorkerKind; token: string }> = [
+  const configuredWorkers: Array<{ kind: WorkerKind; token: string }> = [
     { kind: 'asr', token: ctx.config.asr.workerToken },
     { kind: 'translation', token: ctx.config.translation.workerToken },
     { kind: 'embedding', token: ctx.config.embedding.workerToken },
     { kind: 'scene', token: ctx.config.scene.workerToken },
-  ].filter((worker) => worker.token.length >= 16)
+  ]
+  const workers = configuredWorkers.filter((worker) => worker.token.length >= 16)
   if (workers.length === 0) return
 
   const authorizedKinds = new WeakMap<FastifyRequest, WorkerKind>()
