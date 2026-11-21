@@ -4,6 +4,8 @@ stages:
   - verify
 
 default:
+  tags:
+    - oracle-arm64
   before_script:
     - bun install --frozen-lockfile
 
