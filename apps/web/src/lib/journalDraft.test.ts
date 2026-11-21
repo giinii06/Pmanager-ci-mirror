@@ -90,11 +90,11 @@ describe('journal durable editing', () => {
     })
     model.edit({ title: 'Offline change', body: 'Keep me' })
     expect(await model.save()).toBe(false)
-    expect(status).toBe('error')
+    expect(status as JournalSaveStatus).toBe('error')
     expect(readJournalDraft(storage, key)?.body).toBe('Keep me')
     fail = false
     expect(await model.save()).toBe(true)
-    expect(status).toBe('saved')
+    expect(status as JournalSaveStatus).toBe('saved')
     expect(readJournalDraft(storage, key)).toBeNull()
   })
 
@@ -114,7 +114,7 @@ describe('journal durable editing', () => {
     model.edit({ title: 'My draft', body: 'Important' })
     expect(await model.save()).toBe(false)
     expect(model.isConflicted).toBe(true)
-    expect(status).toBe('conflict')
+    expect(status as JournalSaveStatus).toBe('conflict')
     expect(await model.save()).toBe(false)
     expect(sent).toBe(1)
     const afterReload = new JournalSaveCoordinator({
