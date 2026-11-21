@@ -275,11 +275,17 @@ export function workQueue(
     )
     .all(ITEM_LIMIT)
 
+  // GPU owner: "kind:job-owner:base64url-hmac". Exclude the final colon
+  // and 43-character signature for an exact logical-owner comparison.
+  // Avoid LIKE: worker IDs can contain '%' or '_' and ':'.
   const asr = db
     .query<RawItem, Params>(
       `SELECT j.id, 'asr' AS kind, j.asset_id AS assetId, a.filename AS assetName,
               j.state, j.stage, j.progress,
-              CASE WHEN g.owner = j.lease_owner THEN 1 ELSE 0 END AS onGpu,
+              CASE WHEN g.owner = j.lease_owner
+                    OR (g.task_kind = 'asr'
+                        AND substr(g.owner, 1, length(g.owner) - 44) = 'asr:' || j.lease_owner)
+                  THEN 1 ELSE 0 END AS onGpu,
               j.started_at AS startedAt, j.updated_at AS updatedAt,
               j.lease_expires_at AS leaseExpiresAt, j.error_message AS errorMessage,
               NULL AS errorCode
@@ -295,7 +301,10 @@ export function workQueue(
     .query<RawItem, Params>(
       `SELECT j.id, 'translation' AS kind, j.asset_id AS assetId, a.filename AS assetName,
               j.state, j.stage, j.progress,
-              CASE WHEN g.owner = j.lease_owner THEN 1 ELSE 0 END AS onGpu,
+              CASE WHEN g.owner = j.lease_owner
+                    OR (g.task_kind = 'translation'
+                        AND substr(g.owner, 1, length(g.owner) - 44) = 'translation:' || j.lease_owner)
+                  THEN 1 ELSE 0 END AS onGpu,
               j.started_at AS startedAt, j.updated_at AS updatedAt,
               j.lease_expires_at AS leaseExpiresAt, j.error_message AS errorMessage,
               NULL AS errorCode
@@ -311,7 +320,10 @@ export function workQueue(
     .query<RawItem, Params>(
       `SELECT j.id, 'embedding' AS kind, j.asset_id AS assetId, a.filename AS assetName,
               j.state, j.stage, j.progress,
-              CASE WHEN g.owner = j.lease_owner THEN 1 ELSE 0 END AS onGpu,
+              CASE WHEN g.owner = j.lease_owner
+                    OR (g.task_kind = 'embedding'
+                        AND substr(g.owner, 1, length(g.owner) - 44) = 'embedding:' || j.lease_owner)
+                  THEN 1 ELSE 0 END AS onGpu,
               j.started_at AS startedAt, j.updated_at AS updatedAt,
               j.lease_expires_at AS leaseExpiresAt, j.error_message AS errorMessage,
               NULL AS errorCode
@@ -327,7 +339,10 @@ export function workQueue(
     .query<RawItem, Params>(
       `SELECT j.id, 'scene' AS kind, j.asset_id AS assetId, a.filename AS assetName,
               j.state, j.stage, j.progress,
-              CASE WHEN g.owner = j.lease_owner THEN 1 ELSE 0 END AS onGpu,
+              CASE WHEN g.owner = j.lease_owner
+                    OR (g.task_kind = 'scene'
+                        AND substr(g.owner, 1, length(g.owner) - 44) = 'scene:' || j.lease_owner)
+                  THEN 1 ELSE 0 END AS onGpu,
               j.started_at AS startedAt, j.updated_at AS updatedAt,
               j.lease_expires_at AS leaseExpiresAt, j.error_message AS errorMessage,
               NULL AS errorCode,
