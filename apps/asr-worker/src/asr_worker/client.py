@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import logging
 import time
 import urllib.error
@@ -24,6 +25,7 @@ class WorkerClient:
         self.token = token
         self.timeout = timeout
         self.attempts = attempts
+        self._gpu_lease_tokens: dict[str, str] = {}
 
     def _post(
         self,
@@ -108,15 +110,41 @@ class WorkerClient:
         )
 
     def gpu_acquire(self, owner: str, task_kind: str, lease_ms: int) -> bool:
+        # A new nonce for each acquisition; the HTTP retry loop reuses it.
         payload = self._post(
             "/worker/gpu/acquire",
-            {"owner": owner, "taskKind": task_kind, "leaseMs": lease_ms},
+            {
+                "owner": owner,
+                "taskKind": task_kind,
+                "leaseMs": lease_ms,
+                "acquisitionId": secrets.token_urlsafe(24),
+            },
         )
-        return bool(payload.get("acquired"))
+        if not payload.get("acquired"):
+            return False
+        lease_token = payload.get("leaseToken")
+        if not isinstance(lease_token, str) or len(lease_token) != 43:
+            raise FatalError("GPU lease response has no valid capability.")
+        self._gpu_lease_tokens[owner] = lease_token
+        return True
 
     def gpu_heartbeat(self, owner: str, *, timeout: float | None = None) -> None:
         """One attempt on the caller's deadline: a retry can outlive the lease."""
-        self._post("/worker/gpu/heartbeat", {"owner": owner}, timeout=timeout, attempts=1)
+        lease_token = self._gpu_lease_tokens.get(owner)
+        if lease_token is None:
+            raise LeaseLost("GPU lease has no local capability.")
+        self._post(
+            "/worker/gpu/heartbeat",
+            {"owner": owner, "leaseToken": lease_token},
+            timeout=timeout,
+            attempts=1,
+        )
 
     def gpu_release(self, owner: str) -> None:
-        self._post("/worker/gpu/release", {"owner": owner})
+        lease_token = self._gpu_lease_tokens.get(owner)
+        if lease_token is None:
+            return
+        try:
+            self._post("/worker/gpu/release", {"owner": owner, "leaseToken": lease_token})
+        finally:
+            self._gpu_lease_tokens.pop(owner, None)
