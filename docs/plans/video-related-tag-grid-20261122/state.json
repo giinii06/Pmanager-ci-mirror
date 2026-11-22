@@ -4,23 +4,85 @@
     "project": "blond11qq/Pmanager",
     "base_sha": "5b73bbd1e62fea239161f46a70c066f4cbcb5005",
     "branch": "feature/video-related-tag-grid-20261122",
-    "ci_config_path": ".gitlab/ci-hub-request.yml@blond11qq/ci-hub-smoke"
+    "ci_config_path": ".gitlab/ci-hub-request.yml@blond11qq/ci-hub-smoke",
+    "code_candidate_sha": "e4244a438f6b66128623bd12afb1cd3ad18021a0",
+    "ci_pipeline_id": 3098912891,
+    "docs_only_head_not_tested": true
   },
   "phases": [
     {
       "id": "01-ui",
-      "state": "not_started",
-      "implemented_sha": null,
+      "state": "blocked",
+      "implemented_sha": "e4244a438f6b66128623bd12afb1cd3ad18021a0",
       "verified_sha": null,
-      "evidence": []
+      "evidence": [
+        {
+          "level": "code_commit",
+          "sha": "e4244a438f6b66128623bd12afb1cd3ad18021a0",
+          "verified": false
+        },
+        {
+          "level": "test_authored",
+          "file": "apps/web/src/lib/videoTagLayout.test.ts",
+          "executed": false
+        },
+        {
+          "level": "dispatch",
+          "sha": "e4244a438f6b66128623bd12afb1cd3ad18021a0",
+          "pipeline_id": 3098912891,
+          "status": "success",
+          "jobs_verified": false
+        },
+        {
+          "level": "provider_result",
+          "sha": "e4244a438f6b66128623bd12afb1cd3ad18021a0",
+          "pipeline_id": 3098912891,
+          "status": "pending",
+          "provider_run": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44986700558",
+          "jobs_verified": false
+        }
+      ],
+      "blocked_reason": "No observed Bun tests/typecheck/Vite build, provider jobs, RED/GREEN or browser E2E; dispatch success is not passing CI.",
+      "review_report": {
+        "sha": "e4244a438f6b66128623bd12afb1cd3ad18021a0",
+        "type": "two_lens_self_review",
+        "file": "docs/plans/video-related-tag-grid-20261122/review.md",
+        "independent": false
+      }
     },
     {
       "id": "02-verification",
       "state": "not_started",
       "implemented_sha": null,
       "verified_sha": null,
-      "evidence": []
+      "evidence": [],
+      "blocked_by": "01-ui exact-SHA runnable provider results and UI E2E"
     }
   ],
-  "transitions": []
+  "transitions": [
+    {
+      "phase": "01-ui",
+      "from": "not_started",
+      "to": "in_progress",
+      "at": "2026-11-22",
+      "sha": "f57d607c3185c6d83a6d1971b0d2f2c0bad18803",
+      "reason": "Plan committed and code work begun"
+    },
+    {
+      "phase": "01-ui",
+      "from": "in_progress",
+      "to": "implemented",
+      "at": "2026-11-22",
+      "sha": "e4244a438f6b66128623bd12afb1cd3ad18021a0",
+      "reason": "UI implementation and behavioral test source committed"
+    },
+    {
+      "phase": "01-ui",
+      "from": "implemented",
+      "to": "blocked",
+      "at": "2026-11-22",
+      "sha": "e4244a438f6b66128623bd12afb1cd3ad18021a0",
+      "reason": "Verification evidence missing after dispatch-only pipeline"
+    }
+  ]
 }

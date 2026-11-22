@@ -15,3 +15,9 @@ Effective CI: `.gitlab/ci-hub-request.yml@blond11qq/ci-hub-smoke` (GitLab dispat
 - [Phase 02](./phase-02-verification.md): run pinned-SHA validation and inspect both user flows, plus two-lens code review.
 - Never merge/deploy or change runner/mirror/CI configuration without separate authorization. UI-only rollback: revert the feature commit(s).
 - CI claims: dispatch, provider callback, actual jobs, and browser E2E are separate. A missing Bun executor or downstream logs leave the phase blocked.
+
+## Implementation checkpoint — 2026-11-22
+- Source candidate SHA: `e4244a438f6b66128623bd12afb1cd3ad18021a0`. Related thumbnail size doubled and video-tag justified overview implemented; media route and photo tags retained.
+- New layout tests authored but NOT executed. No local Bun executor, typecheck/build or browser E2E proof.
+- [GitLab pipeline 3098912891](https://gitlab.com/blond11qq/Pmanager/-/pipelines/3098912891): dispatch success only. External provider run observed as PENDING, actual job logs unknown.
+- [Two-lens self-review](./review.md) at candidate SHA; both phases blocked/unverified. No merge/deployment.
