@@ -56,18 +56,18 @@ function statusLabel(status: JournalProperties['status']): string {
 }
 
 export function JournalBlockEditor({ entryId, initialBody, onChange, onBlurSave }: Props) {
-  const [document] = useState(() => parseJournalDocument(initialBody))
-  const [blocks, setBlocks] = useState(document.blocks.length ? document.blocks : [makeBlock()])
-  const [props, setProps] = useState<JournalProperties>(document.properties ?? JOURNAL_DEFAULT_PROPERTIES)
+  const [initialDocument] = useState<JournalBlockDocument>(() => {
+    const parsed = parseJournalDocument(initialBody)
+    return { ...parsed, blocks: parsed.blocks.length > 0 ? parsed.blocks : [makeBlock()] }
+  })
+  const [blocks, setBlocks] = useState(initialDocument.blocks)
+  const [props, setProps] = useState<JournalProperties>(initialDocument.properties ?? JOURNAL_DEFAULT_PROPERTIES)
   const [tagInput, setTagInput] = useState('')
   const [uploading, setUploading] = useState(false)
   const [slashFor, setSlashFor] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const dragId = useRef<string | null>(null)
-  const latest = useRef<JournalBlockDocument>({
-    version: 1, properties: document.properties,
-    blocks: document.blocks.length ? document.blocks : [makeBlock()],
-  })
+  const latest = useRef<JournalBlockDocument>(initialDocument)
   const toast = useUi((state) => state.toast)
 
   const commit = (transform: (prev: JournalBlockDocument) => JournalBlockDocument) => {

@@ -369,6 +369,10 @@ function JournalDocument({ entry, userId }: { entry: JournalEntryDTO; userId: st
               <button type="button" className="rounded-lg bg-accent/15 px-3 py-2 text-[12px] font-semibold text-accent hover:bg-accent/25"
                 onClick={() => {
                   const upgraded = serializeJournalDocument(parseJournalDocument(body))
+                  if (upgraded.length > 100_000) {
+                    toast('기존 일지가 블록 문서 크기 제한을 초과합니다.', 'error')
+                    return
+                  }
                   editBody(upgraded)
                   setBlockMode(true)
                   setEditorEpoch((value) => value + 1)
