@@ -18,5 +18,13 @@
 - Dynamic random selection must never rewrite pinned_cover_asset_id or rename Docker volumes/DB.
 - Sparse or large album lists should not create a per-card query; cap SQL placeholders at 400.
 
-## Status
-Planned only. RED, pre-commit Bun commands, provider job details and actual browser E2E not observed yet.
+## Execution evidence / blocker
+- Tests-first commit: `a1b8b4929586210d38e89c6e0438ccaa928e5323`; test-only RED behavior was **not executed**, no verified TDD RED result.
+- User-visible code: `ce087d7c10833f91fa29454391ea48367b01d99c`, followed by tag-overview re-entry fix at **candidate code SHA `dc355768bd517f237ee3e57ee4e87586e55e2e93`**.
+- API and DB: `listTags` now samples a new eligible cover on query and sums matching media views/votes; `GET /api/folders` applies batch-limited, read-only random cover overrides. The persisted album pin and legacy endpoint remain unchanged.
+- Frontend: five tag overview sort buttons in the supplied order, default seeded random; per-mount/refocus navigation overview seed; photo viewer pin button plus no-longer-used frontend helper and tests removed.
+- SQL dry-run with isolated in-memory Python `sqlite3`: correlated sums and randomized window-cover query produced valid eligible results. This is **not** full Bun application testing.
+- Build / typecheck / Bun tests / browser E2E: **not executed in this session** (no Bun checkout/executable or production browser).
+- Effective GitLab CI config dispatches GitHub Actions. Pipeline **3099032604** at exact candidate SHA reported GitHub Actions **failed** via provider status, run https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44992687882 . No job logs or checkout evidence available; root cause unproven. GitLab dispatcher itself succeeded.
+- **Blocked/unverified.** Never infer code defect from external callback alone. No merge, deployment or remote settings changes.
+

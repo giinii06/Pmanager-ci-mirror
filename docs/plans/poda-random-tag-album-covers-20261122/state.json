@@ -10,15 +10,39 @@
     {
       "id": "01",
       "name": "tag overview order and ephemeral cover behavior",
-      "state": "not_started",
-      "implemented": false,
+      "state": "implemented",
+      "implemented": true,
       "tested": false,
       "verified": false,
       "completed": false,
       "verified_code_sha": null,
-      "review_report": null,
-      "ci_evidence": null
+      "review_report": "docs/plans/poda-random-tag-album-covers-20261122/review.md",
+      "ci_evidence": {
+        "pipeline_id": 3099032604,
+        "candidate_sha": "dc355768bd517f237ee3e57ee4e87586e55e2e93",
+        "dispatch": "success",
+        "provider_result": "failed",
+        "provider_run_url": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44992687882",
+        "jobs_verified": false,
+        "e2e_verified": false,
+        "root_cause": "unknown (no accessible job logs)"
+      },
+      "candidate_code_sha": "dc355768bd517f237ee3e57ee4e87586e55e2e93",
+      "blocker": "Failed GitHub Actions provider callback; exact jobs/logs inaccessible. Bun tests and live browser E2E not executed."
     }
   ],
-  "transitions": []
+  "transitions": [
+    {
+      "phase": "01",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "Approved implementation plan committed and feature tests authored; RED unverified due missing local Bun executor"
+    },
+    {
+      "phase": "01",
+      "from": "in_progress",
+      "to": "implemented",
+      "reason": "Code and tests written; CI failed and not treated as verified"
+    }
+  ]
 }
