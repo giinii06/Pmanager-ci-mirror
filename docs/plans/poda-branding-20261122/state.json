@@ -1,0 +1,23 @@
+{
+  "gate_version": "2.2",
+  "target": {
+    "project": "blond11qq/Pmanager",
+    "base_sha": "1b93de4a6441bedca36dc1787a5190c48a76afcc",
+    "branch": "feature/poda-branding-20261122"
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "poda branding",
+      "state": "not_started",
+      "implemented": false,
+      "tested": false,
+      "verified": false,
+      "completed": false,
+      "verified_code_sha": null,
+      "ci_evidence": null,
+      "review_report": null
+    }
+  ],
+  "transitions": []
+}
