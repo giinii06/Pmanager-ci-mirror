@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Aperture } from 'lucide-react'
+import { BrandMark } from '../components/BrandMark'
 import type { AuthStatusDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { Button } from '../components/ui/Button'
@@ -22,9 +22,7 @@ function AuthShell({
       <div className="pointer-events-none absolute left-1/2 top-[-200px] h-[440px] w-[760px] -translate-x-1/2 rounded-full bg-accent/10 blur-[130px]" />
       <div className="animate-rise relative w-full max-w-[450px] rounded-[28px] border border-line bg-panel px-7 py-9 shadow-[var(--ui-elevation-hover)] sm:px-10 sm:py-11">
         <div className="mb-9 flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-[var(--ui-on-accent)]">
-            <Aperture size={23} />
-          </span>
+          <BrandMark size={44} />
           <span className="text-[17px] font-bold tracking-tight">MediaVault</span>
         </div>
         <h1 className="text-[30px] font-bold leading-tight tracking-tight text-ink">{title}</h1>

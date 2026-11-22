@@ -2,10 +2,11 @@ import { useEffect, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Aperture, BookOpenText, Film, Images, Loader2,
+  BookOpenText, Film, Images, Loader2,
   PanelLeftOpen, Plus, Settings2, Tag, X,
 } from 'lucide-react'
 import { api } from '../lib/api'
+import { BrandMark } from './BrandMark'
 import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
 import { useUi } from '../store/ui'
@@ -111,9 +112,7 @@ export function Sidebar({ peek = false }: { peek?: boolean }) {
           aria-label="MediaVault 홈"
           className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-accent"
         >
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent text-[var(--ui-on-accent)] shadow-sm">
-            <Aperture size={23} strokeWidth={1.9} />
-          </span>
+          <BrandMark size={44} />
           <span className={cn('min-w-0 flex-1', collapsed && 'md:hidden')}>
             <span className="block truncate text-[16px] font-bold tracking-tight text-ink">MediaVault</span>
             <span className="block truncate text-[11px] text-faint">나만의 미디어 공간</span>
