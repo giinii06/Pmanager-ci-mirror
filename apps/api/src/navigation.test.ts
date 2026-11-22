@@ -200,6 +200,16 @@ describe('navigation API', () => {
     expect(secondPage.items.every((item) => !firstPage.items.some((firstItem) => firstItem.id === item.id)))
       .toBe(true)
 
+    // A Korean filename is found even by a single Korean syllable.
+    h.db.query('UPDATE assets SET filename = ? WHERE id = ?').run('부산여행.mp4', 'v000005')
+    expect((await get('산')).json().total).toBe(1)
+
+    // LIKE metacharacters in actual names are treated literally, not as patterns.
+    h.db.query('UPDATE assets SET filename = ? WHERE id = ?').run('sea_100%.mp4', 'v000004')
+    expect((await get('_')).json().total).toBe(1)
+    expect((await get('%')).json().total).toBe(1)
+    expect((await get('seaX100')).json().total).toBe(0)
+
     h.db.query('UPDATE assets SET deleted_at = ? WHERE id = ?').run(9_000, 'v000001')
     expect((await get('clip-1')).json().total).toBe(0)
 

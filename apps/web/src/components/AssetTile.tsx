@@ -11,6 +11,7 @@ interface AssetTileProps {
   width: number
   height: number
   priority?: boolean
+  showFilename?: boolean
   onOpen: () => void
   onVote?: () => void
   voteDisabled?: boolean
@@ -24,6 +25,7 @@ export function AssetTile({
   width,
   height,
   priority = false,
+  showFilename = false,
   onOpen,
   onVote,
   voteDisabled = false,
@@ -108,7 +110,10 @@ export function AssetTile({
           </>
         ) : null}
 
-        <span className="absolute bottom-2 right-2 max-w-[65%] truncate rounded-md bg-black/55 px-1.5 py-0.5 text-[10.5px] text-white/75 opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+        <span className={cn(
+            'absolute bottom-2 right-2 max-w-[65%] truncate rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] text-white/95 backdrop-blur-sm transition-opacity duration-200',
+            showFilename ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+          )}>
           {asset.filename}
         </span>
       </div>

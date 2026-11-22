@@ -24,6 +24,7 @@ export function SearchPage({ query }: { query: string }) {
     <AssetGallery
       title={'“' + name + '” 검색 결과'}
       filters={{ q: name, sort: 'latest' }}
+      showFilenames
       emptyTitle="일치하는 파일이 없습니다"
       emptyBody="다른 파일 이름이나 더 짧은 단어로 검색해 보세요."
       emptyIcon={<Search size={20} />}

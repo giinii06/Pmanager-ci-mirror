@@ -22,6 +22,7 @@ interface JustifiedGridProps {
   onOpen: (index: number) => void
   empty: ReactNode
   groupByMonth?: boolean
+  showFilenames?: boolean
   selection?: { ids: Set<string>; onToggle: (id: string) => void }
 }
 
@@ -38,6 +39,7 @@ export function JustifiedGrid({
   onOpen,
   empty,
   groupByMonth,
+  showFilenames = false,
   selection,
 }: JustifiedGridProps) {
   const [widthRef, width] = useElementWidth<HTMLDivElement>()
@@ -127,6 +129,7 @@ export function JustifiedGrid({
                             : undefined
                         }
                         voteDisabled={vote.isPending}
+                        showFilename={showFilenames}
                         selectionMode={selection !== undefined}
                         selected={selection?.ids.has(placed.item.id) ?? false}
                         onSelect={() => selection?.onToggle(placed.item.id)}

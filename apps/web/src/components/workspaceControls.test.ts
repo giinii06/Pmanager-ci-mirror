@@ -63,6 +63,7 @@ describe('clean workspace controls', () => {
     const search = file('../pages/SearchPage.tsx')
     const topbar = file('./Topbar.tsx')
     expect(search).toContain('<AssetGallery')
+    expect(search).toContain('showFilenames')
     expect(search).toContain("filters={{ q: name, sort: 'latest' }}")
     expect(search).not.toContain('semanticSearch')
     expect(search).not.toContain('SemanticHitDTO')
