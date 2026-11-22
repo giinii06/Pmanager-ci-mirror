@@ -135,14 +135,20 @@ function TagsPage({ kind }: { kind: AssetKind }) {
   const [sort, setSort] = useState<VideoSort>('random')
   const sessionSeed = useRef(createSessionSeed())
   const [tagSort, setTagSort] = useState<FolderSort>('random')
-  const tagOverviewSeed = useRef(createSessionSeed())
+  const [tagOverviewSeed, setTagOverviewSeed] = useState(createSessionSeed)
+  const previousTagId = useRef(tagId)
+  useEffect(() => {
+    // React Router can reuse TagsPage while navigating into and back out of a tag.
+    if (previousTagId.current && !tagId) setTagOverviewSeed(createSessionSeed())
+    previousTagId.current = tagId
+  }, [tagId])
   const [newTagName, setNewTagName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
 
   // New cache key per overview visit; a tag's cover changes when the view is reopened.
   const tagsQuery = useQuery({
-    queryKey: ['tags', kind, 'overview', tagOverviewSeed.current],
+    queryKey: ['tags', kind, 'overview', tagOverviewSeed],
     queryFn: () => api.tags(kind),
   })
 
@@ -179,8 +185,8 @@ function TagsPage({ kind }: { kind: AssetKind }) {
   })
 
   const tags = useMemo(
-    () => sortTagSummaries(tagsQuery.data?.tags ?? [], tagSort, tagOverviewSeed.current),
-    [tagsQuery.data?.tags, tagSort],
+    () => sortTagSummaries(tagsQuery.data?.tags ?? [], tagSort, tagOverviewSeed),
+    [tagsQuery.data?.tags, tagSort, tagOverviewSeed],
   )
   const selectedTag = tagId ? tags.find((t) => t.id === tagId) : undefined
 
