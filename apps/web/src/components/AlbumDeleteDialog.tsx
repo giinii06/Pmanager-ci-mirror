@@ -1,11 +1,9 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { FolderDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { randomToken } from '../lib/random'
 import { useUi } from '../store/ui'
-import { Button } from './ui/Button'
-import { Dialog } from './ui/Dialog'
 
 type AlbumStatus = Awaited<ReturnType<typeof api.albumDeleteStatus>>
 
@@ -37,6 +35,7 @@ export function AlbumDeleteDialog({
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
   const requestKeys = useRef(new Map<string, string>())
+  const startedFor = useRef<string | null>(null)
   const deletion = useMutation({
     mutationFn: (selected: FolderDTO) => {
       const key = requestKeys.current.get(selected.id) ?? randomToken()
@@ -72,36 +71,21 @@ export function AlbumDeleteDialog({
       for (const [key, data] of context?.snapshots ?? []) {
         queryClient.setQueryData(key, data)
       }
+      onClose()
       toast(error instanceof Error ? error.message : `'${selected.name}' 앨범 삭제를 접수하지 못했습니다.`, 'error')
     },
   })
 
-  return (
-    <Dialog
-      open={Boolean(folder)}
-      onClose={onClose}
-      title="앨범의 사진을 영구 삭제할까요?"
-      description="목록에서 먼저 숨긴 뒤 원본 사진 파일을 서버가 순차적으로 영구 삭제합니다. 되돌릴 수 없습니다."
-      footer={
-        <>
-          <Button onClick={onClose} disabled={deletion.isPending}>취소</Button>
-          <Button
-            variant="danger"
-            disabled={!folder || deletion.isPending}
-            onClick={() => { if (folder) deletion.mutate(folder) }}
-          >
-            {deletion.isPending ? '삭제 접수 중...' : '사진 영구 삭제'}
-          </Button>
-        </>
-      }
-    >
-      <p className="text-[13px] text-ink">
-        <strong>{folder?.name ?? ''}</strong> 앨범에서 직접 포함된 사진
-        <strong> {folder?.directImageCount ?? 0}장</strong>을 삭제합니다.
-      </p>
-      <p className="mt-2 text-[12px] text-muted">
-        하위 폴더, 하위 앨범 사진, 동영상 및 다른 파일은 삭제하지 않습니다.
-      </p>
-    </Dialog>
-  )
+  useEffect(() => {
+    if (!folder) {
+      startedFor.current = null
+      return
+    }
+    if (startedFor.current === folder.id) return
+    startedFor.current = folder.id
+    deletion.mutate(folder)
+  }, [folder, deletion.mutate])
+
+  // The caller selects the album on the first click; the deletion is enqueued immediately.
+  return null
 }

@@ -32,8 +32,7 @@ import {
 import { randomToken } from '../lib/random'
 import { assetUrl } from '../lib/mediaRoutes'
 import { useUi } from '../store/ui'
-import { PosterDialog } from './PosterDialog'
-import { Dialog } from './ui/Dialog'
+import { posterPositionMs } from '../lib/posterFrame'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { RelatedVideos } from './RelatedVideos'
@@ -93,8 +92,6 @@ export function WatchPage({
   const toast = useUi((state) => state.toast)
   const [copied, setCopied] = useState(false)
   const [tagInput, setTagInput] = useState('')
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [posterOpen, setPosterOpen] = useState(false)
   const copyTimer = useRef<number | null>(null)
   const descriptionRef = useRef<HTMLDivElement>(null)
 
@@ -140,6 +137,25 @@ export function WatchPage({
     onError: () => toast('태그를 제거하지 못했습니다.', 'error'),
   })
 
+  const capturePoster = useMutation({
+    mutationFn: () => {
+      const player = videoRef.current
+      if (!player) throw new Error('동영상 플레이어를 불러오지 못했습니다.')
+      const durationSeconds = Number.isFinite(player.duration) && player.duration > 0
+        ? player.duration
+        : (asset.durationMs ?? 0) / 1000
+      const position = posterPositionMs(player.currentTime, durationSeconds)
+      if (position === null) throw new Error('재생 위치를 확인할 수 없습니다.')
+      return api.captureThumbnail(asset.id, position)
+    },
+    onSuccess: ({ asset: updated }) => {
+      patchAssetInCaches(queryClient, updated)
+      void queryClient.invalidateQueries({ queryKey: ['tags'] })
+      toast('현재 재생 장면을 포스터로 저장했습니다.', 'success')
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : '포스터를 저장하지 못했습니다.', 'error'),
+  })
+
   const deleteKeyRef = useRef(`${asset.id}:${randomToken()}`)
   useEffect(() => {
     deleteKeyRef.current = `${asset.id}:${randomToken()}`
@@ -157,8 +173,8 @@ export function WatchPage({
     onSuccess: ({ assetId, operation }) => {
       // The server has durably queued the delete; don't hold the UI until the
       // worker quarantines, commits and purges the original file.
-      setDeleteOpen(false)
       removeAssetFromCaches(queryClient, assetId)
+      onClose()
       toast('동영상을 목록에서 제거했습니다. 파일은 백그라운드에서 영구 삭제 중입니다.', 'success')
 
       if (operation.state === 'completed') return
@@ -179,7 +195,6 @@ export function WatchPage({
   })
 
   useEffect(() => {
-    setDeleteOpen(false)
     setTagInput('')
   }, [asset.id])
 
@@ -327,8 +342,9 @@ export function WatchPage({
 
               <button
                 type="button"
-                onClick={() => setPosterOpen(true)}
-                title="타임라인에서 포스터로 사용할 프레임을 고릅니다."
+                onClick={() => capturePoster.mutate()}
+                disabled={capturePoster.isPending}
+                title="현재 재생 장면을 바로 포스터로 저장합니다."
                 className={PILL}
               >
                 <Camera size={16} />
@@ -382,7 +398,8 @@ export function WatchPage({
 
               <button
                 type="button"
-                onClick={() => setDeleteOpen(true)}
+                onClick={() => destroyAsset.mutate()}
+                disabled={destroyAsset.isPending}
                 className={cn(PILL, 'bg-danger/15 text-danger hover:bg-danger/25')}
               >
                 <Trash2 size={16} />
@@ -502,37 +519,6 @@ export function WatchPage({
         </div>
       </div>
 
-      <Dialog
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        title="동영상을 영구 삭제할까요?"
-        description="요청이 접수되면 목록에서 즉시 제거되고, 서버가 원본 파일과 관련 데이터를 백그라운드에서 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다."
-        footer={
-          <>
-            <Button onClick={() => setDeleteOpen(false)}>취소</Button>
-            <Button
-              variant="danger"
-              disabled={destroyAsset.isPending}
-              onClick={() => destroyAsset.mutate()}
-            >
-              {destroyAsset.isPending ? '삭제 요청 중...' : '영구 삭제'}
-            </Button>
-          </>
-        }
-      >
-        <p className="text-[13px] text-muted">
-          <span className="font-medium text-ink">{asset.filename}</span> 파일과 썸네일, 자막, 태그,
-          조회수, 누적 재생 시간, Vote 기록이 영구적으로 제거됩니다.
-        </p>
-      </Dialog>
-
-
-      <PosterDialog
-        open={posterOpen}
-        onClose={() => setPosterOpen(false)}
-        asset={asset}
-        videoRef={videoRef}
-      />
     </div>
   )
 }
