@@ -1,0 +1,31 @@
+{
+  "gate_version": "2.2",
+  "branch": "feature/photo-tags-album-delete",
+  "base_sha": "cafecaa5a06fdcbae4f2b98ad0a3ff1d2548b361",
+  "phases": [
+    {
+      "id": "01",
+      "state": "not_started"
+    },
+    {
+      "id": "02",
+      "state": "not_started"
+    },
+    {
+      "id": "03",
+      "state": "not_started"
+    },
+    {
+      "id": "04",
+      "state": "not_started"
+    }
+  ],
+  "history": [],
+  "ci": {
+    "provider": "github_actions_bridge",
+    "dispatch": "unknown",
+    "provider_result": "unknown",
+    "jobs_verified": false,
+    "e2e_verified": false
+  }
+}
