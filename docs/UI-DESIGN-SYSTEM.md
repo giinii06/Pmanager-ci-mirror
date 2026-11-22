@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Give the Pmanager web UI a unified, legible, slightly softer visual hierarchy without changing media rendering, server data, actions or the established four appearance presets.
+Give the poda web UI a unified, legible, slightly softer visual hierarchy without changing media rendering, server data, actions or the established four appearance presets.
 
 ## Design decisions
 

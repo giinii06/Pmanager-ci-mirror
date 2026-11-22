@@ -1,4 +1,10 @@
-# MediaVault
+# poda
+
+![poda 로고](apps/web/public/poda-icon.png)
+
+**poda**는 개인 사진·영상 라이브러리입니다. 기존 MediaVault/Pmanager 이름은 과거 기록과 호환성 식별자에서만 유지됩니다.
+
+> **기존 설치 호환성:** `MEDIAVAULT_*` 환경 변수, `@mediavault/*` 워크스페이스 패키지, `mediavault-data` Docker 볼륨, `mediavault.themeMode` 사용자 설정과 SQLite 데이터 파일명은 기존 설치와의 호환성을 위해 유지합니다. 이 이름들을 일괄 변경하면 기존 볼륨 연결·세션·설정이 끊길 수 있습니다. GitLab 저장소 경로/원격 미러 주소는 별도의 저장소 설정 변경이 필요합니다.
 
 개인 사진·영상 라이브러리. 원본 폴더는 `api`·`worker`에서 영구 삭제와 `.rar` 추출/변환을 위해 쓰기 가능으로, `nginx`는 읽기 전용으로 마운트하며 SQLite 인덱스와
 썸네일 캐시만 따로 만들어 Apple Photos 스타일 갤러리로 보여준다.
@@ -161,7 +167,7 @@ GitLab 플러그인에서 이 프로젝트의 브랜치 또는 태그를 지정�
 
 ### CI 병렬 실행
 
-- Pmanager와 TDrive의 CI는 동시에 실행할 수 있습니다. 같은 프로젝트의 여러 푸시가 각각 실행을 시작하면 그 실행들도 겹칠 수 있습니다. 사용 가능한 러너가 모두 사용 중이면 실행은 대기열에 들어갑니다. [워크플로 동시 실행](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+- poda와 TDrive의 CI는 동시에 실행할 수 있습니다. 같은 프로젝트의 여러 푸시가 각각 실행을 시작하면 그 실행들도 겹칠 수 있습니다. 사용 가능한 러너가 모두 사용 중이면 실행은 대기열에 들어갑니다. [워크플로 동시 실행](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
 - 현재 공통 워크플로는 실행마다 `build` 작업 하나에서 Bun 타입 검사와 테스트를 순서대로 실행합니다. 한 실행 안에서 병렬로 처리하려면 `ci-hub`에서 독립 검사를 별도 `jobs`로 나눕니다. 같은 검사를 여러 버전이나 운영체제에서 실행하려면 `strategy.matrix`를 사용합니다. 선행 결과가 필요한 작업에는 `needs`를 지정합니다. [작업 의존성](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-jobs) · [매트릭스 실행](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations)
 
 ## 설정

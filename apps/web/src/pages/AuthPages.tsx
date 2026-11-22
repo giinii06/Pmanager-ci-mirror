@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Aperture } from 'lucide-react'
+import { BrandLogo } from '../components/BrandLogo'
 import type { AuthStatusDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { Button } from '../components/ui/Button'
@@ -22,10 +22,8 @@ function AuthShell({
       <div className="pointer-events-none absolute left-1/2 top-[-200px] h-[440px] w-[760px] -translate-x-1/2 rounded-full bg-accent/10 blur-[130px]" />
       <div className="animate-rise relative w-full max-w-[450px] rounded-[28px] border border-line bg-panel px-7 py-9 shadow-[var(--ui-elevation-hover)] sm:px-10 sm:py-11">
         <div className="mb-9 flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-[var(--ui-on-accent)]">
-            <Aperture size={23} />
-          </span>
-          <span className="text-[17px] font-bold tracking-tight">MediaVault</span>
+          <BrandLogo className="h-11 w-11" />
+          <span className="text-[17px] font-bold tracking-tight">poda</span>
         </div>
         <h1 className="text-[30px] font-bold leading-tight tracking-tight text-ink">{title}</h1>
         <p className="mt-2 text-[14px] leading-relaxed text-muted">{subtitle}</p>
@@ -84,7 +82,7 @@ export function SetupPage() {
 
   return (
     <AuthShell
-      title="MediaVault 시작하기"
+      title="poda 시작하기"
       subtitle="이 서버의 관리자 계정을 만듭니다. 사진과 영상은 원본 위치에 그대로 남습니다."
     >
       <form
@@ -160,7 +158,7 @@ export function LoginPage() {
   })
 
   return (
-    <AuthShell title="다시 오셨네요" subtitle="MediaVault에 로그인합니다.">
+    <AuthShell title="다시 오셨네요" subtitle="poda에 로그인합니다.">
       <form
         className="space-y-5"
         onSubmit={(event) => {

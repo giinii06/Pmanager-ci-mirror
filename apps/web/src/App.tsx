@@ -9,7 +9,7 @@ import {
   useParams,
 } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Aperture } from 'lucide-react'
+import { BrandLogo } from './components/BrandLogo'
 import { api } from './lib/api'
 import { AppShell } from './components/AppShell'
 import { useViewer } from './store/viewer'
@@ -28,10 +28,8 @@ function Splash() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5">
       <div className="flex items-center gap-2.5 text-ink">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/15 text-accent">
-          <Aperture size={19} />
-        </span>
-        <span className="text-[16px] font-semibold tracking-tight">MediaVault</span>
+        <BrandLogo className="h-9 w-9" />
+        <span className="text-[16px] font-semibold tracking-tight">poda</span>
       </div>
       <Spinner />
     </div>

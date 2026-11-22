@@ -1,6 +1,6 @@
-# HTTPS setup for Pmanager
+# HTTPS setup for poda
 
-Pmanager's public entrypoint is Caddy on TCP 443 (HTTP 80 redirects to HTTPS) in `compose.yaml`. nginx continues to serve authenticated X-Accel media internally, and remains host-loopback-only on 8080 for troubleshooting. The Fastify session cookie is `Secure` by default; access the site over HTTPS rather than the old HTTP port.
+poda's public entrypoint is Caddy on TCP 443 (HTTP 80 redirects to HTTPS) in `compose.yaml`. nginx continues to serve authenticated X-Accel media internally, and remains host-loopback-only on 8080 for troubleshooting. The Fastify session cookie is `Secure` by default; access the site over HTTPS rather than the old HTTP port.
 
 ## Publicly trusted domain
 1. Point a DNS A/AAAA record to the host and allow inbound TCP 80 and 443 to Caddy. Configure router/NAT/firewall rules yourself.
