@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from 'react'
-import { Check, ChevronDown, Code2, GripVertical, ImagePlus, Plus, Trash2, Type, UploadCloud } from 'lucide-react'
+import { Code2, GripVertical, ImagePlus, Plus, Trash2, Type, UploadCloud } from 'lucide-react'
 import {
   JOURNAL_DEFAULT_PROPERTIES, parseJournalDocument, serializeJournalDocument,
   type JournalBlock, type JournalBlockDocument, type JournalBlockKind, type JournalProperties,
@@ -99,7 +99,7 @@ export function JournalBlockEditor({ entryId, initialBody, onChange, onBlurSave 
       return { ...prev, blocks: next }
     })
     setSlashFor(null)
-    requestAnimationFrame(() => document.getElementById('journal-block-' + newBlock.id)?.focus())
+    requestAnimationFrame(() => window.document.getElementById('journal-block-' + newBlock.id)?.focus())
   }
 
   const removeBlock = (id: string) => {

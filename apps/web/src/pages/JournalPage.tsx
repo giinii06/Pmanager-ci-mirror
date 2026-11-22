@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, BookOpenText, CalendarDays, Check, Loader2, Menu, Plus, Trash2 } from 'lucide-react'
-import type { AuthStatusDTO, JournalEntryDTO, JournalMentionDTO } from '@mediavault/shared'
+import { isStructuredJournal, parseJournalDocument, serializeJournalDocument, type AuthStatusDTO, type JournalEntryDTO, type JournalMentionDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { JournalSaveCoordinator, journalDraftKey, type JournalDraftStore, type JournalSaveStatus } from '../lib/journalDraft'
 import { cn } from '../lib/cn'
@@ -10,7 +10,8 @@ import { useUi } from '../store/ui'
 import { useViewer } from '../store/viewer'
 import { assetUrl } from '../lib/mediaRoutes'
 import { JournalEditor } from '../components/JournalEditor'
-import { JournalTable } from '../components/JournalTable'
+import { JournalDatabaseView } from '../components/JournalDatabaseView'
+import { JournalBlockEditor } from '../components/JournalBlockEditor'
 import { Button } from '../components/ui/Button'
 import { Dialog } from '../components/ui/Dialog'
 import { LoadingBlock } from '../components/ui/Spinner'
@@ -86,7 +87,7 @@ export function JournalIndexPage() {
               <Button onClick={() => { void list.refetch() }}>다시 시도</Button>
             </div>
           ) : (
-            <JournalTable entries={entries} creating={create.isPending} onCreate={createPage} />
+            <JournalDatabaseView entries={entries} creating={create.isPending} onCreate={createPage} />
           )}
           {list.hasNextPage ? (
             <div className="mt-7 flex justify-center">
@@ -144,6 +145,7 @@ function JournalDocument({ entry, userId }: { entry: JournalEntryDTO; userId: st
   })
   const [title, setTitle] = useState(model.initial.title)
   const [body, setBody] = useState(model.initial.body)
+  const [blockMode, setBlockMode] = useState(() => !model.initial.body.trim() || isStructuredJournal(model.initial.body))
 
   useEffect(() => { setStatus(model.initialStatus) }, [model])
 
@@ -236,6 +238,7 @@ function JournalDocument({ entry, userId }: { entry: JournalEntryDTO; userId: st
       queryClient.setQueryData(['journal', 'entry', entry.id], latest)
       setTitle(latest.title)
       setBody(latest.body)
+      setBlockMode(!latest.body.trim() || isStructuredJournal(latest.body))
       setEditorEpoch((value) => value + 1)
     } catch {
       toast('서버의 최신 일지를 불러오지 못했습니다.', 'error')
@@ -351,14 +354,38 @@ function JournalDocument({ entry, userId }: { entry: JournalEntryDTO; userId: st
           className="w-full border-0 bg-transparent py-2 text-[clamp(32px,4.7vw,60px)] font-bold leading-tight tracking-tight text-ink outline-none placeholder:text-faint/65 focus:outline-none"
         />
         <div className="mb-10 mt-7 h-px w-full bg-line" />
-        <JournalEditor
-          key={entry.id + ':' + editorEpoch}
-          entryId={entry.id}
-          initialBody={body}
-          onChange={editBody}
-          onBlurSave={() => { void model.save() }}
-          onOpenMention={(mention) => { void openMention(mention) }}
-        />
+        {blockMode ? (
+          <JournalBlockEditor
+            key={entry.id + ':' + editorEpoch}
+            entryId={entry.id}
+            initialBody={body}
+            onChange={editBody}
+            onBlurSave={() => { void model.save() }}
+          />
+        ) : (
+          <>
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-panel-2 px-4 py-3">
+              <span className="text-[12px] text-muted">기존 텍스트 일지입니다. 블록 편집으로 전환해도 원문을 보존합니다.</span>
+              <button type="button" className="rounded-lg bg-accent/15 px-3 py-2 text-[12px] font-semibold text-accent hover:bg-accent/25"
+                onClick={() => {
+                  const upgraded = serializeJournalDocument(parseJournalDocument(body))
+                  editBody(upgraded)
+                  setBlockMode(true)
+                  setEditorEpoch((value) => value + 1)
+                }}>
+                블록 편집기로 전환
+              </button>
+            </div>
+            <JournalEditor
+              key={entry.id + ':' + editorEpoch}
+              entryId={entry.id}
+              initialBody={body}
+              onChange={editBody}
+              onBlurSave={() => { void model.save() }}
+              onOpenMention={(mention) => { void openMention(mention) }}
+            />
+          </>
+        )}
       </div>
 
       <Dialog
