@@ -50,7 +50,7 @@ describe('workspace visual system', () => {
     const duplicates = readFileSync(new URL('../../pages/DuplicatesPage.tsx', import.meta.url), 'utf8')
     expect(tile).toContain('fit="contain"')
     expect(folder).toContain('fit="contain"')
-    expect(search).toContain('object-contain')
+    expect(search).toContain('<AssetGallery')
     expect(duplicates).toContain('object-contain')
   })
 })

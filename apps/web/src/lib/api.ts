@@ -36,7 +36,6 @@ import type {
   SearchIndexGcPreviewDTO,
   SearchIndexStatusDTO,
   ReviewDTO,
-  SemanticSearchDTO,
   StatsDTO,
   StorageStatsDTO,
   SubtitleTracksDTO,
@@ -369,11 +368,6 @@ export const api = {
     const qs = params.toString()
     return request<HostBrowseResponseDTO>(`/api/fs/browse${qs ? `?${qs}` : ''}`)
   },
-
-  semanticSearch: (q: string, limit = 30) =>
-    request<SemanticSearchDTO>(
-      `/api/search/semantic?q=${encodeURIComponent(q)}&limit=${limit}`,
-    ),
 
   duplicateGroups: (opts?: {
     kind?: 'exact' | 'similar'

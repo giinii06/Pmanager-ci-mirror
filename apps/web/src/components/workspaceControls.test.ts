@@ -59,4 +59,15 @@ describe('clean workspace controls', () => {
     expect(photos).toContain("useState<FolderSort>('date')")
     expect((videos.match(/useState<VideoSort>\('latest'\)/g) ?? []).length).toBe(2)
   })
+  test('global search uses the paginated filename gallery and no semantic results', () => {
+    const search = file('../pages/SearchPage.tsx')
+    const topbar = file('./Topbar.tsx')
+    expect(search).toContain('<AssetGallery')
+    expect(search).toContain("filters={{ q: name, sort: 'latest' }}")
+    expect(search).not.toContain('semanticSearch')
+    expect(search).not.toContain('SemanticHitDTO')
+    expect(topbar).toContain('placeholder="파일 이름으로 검색"')
+    expect(topbar).toContain('if (trimmed.length >= 1)')
+  })
+
 })

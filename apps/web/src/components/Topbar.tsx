@@ -55,7 +55,7 @@ export function Topbar() {
 
   useEffect(() => {
     const trimmed = debounced.trim()
-    if (trimmed.length >= 2) {
+    if (trimmed.length >= 1) {
       const next = '/search?q=' + encodeURIComponent(trimmed)
       const current = location.pathname + location.search
       if (current !== next) navigate(next, { replace: location.pathname === '/search' })
@@ -93,7 +93,7 @@ export function Topbar() {
         <Search size={19} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faint" />
         <input
           ref={inputRef}
-          aria-label="미디어 검색"
+          aria-label="파일 이름 검색"
           value={value}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
@@ -106,7 +106,7 @@ export function Topbar() {
               if (location.pathname === '/search') navigate('/')
             }
           }}
-          placeholder="사진, 영상, 장면, 대사 검색"
+          placeholder="파일 이름으로 검색"
           className="h-11 w-full rounded-2xl border border-line bg-panel pl-11 pr-14 text-[14px] text-ink shadow-sm outline-none placeholder:text-faint transition-[border-color,box-shadow] hover:border-line-strong focus:border-accent/60 focus:ring-3 focus:ring-accent/10"
         />
         <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-lg border border-line bg-panel-2 px-2 py-1 text-[11px] font-medium text-faint sm:inline">

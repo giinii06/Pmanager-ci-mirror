@@ -153,10 +153,67 @@ async function createHarness() {
   const ctx: AppContext = { db, config, thumbnails: new Semaphore(1), previews: new Semaphore(1) }
   const app = await buildApp(ctx)
   const headers = { cookie: `${SESSION_COOKIE}=${createSession(db, 'u1', SECRET).token}` }
-  return { app, headers }
+  return { app, headers, db }
 }
 
 describe('navigation API', () => {
+  test('global search lists only matching filenames, supports paging and escapes wildcards', async () => {
+    const h = await createHarness()
+    const get = (q: string) => h.app.inject({
+      method: 'GET',
+      url: '/api/assets?q=' + encodeURIComponent(q),
+      headers: h.headers,
+    })
+
+    const movie = await get('clip-1')
+    expect(movie.statusCode).toBe(200)
+    expect((movie.json() as { total: number; items: Array<{ filename: string }> }).items.map((item) => item.filename))
+      .toEqual(['clip-1.mp4'])
+
+    const photo = await get('jpg')
+    expect((photo.json() as { total: number; items: Array<{ kind: string }> }).items.map((item) => item.kind))
+      .toEqual(['image'])
+
+    // One-character Korean/ASCII input is valid, and special LIKE characters are literal.
+    expect((await get('1')).json().total).toBe(1)
+    expect((await get('%')).json().total).toBe(0)
+    expect((await get('_')).json().total).toBe(0)
+    expect((await get('owner')).json().total).toBe(0)
+
+    const first = await h.app.inject({
+      method: 'GET',
+      url: '/api/assets?q=clip&limit=2',
+      headers: h.headers,
+    })
+    const firstPage = first.json() as { total: number; items: Array<{ id: string }>; nextCursor: string }
+    expect(firstPage.total).toBe(5)
+    expect(firstPage.items).toHaveLength(2)
+    expect(firstPage.nextCursor).toBeTruthy()
+
+    const second = await h.app.inject({
+      method: 'GET',
+      url: '/api/assets?q=clip&limit=2&cursor=' + encodeURIComponent(firstPage.nextCursor),
+      headers: h.headers,
+    })
+    const secondPage = second.json() as { items: Array<{ id: string }> }
+    expect(secondPage.items).toHaveLength(2)
+    expect(secondPage.items.every((item) => !firstPage.items.some((firstItem) => firstItem.id === item.id)))
+      .toBe(true)
+
+    h.db.query('UPDATE assets SET deleted_at = ? WHERE id = ?').run(9_000, 'v000001')
+    expect((await get('clip-1')).json().total).toBe(0)
+
+    const oldSemantic = await h.app.inject({
+      method: 'GET',
+      url: '/api/search/semantic?q=clip',
+      headers: h.headers,
+    })
+    expect(oldSemantic.statusCode).toBe(404)
+
+    const unauthorized = await h.app.inject({ method: 'GET', url: '/api/assets?q=clip' })
+    expect(unauthorized.statusCode).toBe(401)
+  })
+
   test('neighbor returns the adjacent asset in list order', async () => {
     const h = await createHarness()
     const list = await h.app.inject({

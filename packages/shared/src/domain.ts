@@ -794,32 +794,6 @@ export interface SceneDTO {
   thumbnailUrl: string | null
 }
 
-/** One result row of a semantic search, before the client groups it by asset. */
-export interface SemanticHitDTO {
-  kind: 'scene' | 'dialogue' | 'asset'
-  assetId: string
-  sceneId: string | null
-  startMs: number | null
-  endMs: number | null
-  score: number
-  source: SceneModality | 'dialogue' | 'title'
-  text: string
-  thumbnailUrl: string | null
-  asset: {
-    id: string
-    filename: string
-    kind: AssetKind
-    durationMs: number | null
-  }
-}
-
-export interface SemanticSearchDTO {
-  query: string
-  hits: SemanticHitDTO[]
-  /** False when the scene index could not be reached, so only text ranked. */
-  scenesSearched: boolean
-}
-
 export type FileOperationState =
   | 'requested'
   | 'validated'
