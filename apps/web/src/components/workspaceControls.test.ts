@@ -53,11 +53,11 @@ describe('clean workspace controls', () => {
     expect(player).toContain('hls.attachMedia(video)')
   })
 
-  test('photo and video galleries default to newest order', () => {
+  test('photo and video galleries default to random order', () => {
     const photos = file('../pages/FolderPages.tsx')
     const videos = file('../pages/GalleryPages.tsx')
-    expect(photos).toContain("useState<FolderSort>('date')")
-    expect((videos.match(/useState<VideoSort>\('latest'\)/g) ?? []).length).toBe(2)
+    expect(photos).toContain("useState<FolderSort>('random')")
+    expect((videos.match(/useState<VideoSort>\('random'\)/g) ?? []).length).toBe(2)
   })
   test('global search uses the paginated filename gallery and no semantic results', () => {
     const search = file('../pages/SearchPage.tsx')
