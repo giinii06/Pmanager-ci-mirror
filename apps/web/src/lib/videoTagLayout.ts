@@ -1,4 +1,4 @@
-import type { TagSummaryDTO } from '@mediavault/shared'
+import { GALLERY_VIDEO_TARGET_ROW_HEIGHT, type TagSummaryDTO } from '@mediavault/shared'
 import { buildGalleryEntries, type GalleryEntry } from './justified'
 
 export type VideoTagLayoutItem = TagSummaryDTO & {
@@ -19,7 +19,7 @@ export function buildVideoTagRows(
     height: tag.coverHeight,
     takenAt: tag.createdAt,
   }))
-  return buildGalleryEntries(covers, containerWidth, { gap: 8, targetHeight: 320 }).filter(
+  return buildGalleryEntries(covers, containerWidth, { gap: 8, targetHeight: GALLERY_VIDEO_TARGET_ROW_HEIGHT }).filter(
     (entry): entry is VideoTagRow => entry.kind === 'row',
   )
 }

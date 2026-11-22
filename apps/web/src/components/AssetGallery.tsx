@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router-dom'
-import type { AssetDTO, AssetQuery, Page } from '@mediavault/shared'
+import { GALLERY_VIDEO_TARGET_ROW_HEIGHT, type AssetDTO, type AssetQuery, type Page } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { formatCount } from '../lib/format'
 import { useViewer } from '../store/viewer'
@@ -123,7 +123,7 @@ export function AssetGallery({
             navigate(assetUrl(item.kind, item.id), { state: { background: location.pathname + location.search } })
           }}
           groupByMonth={groupByMonth}
-          targetHeight={filters.kind === 'video' ? 320 : undefined}
+          targetHeight={filters.kind === 'video' ? GALLERY_VIDEO_TARGET_ROW_HEIGHT : undefined}
           showFilenames={showFilenames}
           empty={
             hideEmpty ? null : (

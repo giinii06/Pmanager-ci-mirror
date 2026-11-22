@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { TagSummaryDTO } from '@mediavault/shared'
+import { GALLERY_VIDEO_TARGET_ROW_HEIGHT, type TagSummaryDTO } from '@mediavault/shared'
 import { buildVideoTagRows } from './videoTagLayout'
 
 function tag(id: string, width: number | null, height: number | null): TagSummaryDTO {
@@ -59,9 +59,9 @@ describe('video tag overview layout', () => {
   })
 
   test('keeps a single last cover at gallery target height rather than stretching', () => {
-    const rows = buildVideoTagRows([tag('solo', 1920, 1080)], 1100)
+    const rows = buildVideoTagRows([tag('solo', 720, 1280)], 1100)
     expect(rows).toHaveLength(1)
-    expect(rows[0]!.items[0]!.height).toBe(320)
-    expect(rows[0]!.items[0]!.width).toBeCloseTo((1920 / 1080) * 320, 1)
+    expect(rows[0]!.items[0]!.height).toBe(GALLERY_VIDEO_TARGET_ROW_HEIGHT)
+    expect(rows[0]!.items[0]!.width).toBeCloseTo((720 / 1280) * GALLERY_VIDEO_TARGET_ROW_HEIGHT, 1)
   })
 })
