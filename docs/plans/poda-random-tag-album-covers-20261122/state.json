@@ -1,0 +1,24 @@
+{
+  "gate_version": "2.2",
+  "target": {
+    "project": "blond11qq/Pmanager",
+    "branch": "feature/poda-branding-20261122",
+    "base_sha": "f07b05e2ec52bbb06c40cd7e839c8566c351547e",
+    "mr_iid": 19
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "tag overview order and ephemeral cover behavior",
+      "state": "not_started",
+      "implemented": false,
+      "tested": false,
+      "verified": false,
+      "completed": false,
+      "verified_code_sha": null,
+      "review_report": null,
+      "ci_evidence": null
+    }
+  ],
+  "transitions": []
+}
