@@ -13,6 +13,7 @@ import {
   Tag,
   Maximize2,
   Minimize2,
+  Share2,
   X,
   ZoomIn,
   ZoomOut,
@@ -24,6 +25,7 @@ import { formatBytes, formatCount, formatDate } from '../lib/format'
 import { useMeasuredElement } from '../lib/hooks'
 import { buildCoverActions, fitPage, groupViewerItems, pageAt, VIEWER_GAP } from '../lib/viewerPages'
 import { useUi } from '../store/ui'
+import { assetUrl } from '../lib/mediaRoutes'
 import { ImageSlot } from './ImageSlot'
 import { useImageFullscreen } from './useImageFullscreen'
 import { IconButton } from './ui/IconButton'
@@ -299,6 +301,11 @@ export function ImageViewer({
             >
               <Info size={17} />
             </IconButton>
+            <IconButton label="사진 링크 복사" onClick={() => {
+              void navigator.clipboard.writeText(window.location.origin + assetUrl('image', asset.id))
+                .then(() => toast('사진 링크를 복사했습니다.', 'success'))
+                .catch(() => toast('사진 링크를 복사할 수 없습니다.', 'error'))
+            }}><Share2 size={17} /></IconButton>
             <a
               href={`${asset.streamUrl}&download=1`}
               download={asset.filename}

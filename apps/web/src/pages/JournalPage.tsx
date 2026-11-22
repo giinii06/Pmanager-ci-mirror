@@ -8,6 +8,7 @@ import { JournalSaveCoordinator, journalDraftKey, type JournalDraftStore, type J
 import { cn } from '../lib/cn'
 import { useUi } from '../store/ui'
 import { useViewer } from '../store/viewer'
+import { assetUrl } from '../lib/mediaRoutes'
 import { JournalEditor } from '../components/JournalEditor'
 import { JournalTable } from '../components/JournalTable'
 import { Button } from '../components/ui/Button'
@@ -266,6 +267,7 @@ function JournalDocument({ entry, userId }: { entry: JournalEntryDTO; userId: st
     try {
       const asset = await api.asset(mention.id)
       useViewer.getState().open([asset], 0)
+      navigate(assetUrl(asset.kind, asset.id), { state: { background: window.location.pathname } })
     } catch {
       toast('동영상을 열지 못했습니다. 삭제되었을 수 있습니다.', 'error')
     }

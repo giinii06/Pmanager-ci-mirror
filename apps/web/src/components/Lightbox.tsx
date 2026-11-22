@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import type { SubtitleTrackDTO } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { useViewer } from '../store/viewer'
+import { assetUrl, isMediaPath } from '../lib/mediaRoutes'
 import { ImageViewer } from './ImageViewer'
 import { WatchPage } from './WatchPage'
 
 const NO_TRACKS: SubtitleTrackDTO[] = []
 
 export function Lightbox() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const items = useViewer((state) => state.items)
   const index = useViewer((state) => state.index)
   const startMs = useViewer((state) => state.startMs)
@@ -29,10 +33,32 @@ export function Lightbox() {
   const closeRef = useRef<HTMLButtonElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const watchScrollRef = useRef<HTMLDivElement>(null)
+  const lastAssetId = useRef<string | null>(null)
 
   const libraries = useQuery({ queryKey: ['libraries'], queryFn: api.libraries })
   const libraryName = libraries.data?.find((library) => library.id === asset?.libraryId)?.name
   const open = Boolean(asset)
+  const background = typeof (location.state as { background?: unknown } | null)?.background === 'string'
+    ? (location.state as { background: string }).background : null
+
+  const closeMedia = () => {
+    close()
+    if (isMediaPath(location.pathname)) {
+      const destination = background?.startsWith('/') && !background.startsWith('//')
+        ? background : (asset?.kind === 'video' ? '/videos' : '/')
+      navigate(destination, { replace: true })
+    }
+  }
+
+  useEffect(() => {
+    const previous = lastAssetId.current
+    lastAssetId.current = asset?.id ?? null
+    if (!asset || !previous || previous === asset.id || !isMediaPath(location.pathname)) return
+    // A browser POP already points at the selected ID; don't push a duplicate.
+    if (location.pathname === assetUrl(asset.kind, previous)) {
+      navigate(assetUrl(asset.kind, asset.id), { state: location.state })
+    }
+  }, [asset?.id])
 
   const subtitleTracks = useQuery({
     queryKey: ['subtitle-tracks', asset?.id],
@@ -79,7 +105,7 @@ export function Lightbox() {
           setBrowserFill(false)
           return
         }
-        close()
+        closeMedia()
       }
       else if (event.key === 'ArrowRight') next()
       else if (event.key === 'ArrowLeft') prev()
@@ -88,7 +114,7 @@ export function Lightbox() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [asset, browserFill, setBrowserFill, close, next, prev])
+  }, [asset, browserFill, setBrowserFill, closeMedia, next, prev])
 
   useEffect(() => {
     if (!open) return
@@ -122,7 +148,7 @@ export function Lightbox() {
               onNext={next}
               browserFill={browserFill}
               onBrowserFillChange={setBrowserFill}
-              onClose={close}
+              onClose={closeMedia}
               onSelectAsset={select}
               subtitleUrl={subtitleUrl}
               tracks={tracks}
@@ -148,7 +174,7 @@ export function Lightbox() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
             onMouseDown={(event) => {
-              if (event.target === event.currentTarget) close()
+              if (event.target === event.currentTarget) closeMedia()
             }}
           >
             <ImageViewer
@@ -157,7 +183,7 @@ export function Lightbox() {
               index={index}
               libraryName={libraryName}
               closeRef={closeRef}
-              onClose={close}
+              onClose={closeMedia}
               onSelect={select}
             />
           </motion.div>

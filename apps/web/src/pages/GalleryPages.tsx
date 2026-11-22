@@ -6,8 +6,6 @@ import { POSTER_SCHEME, type AssetKind, type VideoSort } from '@mediavault/share
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
-import { useUi } from '../store/ui'
-import { useViewer } from '../store/viewer'
 import { AssetGallery } from '../components/AssetGallery'
 import { EmptyState } from '../components/EmptyState'
 import { PageHeading } from '../components/PageHeading'
@@ -63,7 +61,7 @@ function createSessionSeed(): number {
 
 export function VideosPage() {
   const navigate = useNavigate()
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
   const [sort, setSort] = useState<VideoSort>('random')
   const sessionSeed = useRef(createSessionSeed())
   const sharedId = params.get('v')
@@ -72,30 +70,8 @@ export function VideosPage() {
   useEffect(() => {
     if (!sharedId || openedFor.current === sharedId) return
     openedFor.current = sharedId
-    setParams(
-      (current) => {
-        current.delete('v')
-        return current
-      },
-      { replace: true },
-    )
-    void api
-      .asset(sharedId)
-      .then((asset) => {
-        if (asset.kind === 'video') {
-          useViewer.getState().open([asset], 0, {
-            filter: {
-              kind: 'video',
-              sort,
-              ...((sort === 'rate' || sort === 'random') ? { seed: sessionSeed.current } : {}),
-            },
-          })
-        }
-      })
-      .catch(() => {
-        useUi.getState().toast('공유된 영상을 열 수 없습니다.', 'error')
-      })
-  }, [sharedId, setParams])
+    navigate('/videos/' + encodeURIComponent(sharedId), { replace: true })
+  }, [sharedId, navigate])
 
   const filters = {
     kind: 'video' as const,

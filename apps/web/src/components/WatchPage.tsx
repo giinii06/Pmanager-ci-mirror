@@ -31,6 +31,7 @@ import {
   formatWatchTime,
 } from '../lib/format'
 import { randomToken } from '../lib/random'
+import { assetUrl } from '../lib/mediaRoutes'
 import { useUi } from '../store/ui'
 import { BookmarkDialog } from './BookmarkDialog'
 import { PosterDialog } from './PosterDialog'
@@ -199,7 +200,7 @@ export function WatchPage({
   )
 
   const share = async () => {
-    const url = `${window.location.origin}/videos?v=${encodeURIComponent(asset.id)}`
+    const url = window.location.origin + assetUrl('video', asset.id)
     try {
       await navigator.clipboard.writeText(url)
       setCopied(true)
