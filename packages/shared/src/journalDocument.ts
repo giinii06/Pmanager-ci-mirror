@@ -27,7 +27,7 @@ export interface JournalBlockDocument {
   blocks: JournalBlock[]
 }
 
-export const JOURNAL_BLOCK_PREFIX = '@mediavault/journal-blocks/v1\\n'.replace('\\n', '\n')
+export const JOURNAL_BLOCK_PREFIX = '@mediavault/journal-blocks/v1\n'
 export const JOURNAL_DEFAULT_PROPERTIES: JournalProperties = {
   status: 'Not started', tags: [], dueDate: null, icon: '📄', favorite: false,
 }
@@ -42,7 +42,7 @@ function properties(value: unknown): JournalProperties {
   return {
     status: raw.status === 'In progress' || raw.status === 'Done' ? raw.status : 'Not started',
     tags: Array.isArray(raw.tags) ? raw.tags.filter((t): t is string => typeof t === 'string').map((t) => t.slice(0, 48)).slice(0, 24) : [],
-    dueDate: typeof raw.dueDate === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(raw.dueDate) ? raw.dueDate : null,
+    dueDate: typeof raw.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.dueDate) ? raw.dueDate : null,
     icon: typeof raw.icon === 'string' ? raw.icon.slice(0, 8) : '📄',
     favorite: raw.favorite === true,
   }
@@ -61,7 +61,7 @@ export function parseJournalDocument(body: string): JournalBlockDocument {
           .map((b: Record<string, unknown>, index) => ({
             id: typeof b.id === 'string' && /^[a-z0-9_-]{1,64}$/i.test(b.id) ? b.id : 'block_' + index,
             type: BLOCK_TYPES.has(b.type as JournalBlockKind) ? b.type as JournalBlockKind : 'paragraph',
-            text: typeof b.text === 'string' ? b.text.slice(0, 8000) : '',
+            text: typeof b.text === 'string' ? b.text.slice(0, 100_000) : '',
             checked: b.checked === true,
             imageId: typeof b.imageId === 'string' && /^[a-z0-9_-]{1,64}$/i.test(b.imageId) ? b.imageId : undefined,
             caption: typeof b.caption === 'string' ? b.caption.slice(0, 256) : undefined,

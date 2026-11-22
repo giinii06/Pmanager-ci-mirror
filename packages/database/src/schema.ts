@@ -1150,14 +1150,14 @@ CREATE TABLE IF NOT EXISTS album_delete_items (
 CREATE INDEX IF NOT EXISTS idx_album_delete_mutation ON album_delete_items(mutation_id);
 `
 
-// Binary attachments live under /data/journal-images; the ACL is this row's owner.
+// Journal images are stored in SQLite so VACUUM backups include the original bytes.
 export const V30_JOURNAL_IMAGES_SQL = `
 CREATE TABLE IF NOT EXISTS journal_images (
   id TEXT PRIMARY KEY,
   entry_id TEXT NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   mime_type TEXT NOT NULL,
-  extension TEXT NOT NULL,
+  payload BLOB NOT NULL,
   size_bytes INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );

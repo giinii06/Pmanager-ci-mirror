@@ -249,6 +249,10 @@ export const api = {
     }),
   deleteJournalEntry: (id: string) =>
     request<void>(`/api/journal/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  uploadJournalImage: (entryId: string, file: File) =>
+    request<{ id: string; url: string }>(`/api/journal/${encodeURIComponent(entryId)}/images`, {
+      method: 'POST', body: file, headers: { 'content-type': file.type },
+    }),
   journalMentions: (q: string) =>
     request<{ items: JournalMentionDTO[] }>(`/api/journal/mentions?q=${encodeURIComponent(q)}`),
 
