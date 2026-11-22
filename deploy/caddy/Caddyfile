@@ -1,0 +1,7 @@
+# Set MEDIAVAULT_TLS_HOST to the DNS name or LAN IP used in the browser.
+# Real public domains receive ACME certificates when DNS and ports 80/443 work.
+# Localhost/LAN IPs use Caddy's internal CA and require explicit trust on each client.
+{$MEDIAVAULT_TLS_HOST:localhost} {
+    encode zstd gzip
+    reverse_proxy nginx:8080
+}

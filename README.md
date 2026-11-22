@@ -48,11 +48,11 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-브라우저에서 <http://127.0.0.1:8080> 을 열고 첫 계정을 만든 뒤,
+브라우저에서 <https://localhost> 를 열고 첫 계정을 만든 뒤,
 **설정 → 라이브러리 추가**에서 `Photos`, `Videos` 같은 하위 폴더를 등록한다.
 등록하면 스캔이 큐에 들어가고, 끝나면 갤러리에 나타난다.
 
-> 포트가 이미 사용 중이면 `.env`의 `MEDIAVAULT_PORT`를 바꾼다. Compose는 항상
+> nginx 진단 포트가 이미 사용 중이면 `.env`의 `MEDIAVAULT_PORT`를 바꾼다. Compose는 항상
 > `127.0.0.1`에만 바인딩한다. Windows 호스트에서 LAN으로 접속하려면
 > `scripts/windows`의 감독 스크립트가 등록하는 `netsh portproxy`가 필요하고,
 > 그때 방화벽 규칙도 함께 만들어진다.

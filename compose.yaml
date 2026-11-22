@@ -10,7 +10,7 @@ services:
       TZ: ${TZ:-Asia/Seoul}
       MEDIA_ACCEL: nginx
       AUTH_SECRET: ${AUTH_SECRET:-}
-      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      COOKIE_SECURE: ${COOKIE_SECURE:-1}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
       SCAN_INTERVAL_MINUTES: ${SCAN_INTERVAL_MINUTES:-15}
@@ -80,6 +80,22 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
 
+  # TLS is terminated at Caddy; nginx remains the private X-Accel media gateway.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${MEDIAVAULT_HTTPS_BIND:-0.0.0.0}:${MEDIAVAULT_HTTP_PORT:-80}:80"
+      - "${MEDIAVAULT_HTTPS_BIND:-0.0.0.0}:${MEDIAVAULT_HTTPS_PORT:-443}:443"
+    environment:
+      MEDIAVAULT_TLS_HOST: ${MEDIAVAULT_TLS_HOST:-localhost}
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - mediavault-caddy-data:/data
+      - mediavault-caddy-config:/config
+    depends_on:
+      - nginx
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
@@ -103,3 +119,5 @@ services:
 volumes:
   mediavault-data:
   mediavault-cache:
+  mediavault-caddy-data:
+  mediavault-caddy-config:

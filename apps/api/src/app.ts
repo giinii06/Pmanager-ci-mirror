@@ -96,7 +96,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
     reply.header('X-Frame-Options', 'SAMEORIGIN')
     reply.header('Referrer-Policy', 'same-origin')
     reply.header('X-Request-Id', request.id)
-    if (ctx.config.secureCookies) {
+    if (ctx.config.secureCookies && request.protocol === 'https') {
       reply.header('Strict-Transport-Security', 'max-age=31536000')
     }
     if (reply.statusCode >= 400 && typeof payload === 'string' && payload.startsWith('{')) {
