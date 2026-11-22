@@ -6,7 +6,6 @@ import { POSTER_SCHEME, type AssetKind, type VideoSort } from '@mediavault/share
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
-import { clampedCoverAspectRatio } from '../lib/folderLayout'
 import { useUi } from '../store/ui'
 import { AssetGallery } from '../components/AssetGallery'
 import { EmptyState } from '../components/EmptyState'
@@ -324,7 +323,8 @@ function TagsPage({ kind }: { kind: AssetKind }) {
             >
               <div
                 className="relative w-full overflow-hidden bg-panel-2"
-                style={{ aspectRatio: String(clampedCoverAspectRatio(tag.coverWidth, tag.coverHeight)) }}
+                style={{ aspectRatio: tag.coverWidth && tag.coverHeight && tag.coverWidth > 0 && tag.coverHeight > 0
+                  ? `${tag.coverWidth} / ${tag.coverHeight}` : '16 / 10' }}
               >
                 {tag.coverAssetId ? (
                   <Thumb
