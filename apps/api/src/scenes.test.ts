@@ -70,6 +70,10 @@ function unit(values: number[]): Float32Array {
   return Float32Array.from(values.map((value) => value / norm))
 }
 
+function encode(values: number[]): string {
+  return Buffer.from(unit(values).buffer).toString('base64')
+}
+
 interface Harness {
   db: Db
   app: Awaited<ReturnType<typeof buildApp>>
