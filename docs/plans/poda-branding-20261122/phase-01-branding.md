@@ -22,5 +22,11 @@
 - CSS must keep icon circular and visible in light/ash/dark/onyx themes.
 - Existing docs/code identifiers are valid historical identifiers; changing them globally is unsafe.
 
-## Evidence
-Not executed yet. No tests, build, CI, or UI E2E presumed. Missing evidence => blocked/unverified.
+## Evidence and checkpoint
+- Code candidate: `25b468d6a6a4ef3b486b25336a6e4e4ad46a5de8` (feature changes; docs-only follow-up SHA is not code test evidence).
+- GitLab diff: 13 changed paths in Draft MR !19; source checks confirm active branding has no literal `MediaVault` or `Pmanager` in 53 TSX files.
+- The approved PNG's 4747-byte repository blob SHA-256 matches the locally converted logo (`392c0589127bedfb5a8e036ceeb60217d141027f77772ef2fa798b01d75079b4`).
+- Static code self-check: favicon link maps to `public/poda-icon.png`; logo component used in splash/sidebar/auth; localStorage theme key untouched.
+- Authored `apps/web/src/branding.test.ts`. Bun RED/GREEN tests, typecheck, build and browser E2E: **not executed**, so no pass claim.
+- GitLab bridge pipeline 3098983803 for exact code SHA reports GitHub Actions dispatch success; provider `github-actions/ci-hub-request` was **running** at observation, actual jobs and checkout SHA **not verified**.
+- State: **implemented; blocked from verified/completed** by missing job and user-flow E2E proof. No merge or deploy.
