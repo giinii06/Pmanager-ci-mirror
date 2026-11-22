@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Folder as FolderIcon, Tag } from 'lucide-react'
+import { Folder as FolderIcon } from 'lucide-react'
 import { POSTER_SCHEME, type TagSummaryDTO } from '@mediavault/shared'
 import { useElementWidth } from '../lib/hooks'
 import { formatCount } from '../lib/format'
@@ -20,7 +20,8 @@ export function VideoTagGrid({ tags }: { tags: TagSummaryDTO[] }) {
               key={tag.id}
               to={`/videos/tags/${tag.id}`}
               style={{ width: coverWidth }}
-              className="group block shrink-0 overflow-hidden rounded-panel border border-line bg-panel transition-colors duration-150 hover:border-line-strong"
+              aria-label={`${tag.name}, ${formatCount(tag.assetCount)}개 동영상`}
+              className="group block shrink-0 overflow-hidden rounded-panel"
             >
               <div className="relative w-full overflow-hidden bg-panel-2" style={{ height: coverHeight }}>
                 {tag.coverAssetId ? (
@@ -35,12 +36,9 @@ export function VideoTagGrid({ tags }: { tags: TagSummaryDTO[] }) {
                     <FolderIcon size={26} strokeWidth={1.4} />
                   </div>
                 )}
-              </div>
-              <div className="flex h-[54px] items-center gap-2 px-3.5">
-                <Tag size={14} className="shrink-0 text-accent" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium text-ink">{tag.name}</p>
-                  <p className="text-[11.5px] text-muted">{formatCount(tag.assetCount)}개 동영상</p>
+                <div className="pointer-events-none absolute inset-x-2 bottom-2 rounded-lg bg-black/70 px-2.5 py-1.5 opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
+                  <p className="truncate text-[12.5px] font-medium text-white/95">{tag.name}</p>
+                  <p className="text-[11px] text-white/70">{formatCount(tag.assetCount)}개 동영상</p>
                 </div>
               </div>
             </Link>
