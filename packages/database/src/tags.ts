@@ -13,27 +13,28 @@ function tables(kind: AssetKind) {
 
 export function listTags(db: Db, kind: AssetKind = 'video'): TagSummaryRecord[] {
   const { tags, links } = tables(kind)
-  const coverOrder = kind === 'image'
-    ? 'a.taken_at DESC, a.id DESC'
-    : `CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0
-          THEN CAST(a.watch_time_ms AS REAL) / a.view_count ELSE -1 END DESC,
-          a.taken_at DESC, a.id DESC`
-  return db.query<TagSummaryRecord, [AssetKind]>(
+  return db.query<TagSummaryRecord, [AssetKind, AssetKind, AssetKind]>(
     `SELECT t.id, t.name, t.created_at AS createdAt,
        (SELECT COUNT(*) FROM ${links} at JOIN assets a ON a.id = at.asset_id
         WHERE at.tag_id = t.id AND a.deleted_at IS NULL AND a.kind = ?) AS assetCount,
+       (SELECT COALESCE(SUM(a.view_count), 0) FROM ${links} at
+        JOIN assets a ON a.id = at.asset_id
+        WHERE at.tag_id = t.id AND a.deleted_at IS NULL AND a.kind = ?) AS viewCount,
+       (SELECT COALESCE(SUM(a.vote_count), 0) FROM ${links} at
+        JOIN assets a ON a.id = at.asset_id
+        WHERE at.tag_id = t.id AND a.deleted_at IS NULL AND a.kind = ?) AS voteCount,
        cover.id AS coverAssetId, cover.posterVersion AS coverPosterVersion,
        cover.width AS coverWidth, cover.height AS coverHeight
      FROM ${tags} t
      LEFT JOIN (
        SELECT at.tag_id AS tagId, a.id, a.poster_version AS posterVersion,
               a.width, a.height,
-              ROW_NUMBER() OVER (PARTITION BY at.tag_id ORDER BY ${coverOrder}) AS rn
+              ROW_NUMBER() OVER (PARTITION BY at.tag_id ORDER BY RANDOM()) AS rn
        FROM ${links} at JOIN assets a ON a.id = at.asset_id
        WHERE a.deleted_at IS NULL AND a.kind = '${kind}'
      ) cover ON cover.tagId = t.id AND cover.rn = 1
      ORDER BY t.name COLLATE NOCASE ASC, t.id ASC`,
-  ).all(kind)
+  ).all(kind, kind, kind)
 }
 
 export function getTag(db: Db, id: string, kind: AssetKind = 'video'): TagRecord | null {

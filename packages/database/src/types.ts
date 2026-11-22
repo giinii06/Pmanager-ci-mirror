@@ -656,6 +656,8 @@ export interface TagSummaryRecord {
   id: string
   name: string
   assetCount: number
+  viewCount: number
+  voteCount: number
   coverAssetId: string | null
   coverPosterVersion: number | null
   coverWidth: number | null

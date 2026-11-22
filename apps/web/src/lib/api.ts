@@ -178,11 +178,6 @@ export const api = {
       method: 'POST',
       body: clientRequestId ? JSON.stringify({ clientRequestId }) : undefined,
     }),
-  setFolderCover: (id: string, assetId: string) =>
-    request<FolderDTO>(`/api/folders/${encodeURIComponent(id)}/cover`, {
-      method: 'PUT',
-      body: JSON.stringify({ assetId }),
-    }),
 
   assets: (query: AssetQuery) => request<Page<AssetDTO>>(`/api/assets${queryString(query)}`),
   assetIds: (query: AssetQuery) => request<{ ids: string[] }>(`/api/assets/ids${queryString(query)}`),

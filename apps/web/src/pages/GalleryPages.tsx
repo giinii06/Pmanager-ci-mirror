@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, Film, Folder as FolderIcon, Pencil, Plus, Tag, Trash2, X } from 'lucide-react'
-import { POSTER_SCHEME, type AssetKind, type VideoSort } from '@mediavault/shared'
+import { POSTER_SCHEME, type AssetKind, type FolderSort, type VideoSort } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
+import { sortTagSummaries } from '../lib/tagSort'
 import { useUi } from '../store/ui'
 import { AssetGallery } from '../components/AssetGallery'
 import { EmptyState } from '../components/EmptyState'
@@ -24,6 +25,14 @@ const SORT_OPTIONS: Array<{ value: VideoSort; label: string }> = [
   { value: 'name', label: '이름순' },
   { value: 'watch_time', label: '총 재생시간순' },
   { value: 'votes', label: 'Vote순' },
+]
+
+const TAG_SORT_OPTIONS: Array<{ value: FolderSort; label: string }> = [
+  { value: 'random', label: '랜덤순' },
+  { value: 'views', label: '조회수순' },
+  { value: 'votes', label: 'Vote순' },
+  { value: 'name', label: '이름순' },
+  { value: 'date', label: '날짜순' },
 ]
 
 function SortBar({
@@ -125,11 +134,17 @@ function TagsPage({ kind }: { kind: AssetKind }) {
   const toast = useUi((state) => state.toast)
   const [sort, setSort] = useState<VideoSort>('random')
   const sessionSeed = useRef(createSessionSeed())
+  const [tagSort, setTagSort] = useState<FolderSort>('random')
+  const tagOverviewSeed = useRef(createSessionSeed())
   const [newTagName, setNewTagName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
 
-  const tagsQuery = useQuery({ queryKey: ['tags', kind], queryFn: () => api.tags(kind) })
+  // New cache key per overview visit; a tag's cover changes when the view is reopened.
+  const tagsQuery = useQuery({
+    queryKey: ['tags', kind, 'overview', tagOverviewSeed.current],
+    queryFn: () => api.tags(kind),
+  })
 
   const createTag = useMutation({
     mutationFn: (name: string) => api.createTag(name, kind),
@@ -163,7 +178,10 @@ function TagsPage({ kind }: { kind: AssetKind }) {
     onError: (err) => toast(err instanceof Error ? err.message : '태그를 삭제하지 못했습니다.', 'error'),
   })
 
-  const tags = tagsQuery.data?.tags ?? []
+  const tags = useMemo(
+    () => sortTagSummaries(tagsQuery.data?.tags ?? [], tagSort, tagOverviewSeed.current),
+    [tagsQuery.data?.tags, tagSort],
+  )
   const selectedTag = tagId ? tags.find((t) => t.id === tagId) : undefined
 
   if (tagId) {
@@ -210,9 +228,29 @@ function TagsPage({ kind }: { kind: AssetKind }) {
         title="태그별 보기"
         meta={`${formatCount(populatedTags.length)}개 태그 폴더 · 전체 ${formatCount(tags.length)}개 태그`}
         actions={
-          <Link to={backPath}>
-            <Button size="sm">전체 {mediaLabel} 보기</Button>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="태그 정렬">
+              {TAG_SORT_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setTagSort(option.value)}
+                  aria-pressed={tagSort === option.value}
+                  className={cn(
+                    'min-h-10 rounded-xl border px-3.5 text-[13px] font-medium transition-colors',
+                    tagSort === option.value
+                      ? 'border-accent/50 bg-accent/15 text-accent'
+                      : 'border-line bg-panel text-muted hover:border-line-strong hover:text-ink',
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <Link to={backPath}>
+              <Button size="sm">전체 {mediaLabel} 보기</Button>
+            </Link>
+          </div>
         }
       />
 

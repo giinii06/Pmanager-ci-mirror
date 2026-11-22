@@ -172,6 +172,51 @@ export function listAllFolders(db: Db, sort?: FolderSort): FolderRecord[] {
   return db.query<FolderRecord, []>(`${FOLDER_CTE} WHERE ${HIDE_QUEUED_ALBUMS} ORDER BY ${folderOrderSql(sort)}`).all()
 }
 
+
+interface RandomCoverRow {
+  folderId: string
+  id: string
+  width: number | null
+  height: number | null
+  posterVersion: number
+  fileVersion: number
+}
+
+/** Select display-only covers without modifying the persistent pinned-cover column. */
+export function randomizeFolderCovers(db: Db, folders: FolderRecord[]): FolderRecord[] {
+  const candidates = folders.filter((folder) => folder.directImageCount > 0).map((folder) => folder.id)
+  if (candidates.length === 0) return folders
+  const covers = new Map<string, RandomCoverRow>()
+  // Bound SQLite variable counts and avoid one query per album card.
+  for (let offset = 0; offset < candidates.length; offset += 400) {
+    const ids = candidates.slice(offset, offset + 400)
+    const placeholders = ids.map(() => '?').join(', ')
+    const records = db.query<RandomCoverRow, Params>(
+      `SELECT folderId, id, width, height, posterVersion, fileVersion
+       FROM (
+         SELECT a.folder_id AS folderId, a.id, a.width, a.height,
+                a.poster_version AS posterVersion, a.file_version AS fileVersion,
+                ROW_NUMBER() OVER (PARTITION BY a.folder_id ORDER BY RANDOM()) AS coverRank
+         FROM assets a
+         WHERE a.kind = 'image' AND a.deleted_at IS NULL
+           AND a.folder_id IN (${placeholders})
+       ) WHERE coverRank = 1`,
+    ).all(...ids)
+    for (const row of records) covers.set(row.folderId, row)
+  }
+  return folders.map((folder) => {
+    const cover = covers.get(folder.id)
+    return cover ? {
+      ...folder,
+      coverAssetId: cover.id,
+      coverWidth: cover.width,
+      coverHeight: cover.height,
+      coverPosterVersion: cover.posterVersion,
+      coverFileVersion: cover.fileVersion,
+    } : folder
+  })
+}
+
 export function voteFolder(
   db: Db,
   folderId: string,

@@ -17,6 +17,7 @@ import {
   listAllFolders,
   listFolders,
   listLibraries,
+  randomizeFolderCovers,
   listLibraryHealth,
   markLibraryFailure,
   markLibraryVerified,
@@ -264,7 +265,7 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
     const folders = query.libraryId
       ? listFolders(ctx.db, query.libraryId, query.sort)
       : listAllFolders(ctx.db, query.sort)
-    reply.send(folders.map(toFolderDTO))
+    reply.send(randomizeFolderCovers(ctx.db, folders).map(toFolderDTO))
   })
 
   app.get('/api/folders/:id', async (request, reply) => {

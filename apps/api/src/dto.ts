@@ -204,6 +204,8 @@ export function toTagSummaryDTO(tag: TagSummaryRecord): TagSummaryDTO {
     id: tag.id,
     name: tag.name,
     assetCount: tag.assetCount,
+    viewCount: tag.viewCount,
+    voteCount: tag.voteCount,
     coverAssetId: tag.coverAssetId,
     coverPosterVersion: tag.coverPosterVersion,
     coverWidth: tag.coverWidth,

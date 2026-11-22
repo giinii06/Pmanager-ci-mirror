@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
-import type { AssetDTO, FolderDTO } from '@mediavault/shared'
+import type { AssetDTO } from '@mediavault/shared'
 import {
-  Check,
   ChevronLeft,
   ChevronRight,
   Download,
-  Image as ImageIcon,
   Info,
   Plus,
   Tag,
@@ -18,12 +16,12 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import { api, type FolderDetail } from '../lib/api'
+import { api } from '../lib/api'
 import { patchAssetInCaches } from '../lib/cachePatch'
 import { cn } from '../lib/cn'
 import { formatBytes, formatCount, formatDate } from '../lib/format'
 import { useMeasuredElement } from '../lib/hooks'
-import { buildCoverActions, fitPage, groupViewerItems, pageAt, VIEWER_GAP } from '../lib/viewerPages'
+import { fitPage, groupViewerItems, pageAt, VIEWER_GAP } from '../lib/viewerPages'
 import { useUi } from '../store/ui'
 import { assetUrl } from '../lib/mediaRoutes'
 import { ImageSlot } from './ImageSlot'
@@ -54,7 +52,6 @@ export function ImageViewer({
   const toast = useUi((state) => state.toast)
   const [showInfo, setShowInfo] = useState(false)
   const [fullRes, setFullRes] = useState(false)
-  const [pinnedCovers, setPinnedCovers] = useState<Record<string, string>>({})
   const [tagInput, setTagInput] = useState('')
   const tagsQuery = useQuery({
     queryKey: ['tags', 'image'],
@@ -93,49 +90,6 @@ export function ImageViewer({
   const page = pages[pageIndex] ?? { start: index, end: index + 1 }
   const pageItems = items.slice(page.start, page.end)
   const sizes = useMemo(() => fitPage(items, page, room), [items, page, room])
-  const visibleItems = pageItems.length > 0 ? pageItems : [asset]
-  const coverActions = useMemo(
-    () => buildCoverActions(visibleItems, fullscreenActive),
-    [visibleItems, fullscreenActive],
-  )
-
-  const setCover = useMutation({
-    mutationFn: ({ folderId, assetId }: { folderId: string; assetId: string }) =>
-      api.setFolderCover(folderId, assetId),
-    onSuccess: (updated, vars) => {
-      setPinnedCovers((prev) => ({
-        ...prev,
-        [updated.id]: updated.coverAssetId ?? vars.assetId,
-      }))
-      queryClient.setQueriesData<FolderDTO[]>({ queryKey: ['folders'] }, (list) =>
-        list?.map((f) => (f.id === updated.id ? updated : f)),
-      )
-      queryClient.setQueryData<FolderDetail>(['folder', updated.id], (prev) =>
-        prev ? { ...prev, folder: updated } : prev,
-      )
-      void queryClient.invalidateQueries({ queryKey: ['folders'] })
-      void queryClient.invalidateQueries({ queryKey: ['folder'] })
-      toast('폴더 썸네일로 설정했습니다.', 'success')
-    },
-    onError: (err) =>
-      toast(
-        err instanceof Error ? err.message : '폴더 썸네일을 변경하지 못했습니다.',
-        'error',
-      ),
-  })
-
-  const resolveCoverAssetId = (folderId: string): string | null => {
-    const local = pinnedCovers[folderId]
-    if (local) return local
-    const detail = queryClient.getQueryData<FolderDetail>(['folder', folderId])
-    if (detail?.folder.coverAssetId) return detail.folder.coverAssetId
-    for (const [, list] of queryClient.getQueriesData<FolderDTO[]>({ queryKey: ['folders'] })) {
-      const match = list?.find((f) => f.id === folderId)
-      if (match?.coverAssetId) return match.coverAssetId
-    }
-    return null
-  }
-
   useEffect(() => {
     setShowInfo(false)
     setFullRes(false)
@@ -243,36 +197,6 @@ export function ImageViewer({
           </div>
 
           <div className="flex shrink-0 items-center gap-1">
-            {coverActions.length > 0 ? (
-              <div className="mr-1 flex items-center gap-1">
-                {coverActions.map((action) => {
-                  const isCurrent = resolveCoverAssetId(action.folderId) === action.assetId
-                  const isPending =
-                    setCover.isPending &&
-                    setCover.variables?.folderId === action.folderId &&
-                    setCover.variables?.assetId === action.assetId
-                  return (
-                    <button
-                      key={action.key}
-                      type="button"
-                      disabled={isPending}
-                      onClick={() =>
-                        setCover.mutate({ folderId: action.folderId, assetId: action.assetId })
-                      }
-                      className={cn(
-                        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11.5px] font-medium leading-none whitespace-nowrap transition-colors disabled:opacity-50',
-                        isCurrent
-                          ? 'border-amber-400/50 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25'
-                          : 'border-line bg-panel-2 text-muted hover:border-line-strong hover:bg-raised hover:text-ink',
-                      )}
-                    >
-                      {isCurrent ? <Check size={12} /> : <ImageIcon size={12} />}
-                      <span>{action.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            ) : null}
             <IconButton
               label={fullRes ? '미리보기 화질로 보기' : '원본 화질로 보기'}
               active={fullRes}

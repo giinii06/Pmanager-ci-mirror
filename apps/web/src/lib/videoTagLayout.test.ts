@@ -7,6 +7,8 @@ function tag(id: string, width: number | null, height: number | null): TagSummar
     id,
     name: `Tag ${id}`,
     assetCount: 3,
+    viewCount: 0,
+    voteCount: 0,
     coverAssetId: `cover-${id}`,
     coverPosterVersion: 1,
     coverWidth: width,
