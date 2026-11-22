@@ -20,3 +20,9 @@ Effective CI: `.gitlab/ci-hub-request.yml@blond11qq/ci-hub-smoke` (GitLab dispat
 - Required repo commands: `bun test`, `bun run typecheck`, `bun run --cwd apps/web build`; direct browser E2E for desktop hover behavior/mobile, actual poster frame, destructive actions in disposable fixture only.
 - Local Bun executable/checkout not available in this environment. RED/GREEN and build cannot be asserted without observed provider job evidence. Preserve a Draft MR and explicit blocked state if unavailable.
 - Source from the previous eight-workstream MR !15 was merged externally while this request was being investigated; that branch was deleted. Start from fresh main instead of overwriting the deleted branch.
+
+## Implementation checkpoint — 2026-11-22
+- Candidate code SHA: `631bc57dff2ad9c3f445ece8aadedcb799d85022` (4 commits including docs plan, code and ratio correction). All four requested behavior changes have source changes committed on the review branch. No merge/deployment.
+- Added `packages/database/src/archive-retention.test.ts` and `apps/web/src/lib/posterFrame.test.ts`. They are **written but not executed**: the current session has no Bun or checked-out repository executor.
+- Exact candidate GitLab pipeline: [3098891915](https://gitlab.com/blond11qq/Pmanager/-/pipelines/3098891915), bridge-only dispatch status SUCCESS, no GitLab job results; GitHub Actions downstream job logs/checked-out commit not independently observed. Consequently tests, typecheck, production build, UI E2E and data-loss regression remain **unverified**.
+- Two-lens self-review on the pinned code SHA is in [review.md](./review.md); no independent reviewer. Both implementation and validation phases are **blocked pending runnable evidence**.

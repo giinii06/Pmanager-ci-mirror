@@ -17,3 +17,10 @@ State: not_started. Gate version 2.2. No tests or implementation evidenced at pl
 
 ## Rollback
 Revert code commit from this review branch; DB pruning is deliberately non-reversible for old completed/failed **history rows only**, never file system content. Do not merge/deploy before approved acceptance.
+
+## Code checkpoint / unverified status — 2026-11-22
+- Implemented code at `631bc57dff2ad9c3f445ece8aadedcb799d85022`. Files: AppShell/Sidebar/Topbar, AssetGallery/JustifiedGrid/AssetTile/GalleryPages/FolderCard, WatchPage/AlbumDeleteDialog/posterFrame, database archives/tags, shared/API cover width+height, SettingsPage.
+- Unit tests authored: `packages/database/src/archive-retention.test.ts`, `apps/web/src/lib/posterFrame.test.ts`. **RED not executed, GREEN not executed, build/typecheck not executed** (no Bun executor). TDD cycle not proven; no waiver claimed.
+- Effective CI path external GitHub Actions request through GitLab pipeline `3098891915` bound to `631bc57dff2ad9c3f445ece8aadedcb799d85022`. Observed GitLab `dispatch_github_actions=success` and zero GitLab test jobs; provider job execution and E2E **unknown**, not passing.
+- Self-review: requirements lens and code/security lens on the same code SHA, see `review.md`. No independent review or browser fixture.
+- State: **blocked**. Do not merge or deploy.

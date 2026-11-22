@@ -9,18 +9,56 @@
   "phases": [
     {
       "id": "01-behavior",
-      "state": "not_started",
-      "implemented_sha": null,
+      "state": "blocked",
+      "implemented_sha": "631bc57dff2ad9c3f445ece8aadedcb799d85022",
       "verified_sha": null,
-      "evidence": []
+      "evidence": [
+        {
+          "level": "code_commit",
+          "sha": "631bc57dff2ad9c3f445ece8aadedcb799d85022",
+          "verified": false
+        },
+        {
+          "level": "dispatch",
+          "sha": "631bc57dff2ad9c3f445ece8aadedcb799d85022",
+          "pipeline_id": 3098891915,
+          "status": "success",
+          "job_results_verified": false
+        },
+        {
+          "level": "test_authored",
+          "files": [
+            "packages/database/src/archive-retention.test.ts",
+            "apps/web/src/lib/posterFrame.test.ts"
+          ],
+          "executed": false
+        }
+      ],
+      "blocked_reason": "No runnable Bun checkout/runner or verified downstream GitHub job logs; RED/GREEN, typecheck, build and browser E2E not executed.",
+      "review_report": {
+        "sha": "631bc57dff2ad9c3f445ece8aadedcb799d85022",
+        "type": "two_lens_self_review",
+        "file": "docs/plans/sidebar-video-archive-ux-20261122/review.md",
+        "independent": false
+      }
     },
     {
       "id": "02-verification",
       "state": "not_started",
       "implemented_sha": null,
       "verified_sha": null,
-      "evidence": []
+      "evidence": [],
+      "blocked_by": "Phase 01 exact-SHA test/build and user-flow E2E evidence missing"
     }
   ],
-  "transitions": []
+  "transitions": [
+    {
+      "phase": "01-behavior",
+      "from": "not_started",
+      "to": "blocked",
+      "at": "2026-11-22",
+      "sha": "631bc57dff2ad9c3f445ece8aadedcb799d85022",
+      "reason": "source implemented, exact-SHA provider dispatch only; all execution acceptance proof unavailable"
+    }
+  ]
 }
