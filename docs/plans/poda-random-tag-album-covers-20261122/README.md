@@ -17,3 +17,6 @@ Tag overview 조회수순/Vote순 order by sum of belonging eligible assets’ v
 ## Implementation phase
 [Phase 01 — one user-visible overview and card cover behavior slice](./phase-01-tag-and-album-covers.md).
 This task extends the existing Draft MR !19; no merge, deployment or repository rename.
+
+## CI repair diagnostics (2026-11-22)
+[CI failure investigation and operator evidence capture](./ci-failure-diagnostics.md). Both the original code-SHA run and a no-code-change rerun failed; no job-level log access was available in this session. The phase remains implemented, not tested/verified.

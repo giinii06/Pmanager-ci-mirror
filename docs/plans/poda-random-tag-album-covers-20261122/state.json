@@ -25,10 +25,21 @@
         "provider_run_url": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44992687882",
         "jobs_verified": false,
         "e2e_verified": false,
-        "root_cause": "unknown (no accessible job logs)"
+        "root_cause": "unknown (no accessible job logs)",
+        "repro_attempt": {
+          "pipeline_id": 3099047910,
+          "sha": "ef3498c4b08fb9f8a12c868a8fa17cef9d006196",
+          "code_sha_unchanged": "dc355768bd517f237ee3e57ee4e87586e55e2e93",
+          "dispatch": "success",
+          "provider_result": "failed",
+          "run_url": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44993554908",
+          "jobs_verified": false,
+          "e2e_verified": false
+        }
       },
       "candidate_code_sha": "dc355768bd517f237ee3e57ee4e87586e55e2e93",
-      "blocker": "Failed GitHub Actions provider callback; exact jobs/logs inaccessible. Bun tests and live browser E2E not executed."
+      "blocker": "Original code-SHA GitHub Actions run 44992687882 FAILED; unmodified-code rerun 44993554908 FAILED on docs-only HEAD ef3498c4. GitHub failure job logs inaccessible. No Bun project checkout; root cause UNKNOWN.",
+      "diagnostics": "docs/plans/poda-random-tag-album-covers-20261122/ci-failure-diagnostics.md"
     }
   ],
   "transitions": [

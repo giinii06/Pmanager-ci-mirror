@@ -28,3 +28,9 @@
 - Effective GitLab CI config dispatches GitHub Actions. Pipeline **3099032604** at exact candidate SHA reported GitHub Actions **failed** via provider status, run https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44992687882 . No job logs or checkout evidence available; root cause unproven. GitLab dispatcher itself succeeded.
 - **Blocked/unverified.** Never infer code defect from external callback alone. No merge, deployment or remote settings changes.
 
+
+## Subsequent CI diagnostic run (no source modification)
+- GitLab pipeline **3099047910**, branch HEAD `ef3498c4b08fb9f8a12c868a8fa17cef9d006196` (documentation-only commits after code SHA `dc355768bd517f237ee3e57ee4e87586e55e2e93`). Dispatch succeeded, GitHub provider returned **failed**: https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44993554908 . No logs/checkout SHA available.
+- Original failing provider run: https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44992687882 . Same feature source code; repeat failure means transient-job hypothesis was not supported, but root cause still unknown.
+- Limited local checks: exact tagSort implementation transcribed into isolated TypeScript module, compiled with global `tsc` and six Node assertions passed; tag and album SQL shapes reproduced in Python stdlib sqlite3 with 30 trials each. Neither is the repository's Bun test/typecheck/build or actual E2E.
+- Full Bun executable/repository checkout unavailable in this container; GitLab bridge supplies no GitHub job traces; direct GitHub URLs inaccessible here. Do not change runtime code or CI provider on unobserved assumptions.
