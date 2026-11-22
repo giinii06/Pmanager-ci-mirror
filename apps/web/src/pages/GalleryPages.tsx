@@ -6,6 +6,7 @@ import { POSTER_SCHEME, type AssetKind, type VideoSort } from '@mediavault/share
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
+import { clampedCoverAspectRatio } from '../lib/folderLayout'
 import { useUi } from '../store/ui'
 import { AssetGallery } from '../components/AssetGallery'
 import { EmptyState } from '../components/EmptyState'
@@ -314,14 +315,17 @@ function TagsPage({ kind }: { kind: AssetKind }) {
           action={<Button onClick={() => navigate(backPath)}>전체 {mediaLabel}으로 이동</Button>}
         />
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+        <div className={cn("grid gap-3", isPhoto ? "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3")}>
           {populatedTags.map((tag) => (
             <Link
               key={tag.id}
               to={`${basePath}/${tag.id}`}
               className="group overflow-hidden rounded-panel border border-line bg-panel transition-colors duration-150 hover:border-line-strong"
             >
-              <div className="relative aspect-[16/10] overflow-hidden bg-panel-2">
+              <div
+                className="relative w-full overflow-hidden bg-panel-2"
+                style={{ aspectRatio: String(clampedCoverAspectRatio(tag.coverWidth, tag.coverHeight)) }}
+              >
                 {tag.coverAssetId ? (
                   <Thumb
                     src={`/api/assets/${tag.coverAssetId}/thumbnail?size=640&pv=${tag.coverPosterVersion ?? 1}${isPhoto ? '' : `&p=${POSTER_SCHEME}`}`}
@@ -334,7 +338,6 @@ function TagsPage({ kind }: { kind: AssetKind }) {
                     <FolderIcon size={26} strokeWidth={1.4} />
                   </div>
                 )}
-                <span className="absolute inset-0 bg-gradient-to-t from-black/45 to-transparent" />
               </div>
               <div className="flex items-center gap-2 px-3.5 py-2.5">
                 <Tag size={14} className="shrink-0 text-accent" />

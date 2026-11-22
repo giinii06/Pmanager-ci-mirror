@@ -22,6 +22,7 @@ export function Topbar() {
   const location = useLocation()
   const setSidebarOpen = useUi((state) => state.setSidebarOpen)
   const toggleSidebarCollapsed = useUi((state) => state.toggleSidebarCollapsed)
+  const sidebarCollapsed = useUi((state) => state.sidebarCollapsed)
   const [value, setValue] = useState(() => {
     if (typeof window === 'undefined') return ''
     return new URLSearchParams(window.location.search).get('q') ?? ''
@@ -79,8 +80,8 @@ export function Topbar() {
       <button
         type="button"
         onClick={toggleSidebarCollapsed}
-        aria-label="사이드바 토글"
-        title="사이드바 접기/펼치기"
+        aria-label={sidebarCollapsed ? "사이드바 펼치기" : "사이드바 완전히 닫기"}
+        title={sidebarCollapsed ? "사이드바 펼치기" : "사이드바 완전히 닫기"}
         className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-panel-2 hover:text-ink md:inline-flex"
       >
         <PanelLeft size={20} />

@@ -53,14 +53,15 @@ function MainLink({
   )
 }
 
-export function Sidebar() {
+export function Sidebar({ peek = false }: { peek?: boolean }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
   const location = useLocation()
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const setSidebarOpen = useUi((state) => state.setSidebarOpen)
-  const collapsed = useUi((state) => state.sidebarCollapsed)
+  const savedCollapsed = useUi((state) => state.sidebarCollapsed)
+  const collapsed = savedCollapsed && !peek && !sidebarOpen
   const toggleCollapsed = useUi((state) => state.toggleSidebarCollapsed)
 
   const stats = useQuery({ queryKey: ['stats'], queryFn: api.stats })
@@ -92,11 +93,14 @@ export function Sidebar() {
   return (
     <aside
       aria-label="사이드바"
+      inert={savedCollapsed && !peek && !sidebarOpen}
       className={cn(
         'fixed inset-y-0 left-0 z-50 flex w-[284px] shrink-0 flex-col border-r border-line bg-panel shadow-2xl',
-        'transition-[transform,width] duration-200 md:static md:w-[268px] md:translate-x-0 md:shadow-none',
+        'transition-[transform,width] duration-200 md:w-[268px] md:translate-x-0',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-        collapsed && 'md:w-[76px]',
+        savedCollapsed && !peek
+          ? 'md:static md:w-0 md:overflow-hidden md:border-r-0 md:shadow-none'
+          : peek ? 'md:fixed md:shadow-2xl' : 'md:static md:shadow-none',
       )}
     >
       <div className={cn('flex min-h-[76px] items-center gap-3 border-b border-line/70 px-4', collapsed && 'md:justify-center md:px-2')}>

@@ -658,6 +658,8 @@ export interface TagSummaryRecord {
   assetCount: number
   coverAssetId: string | null
   coverPosterVersion: number | null
+  coverWidth: number | null
+  coverHeight: number | null
   createdAt: number
 }
 

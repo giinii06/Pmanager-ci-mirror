@@ -22,6 +22,7 @@ interface JustifiedGridProps {
   onOpen: (index: number) => void
   empty: ReactNode
   groupByMonth?: boolean
+  targetHeight?: number
   showFilenames?: boolean
   selection?: { ids: Set<string>; onToggle: (id: string) => void }
 }
@@ -39,6 +40,7 @@ export function JustifiedGrid({
   onOpen,
   empty,
   groupByMonth,
+  targetHeight,
   showFilenames = false,
   selection,
 }: JustifiedGridProps) {
@@ -68,8 +70,8 @@ export function JustifiedGrid({
   }, [header])
 
   const entries = useMemo(
-    () => buildGalleryEntries(items, width, { gap: GAP, groupByMonth }),
-    [items, width, groupByMonth],
+    () => buildGalleryEntries(items, width, { gap: GAP, groupByMonth, targetHeight }),
+    [items, width, groupByMonth, targetHeight],
   )
   const scrollMargin = headerHeight
 

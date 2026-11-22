@@ -71,16 +71,16 @@ export function FolderCard({
 
           <div
             className={cn(
-              'pointer-events-none absolute inset-0 flex flex-col justify-end overflow-hidden bg-gradient-to-t from-black/85 via-black/45 to-black/10 p-3 transition-opacity duration-150',
+              'pointer-events-none absolute inset-0 flex flex-col justify-end overflow-hidden p-3 transition-opacity duration-150',
               infoOpen
                 ? 'opacity-100'
                 : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:opacity-100',
             )}
           >
-            <p className="truncate text-[15px] font-semibold tracking-tight text-white">
+            <p className="truncate text-[15px] font-semibold tracking-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
               {folder.name}
             </p>
-            <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] tabular-nums text-white/85">
+            <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] tabular-nums text-white/85 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
               <div className="flex items-center justify-between gap-1">
                 <dt className="text-white/65">사진</dt>
                 <dd className="font-medium">{formatCount(photoCount)}개</dd>

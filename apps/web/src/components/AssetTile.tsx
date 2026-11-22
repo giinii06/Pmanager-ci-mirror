@@ -91,13 +91,6 @@ export function AssetTile({
         />
         <div ref={previewHost} className="pointer-events-none absolute inset-0" />
         <span className="absolute inset-0 rounded-tile ring-1 ring-inset ring-white/0 transition-colors duration-200 group-hover:ring-white/20" />
-        <span
-          className={cn(
-            'absolute inset-0 rounded-tile bg-gradient-to-t from-black/50 via-transparent to-black/20 transition-opacity duration-200 group-hover:opacity-100',
-            selected ? 'opacity-100' : 'opacity-0',
-          )}
-        />
-
         {asset.kind === 'video' ? (
           <>
             <span className="absolute left-2 top-2 rounded-lg bg-black/70 px-2 py-1 text-[11px] font-semibold tabular-nums text-white/95 backdrop-blur-sm">

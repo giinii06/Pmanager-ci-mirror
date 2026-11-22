@@ -86,6 +86,8 @@ export interface TagSummaryDTO {
   assetCount: number
   coverAssetId: string | null
   coverPosterVersion: number | null
+  coverWidth: number | null
+  coverHeight: number | null
   createdAt: string
 }
 

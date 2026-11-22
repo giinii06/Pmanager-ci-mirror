@@ -778,7 +778,7 @@ export function SettingsPage() {
           </div>
         ) : archives.data?.archives.length ? (
           <div className="divide-y divide-line/70">
-            {archives.data.archives.slice(0, 20).map((job) => {
+            {archives.data.archives.slice(0, 5).map((job) => {
               const badge = ARCHIVE_STATE_LABEL[job.state]
               return (
                 <div key={job.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">

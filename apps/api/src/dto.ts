@@ -206,6 +206,8 @@ export function toTagSummaryDTO(tag: TagSummaryRecord): TagSummaryDTO {
     assetCount: tag.assetCount,
     coverAssetId: tag.coverAssetId,
     coverPosterVersion: tag.coverPosterVersion,
+    coverWidth: tag.coverWidth,
+    coverHeight: tag.coverHeight,
     createdAt: new Date(tag.createdAt).toISOString(),
   }
 }

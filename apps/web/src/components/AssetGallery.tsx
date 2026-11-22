@@ -123,6 +123,7 @@ export function AssetGallery({
             navigate(assetUrl(item.kind, item.id), { state: { background: location.pathname + location.search } })
           }}
           groupByMonth={groupByMonth}
+          targetHeight={filters.kind === 'video' ? 320 : undefined}
           showFilenames={showFilenames}
           empty={
             hideEmpty ? null : (

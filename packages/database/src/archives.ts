@@ -5,6 +5,19 @@ import type { ArchiveJobRecord } from './types'
 
 type Params = SQLQueryBindings[]
 
+const MAX_ARCHIVE_HISTORY = 5
+
+/** Do not delete active worker jobs: only terminal history outside the newest five may be pruned. */
+export function pruneArchiveJobHistory(db: Db): number {
+  return db.query<null, Params>(
+    `DELETE FROM archive_jobs
+     WHERE state IN ('completed', 'failed_password', 'failed')
+       AND id NOT IN (
+         SELECT id FROM archive_jobs ORDER BY updated_at DESC, id DESC LIMIT ?
+       )`,
+  ).run(MAX_ARCHIVE_HISTORY).changes
+}
+
 const ARCHIVE_SELECT = `
   id, library_id AS libraryId, archive_path AS archivePath, state,
   password_used AS passwordUsed, extracted_files AS extractedFiles,
@@ -57,6 +70,7 @@ export function enqueueArchiveJobIfNeeded(
     db.query<null, Params>(
       `UPDATE archive_jobs SET state = 'queued', error_message = NULL, updated_at = ? WHERE id = ?`,
     ).run(now, existing.id)
+    pruneArchiveJobHistory(db)
     return { created: true, record: getArchiveJob(db, existing.id)! }
   }
 
@@ -65,6 +79,7 @@ export function enqueueArchiveJobIfNeeded(
        id, library_id, archive_path, state, signature, created_at, updated_at
      ) VALUES (?, ?, ?, 'queued', ?, ?, ?)`,
   ).run(input.id, input.libraryId, input.archivePath, input.signature, now, now)
+  pruneArchiveJobHistory(db)
 
   return { created: true, record: getArchiveJob(db, input.id)! }
 }
@@ -102,13 +117,17 @@ export function updateArchiveJob(
     now,
     id,
   )
+  if (patch.state === 'completed' || patch.state === 'failed_password' || patch.state === 'failed') {
+    pruneArchiveJobHistory(db)
+  }
   return getArchiveJob(db, id)
 }
 
-export function listArchiveJobs(db: Db, limit = 50): ArchiveJobRecord[] {
+export function listArchiveJobs(db: Db, limit = MAX_ARCHIVE_HISTORY): ArchiveJobRecord[] {
+  pruneArchiveJobHistory(db)
   return db
     .query<ArchiveJobRecord, Params>(
       `SELECT ${ARCHIVE_SELECT} FROM archive_jobs ORDER BY updated_at DESC, id DESC LIMIT ?`,
     )
-    .all(limit)
+    .all(Math.min(MAX_ARCHIVE_HISTORY, Math.max(0, limit)))
 }
