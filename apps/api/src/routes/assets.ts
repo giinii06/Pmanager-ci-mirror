@@ -382,17 +382,17 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
     const now = Date.now()
     let tagId = body.tagId
     if (tagId) {
-      if (!getTag(ctx.db, tagId)) {
+      if (!getTag(ctx.db, tagId, info.kind)) {
         reply.code(404).send({ error: 'tag_not_found', message: 'Tag not found.' })
         return
       }
     } else if (body.name) {
-      const existing = findTagByName(ctx.db, body.name)
-      const tag = existing ?? createTag(ctx.db, newId(), body.name, now)
+      const existing = findTagByName(ctx.db, body.name, info.kind)
+      const tag = existing ?? createTag(ctx.db, newId(), body.name, now, info.kind)
       tagId = tag.id
     }
 
-    if (tagId) addTagToAsset(ctx.db, params.id, tagId, now)
+    if (tagId) addTagToAsset(ctx.db, params.id, tagId, now, info.kind)
     const updated = getAsset(ctx.db, params.id)
     if (!updated) {
       reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
@@ -409,7 +409,7 @@ export function registerAssetRoutes(app: FastifyInstance, ctx: AppContext): void
       reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })
       return
     }
-    removeTagFromAsset(ctx.db, params.id, params.tagId)
+    removeTagFromAsset(ctx.db, params.id, params.tagId, info.kind)
     const updated = getAsset(ctx.db, params.id)
     if (!updated) {
       reply.code(404).send({ error: 'not_found', message: 'Asset not found.' })

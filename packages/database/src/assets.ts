@@ -116,8 +116,13 @@ function buildWhere(
     params.push(filter.kind)
   }
   if (filter.tagId) {
-    clauses.push('EXISTS (SELECT 1 FROM asset_tags at WHERE at.asset_id = a.id AND at.tag_id = ?)')
+    clauses.push(filter.kind === 'image'
+      ? 'EXISTS (SELECT 1 FROM photo_asset_tags at WHERE at.asset_id = a.id AND at.tag_id = ?)'
+      : filter.kind === 'video'
+        ? 'EXISTS (SELECT 1 FROM asset_tags at WHERE at.asset_id = a.id AND at.tag_id = ?)'
+        : '(EXISTS (SELECT 1 FROM asset_tags at WHERE at.asset_id = a.id AND at.tag_id = ?) OR EXISTS (SELECT 1 FROM photo_asset_tags at WHERE at.asset_id = a.id AND at.tag_id = ?))' )
     params.push(filter.tagId)
+    if (!filter.kind) params.push(filter.tagId)
   }
   if (filter.query) {
     clauses.push("a.filename LIKE ? ESCAPE '\\'")

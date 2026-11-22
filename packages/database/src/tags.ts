@@ -1,108 +1,116 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
-import type { TagDTO } from '@mediavault/shared'
+import type { AssetKind, TagDTO } from '@mediavault/shared'
 import type { Db } from './db'
 import type { TagRecord, TagSummaryRecord } from './types'
 
 type Params = SQLQueryBindings[]
 
-export function listTags(db: Db): TagSummaryRecord[] {
-  return db
-    .query<TagSummaryRecord, []>(
-      `SELECT t.id, t.name, t.created_at AS createdAt,
-         (SELECT COUNT(*) FROM asset_tags at
-          JOIN assets a ON a.id = at.asset_id
-          WHERE at.tag_id = t.id AND a.deleted_at IS NULL AND a.kind = 'video') AS assetCount,
-         cover.id AS coverAssetId,
-         cover.posterVersion AS coverPosterVersion
-       FROM tags t
-       LEFT JOIN (
-         SELECT at.tag_id AS tagId, a.id, a.poster_version AS posterVersion,
-                ROW_NUMBER() OVER (
-                  PARTITION BY at.tag_id
-                  ORDER BY
-                    CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0
-                      THEN CAST(a.watch_time_ms AS REAL) / a.view_count
-                      ELSE -1 END DESC,
-                    a.taken_at DESC,
-                    a.id DESC
-                ) AS rn
-         FROM asset_tags at
-         JOIN assets a ON a.id = at.asset_id
-         WHERE a.deleted_at IS NULL AND a.kind = 'video'
-       ) cover ON cover.tagId = t.id AND cover.rn = 1
-       ORDER BY t.name COLLATE NOCASE ASC, t.id ASC`,
-    )
-    .all()
+function tables(kind: AssetKind) {
+  return kind === 'image'
+    ? { tags: 'photo_tags', links: 'photo_asset_tags' }
+    : { tags: 'tags', links: 'asset_tags' }
 }
 
-export function getTag(db: Db, id: string): TagRecord | null {
-  return (
-    db
-      .query<TagRecord, Params>('SELECT id, name, created_at AS createdAt FROM tags WHERE id = ?')
-      .get(id) ?? null
-  )
+export function listTags(db: Db, kind: AssetKind = 'video'): TagSummaryRecord[] {
+  const { tags, links } = tables(kind)
+  const coverOrder = kind === 'image'
+    ? 'a.taken_at DESC, a.id DESC'
+    : `CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0
+          THEN CAST(a.watch_time_ms AS REAL) / a.view_count ELSE -1 END DESC,
+          a.taken_at DESC, a.id DESC`
+  return db.query<TagSummaryRecord, [AssetKind]>(
+    `SELECT t.id, t.name, t.created_at AS createdAt,
+       (SELECT COUNT(*) FROM ${links} at JOIN assets a ON a.id = at.asset_id
+        WHERE at.tag_id = t.id AND a.deleted_at IS NULL AND a.kind = ?) AS assetCount,
+       cover.id AS coverAssetId, cover.posterVersion AS coverPosterVersion
+     FROM ${tags} t
+     LEFT JOIN (
+       SELECT at.tag_id AS tagId, a.id, a.poster_version AS posterVersion,
+              ROW_NUMBER() OVER (PARTITION BY at.tag_id ORDER BY ${coverOrder}) AS rn
+       FROM ${links} at JOIN assets a ON a.id = at.asset_id
+       WHERE a.deleted_at IS NULL AND a.kind = '${kind}'
+     ) cover ON cover.tagId = t.id AND cover.rn = 1
+     ORDER BY t.name COLLATE NOCASE ASC, t.id ASC`,
+  ).all(kind)
 }
 
-export function findTagByName(db: Db, name: string): TagRecord | null {
-  return (
-    db
-      .query<TagRecord, Params>(
-        'SELECT id, name, created_at AS createdAt FROM tags WHERE name = ? COLLATE NOCASE',
-      )
-      .get(name.trim()) ?? null
-  )
+export function getTag(db: Db, id: string, kind: AssetKind = 'video'): TagRecord | null {
+  const { tags } = tables(kind)
+  return db.query<TagRecord, Params>(
+    `SELECT id, name, created_at AS createdAt FROM ${tags} WHERE id = ?`,
+  ).get(id) ?? null
 }
 
-export function createTag(db: Db, id: string, rawName: string, now: number): TagRecord {
+export function findTagByName(db: Db, name: string, kind: AssetKind = 'video'): TagRecord | null {
+  const { tags } = tables(kind)
+  return db.query<TagRecord, Params>(
+    `SELECT id, name, created_at AS createdAt FROM ${tags} WHERE name = ? COLLATE NOCASE`,
+  ).get(name.trim()) ?? null
+}
+
+export function createTag(
+  db: Db, id: string, rawName: string, now: number, kind: AssetKind = 'video',
+): TagRecord {
   const name = rawName.trim()
   if (!name) throw new Error('Tag name cannot be empty')
-  db.query<null, Params>('INSERT INTO tags (id, name, created_at) VALUES (?, ?, ?)').run(
-    id,
-    name,
-    now,
-  )
+  const { tags } = tables(kind)
+  db.query<null, Params>(`INSERT INTO ${tags} (id, name, created_at) VALUES (?, ?, ?)`)
+    .run(id, name, now)
   return { id, name, createdAt: now }
 }
 
-export function renameTag(db: Db, id: string, rawName: string): TagRecord | null {
+export function renameTag(
+  db: Db, id: string, rawName: string, kind: AssetKind = 'video',
+): TagRecord | null {
   const name = rawName.trim()
   if (!name) throw new Error('Tag name cannot be empty')
-  const result = db.query<null, Params>('UPDATE tags SET name = ? WHERE id = ?').run(name, id)
-  if (result.changes === 0) return null
-  return getTag(db, id)
+  const { tags } = tables(kind)
+  const result = db.query<null, Params>(`UPDATE ${tags} SET name = ? WHERE id = ?`).run(name, id)
+  return result.changes === 0 ? null : getTag(db, id, kind)
 }
 
-export function deleteTag(db: Db, id: string): boolean {
-  return db.query<null, Params>('DELETE FROM tags WHERE id = ?').run(id).changes > 0
+export function deleteTag(db: Db, id: string, kind: AssetKind = 'video'): boolean {
+  const { tags } = tables(kind)
+  return db.query<null, Params>(`DELETE FROM ${tags} WHERE id = ?`).run(id).changes > 0
 }
 
-export function addTagToAsset(db: Db, assetId: string, tagId: string, now: number): void {
+export function addTagToAsset(
+  db: Db, assetId: string, tagId: string, now: number, kind: AssetKind = 'video',
+): void {
+  const { links } = tables(kind)
   db.query<null, Params>(
-    `INSERT INTO asset_tags (asset_id, tag_id, created_at) VALUES (?, ?, ?)
-     ON CONFLICT (asset_id, tag_id) DO NOTHING`,
-  ).run(assetId, tagId, now)
+    `INSERT INTO ${links} (asset_id, tag_id, created_at)
+     SELECT ?, ?, ? WHERE EXISTS (
+       SELECT 1 FROM assets WHERE id = ? AND kind = ? AND deleted_at IS NULL
+     ) ON CONFLICT (asset_id, tag_id) DO NOTHING`,
+  ).run(assetId, tagId, now, assetId, kind)
 }
 
-export function removeTagFromAsset(db: Db, assetId: string, tagId: string): boolean {
-  return (
-    db.query<null, Params>('DELETE FROM asset_tags WHERE asset_id = ? AND tag_id = ?').run(assetId, tagId)
-      .changes > 0
-  )
+export function removeTagFromAsset(
+  db: Db, assetId: string, tagId: string, kind: AssetKind = 'video',
+): boolean {
+  const { links } = tables(kind)
+  return db.query<null, Params>(
+    `DELETE FROM ${links} WHERE asset_id = ? AND tag_id = ?`,
+  ).run(assetId, tagId).changes > 0
 }
 
 export function listTagsForAssets(db: Db, assetIds: string[]): Map<string, TagDTO[]> {
   const map = new Map<string, TagDTO[]>()
   if (assetIds.length === 0) return map
   const placeholders = assetIds.map(() => '?').join(', ')
-  const rows = db
-    .query<{ assetId: string; id: string; name: string; createdAt: number }, Params>(
-      `SELECT at.asset_id AS assetId, t.id, t.name, t.created_at AS createdAt
-       FROM asset_tags at
-       JOIN tags t ON t.id = at.tag_id
-       WHERE at.asset_id IN (${placeholders})
-       ORDER BY t.name COLLATE NOCASE ASC, t.id ASC`,
-    )
-    .all(...assetIds)
+  const rows = db.query<{ assetId: string; id: string; name: string; createdAt: number }, Params>(
+    `SELECT links.assetId, links.id, links.name, links.createdAt FROM (
+       SELECT at.asset_id AS assetId, t.id, t.name, t.created_at AS createdAt
+       FROM asset_tags at JOIN tags t ON t.id = at.tag_id
+       JOIN assets a ON a.id = at.asset_id WHERE a.kind = 'video'
+       UNION ALL
+       SELECT at.asset_id AS assetId, t.id, t.name, t.created_at AS createdAt
+       FROM photo_asset_tags at JOIN photo_tags t ON t.id = at.tag_id
+       JOIN assets a ON a.id = at.asset_id WHERE a.kind = 'image'
+     ) links WHERE links.assetId IN (${placeholders})
+     ORDER BY links.name COLLATE NOCASE ASC, links.id ASC`,
+  ).all(...assetIds)
   for (const row of rows) {
     const list = map.get(row.assetId) ?? []
     list.push({ id: row.id, name: row.name, createdAt: new Date(row.createdAt).toISOString() })

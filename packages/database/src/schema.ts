@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 27
+export const SCHEMA_VERSION = 28
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -1100,6 +1100,35 @@ CREATE TABLE IF NOT EXISTS journal_entries (
 CREATE INDEX IF NOT EXISTS idx_journal_user_created ON journal_entries(user_id, created_at DESC, id DESC);
 `
 
+// Photo tags use distinct tables so a label can independently exist in both media namespaces.
+export const V28_PHOTO_TAGS_SQL = `
+CREATE TABLE IF NOT EXISTS photo_tags (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS photo_asset_tags (
+  asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  tag_id TEXT NOT NULL REFERENCES photo_tags(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (asset_id, tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_photo_asset_tags_tag ON photo_asset_tags(tag_id, asset_id);
+
+-- Preserve attachments created on images before tags had a separate namespace.
+INSERT OR IGNORE INTO photo_tags (id, name, created_at)
+SELECT t.id, t.name, t.created_at FROM tags t
+WHERE EXISTS (
+  SELECT 1 FROM asset_tags at JOIN assets a ON a.id = at.asset_id
+  WHERE at.tag_id = t.id AND a.kind = 'image'
+);
+INSERT OR IGNORE INTO photo_asset_tags (asset_id, tag_id, created_at)
+SELECT at.asset_id, at.tag_id, at.created_at
+FROM asset_tags at JOIN assets a ON a.id = at.asset_id
+WHERE a.kind = 'image';
+DELETE FROM asset_tags WHERE asset_id IN (SELECT id FROM assets WHERE kind = 'image');
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -1162,4 +1191,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V25_OBSERVABILITY_SQL),
   (exec) => exec(V26_SEARCH_INDEX_SQL),
   (exec) => exec(V27_JOURNAL_SQL),
+  (exec) => exec(V28_PHOTO_TAGS_SQL),
 ]
