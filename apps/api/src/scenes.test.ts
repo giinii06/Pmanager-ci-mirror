@@ -31,10 +31,8 @@ const SCENE_PIPELINE = 'scene-1'
 const DIMENSIONS = 4
 
 const dirs: string[] = []
-const servers: Array<{ stop: (force?: boolean) => void }> = []
 
 afterAll(async () => {
-  for (const server of servers) server.stop(true)
   for (const dir of dirs) await rm(dir, { recursive: true, force: true })
 })
 
@@ -72,20 +70,14 @@ function unit(values: number[]): Float32Array {
   return Float32Array.from(values.map((value) => value / norm))
 }
 
-function encode(values: number[]): string {
-  return Buffer.from(unit(values).buffer).toString('base64')
-}
-
 interface Harness {
   db: Db
   app: Awaited<ReturnType<typeof buildApp>>
   cookie: string
   cacheDir: string
-  queryUrl: string
-  stopQuery: () => void
 }
 
-async function harness(options: { sceneEnabled?: boolean; query?: boolean } = {}): Promise<Harness> {
+async function harness(options: { sceneEnabled?: boolean } = {}): Promise<Harness> {
   const dataDir = await makeDir()
   const cacheDir = await makeDir()
   const db = openDatabase(':memory:')
@@ -169,29 +161,6 @@ async function harness(options: { sceneEnabled?: boolean; query?: boolean } = {}
     4_000,
   )
 
-  let queryUrl = 'http://127.0.0.1:1'
-  let stopQuery = () => {}
-  if (options.query) {
-    const server = Bun.serve({
-      port: 0,
-      fetch: async (request) => {
-        const body = (await request.json()) as { text?: string }
-        const text = body.text ?? ''
-        // "바다" points at the stored visual vector so the scene leg ranks it.
-        const visual = text.includes('바다') ? [1, 0, 0, 0] : [0, 0, 1, 0]
-        return Response.json({
-          visual: encode(visual),
-          audio: encode([0, 1, 0, 0]),
-          av: encode([0, 0, 1, 0]),
-          dimensions: DIMENSIONS,
-        })
-      },
-    })
-    servers.push(server)
-    queryUrl = `http://127.0.0.1:${server.port}`
-    stopQuery = () => server.stop(true)
-  }
-
   const config: ApiConfig = {
     port: 0,
     host: '127.0.0.1',
@@ -250,7 +219,7 @@ async function harness(options: { sceneEnabled?: boolean; query?: boolean } = {}
       windowMs: 10_000,
       overlapMs: 2_000,
       maxWindows: 120,
-      queryUrl,
+      queryUrl: 'http://127.0.0.1:1',
     },
   }
 
@@ -262,7 +231,7 @@ async function harness(options: { sceneEnabled?: boolean; query?: boolean } = {}
   }
   const app = await buildApp(ctx)
   const token = createSession(db, 'user1', SECRET).token
-  return { db, app, cookie: `${SESSION_COOKIE}=${token}`, cacheDir, queryUrl, stopQuery }
+  return { db, app, cookie: `${SESSION_COOKIE}=${token}`, cacheDir }
 }
 
 function auth(h: Harness): Record<string, string> {
@@ -335,76 +304,42 @@ describe('scene routes', () => {
   })
 })
 
-describe('semantic search', () => {
-  test('a visual query returns the stored window and the dialogue line', async () => {
-    const h = await harness({ query: true })
-    const response = await h.app.inject({
-      method: 'GET',
-      url: '/api/search/semantic?q=바다',
-      headers: auth(h),
-    })
-
-    expect(response.statusCode).toBe(200)
-    const body = response.json() as {
-      hits: Array<{ kind: string; assetId: string; source: string; startMs: number }>
-      scenesSearched: boolean
-    }
-    expect(body.scenesSearched).toBe(true)
-    expect(body.hits.some((hit) => hit.kind === 'scene' && hit.assetId === 'asset1')).toBe(true)
-    expect(body.hits.some((hit) => hit.kind === 'dialogue' && hit.assetId === 'asset2')).toBe(true)
-    expect(body.hits.find((hit) => hit.kind === 'scene')?.source).toBe('visual')
-  })
-
-  test('a scene result carries the second to seek to', async () => {
-    const h = await harness({ query: true })
-    const response = await h.app.inject({
-      method: 'GET',
-      url: '/api/search/semantic?q=바다',
-      headers: auth(h),
-    })
-
-    const body = response.json() as { hits: Array<{ kind: string; startMs: number; endMs: number }> }
-    const scene = body.hits.find((hit) => hit.kind === 'scene')!
-    expect(scene.startMs).toBe(0)
-    expect(scene.endMs).toBe(10_000)
-  })
-
-  test('the text legs still answer when the query tower is down', async () => {
-    const h = await harness({ query: false })
-    const response = await h.app.inject({
-      method: 'GET',
-      url: '/api/search/semantic?q=바다',
-      headers: auth(h),
-    })
-
-    expect(response.statusCode).toBe(200)
-    const body = response.json() as { hits: Array<{ kind: string }>; scenesSearched: boolean }
-    expect(body.scenesSearched).toBe(false)
-    expect(body.hits.every((hit) => hit.kind === 'dialogue')).toBe(true)
-  })
-
-  test('a filename match is labelled as a title hit', async () => {
+describe('filename-only search alongside scene processing', () => {
+  test('only the filename matches; scene vectors and dialogue text do not affect global search', async () => {
     const h = await harness()
-    const response = await h.app.inject({
+
+    const filename = await h.app.inject({
+      method: 'GET',
+      url: '/api/assets?q=asset1',
+      headers: auth(h),
+    })
+    expect(filename.statusCode).toBe(200)
+    expect((filename.json() as { total: number; items: Array<{ filename: string }> }).total).toBe(1)
+    expect((filename.json() as { items: Array<{ filename: string }> }).items[0]?.filename).toBe('asset1.mp4')
+
+    // The ASR fixture contains "바다", but neither filename contains it.
+    const dialogue = await h.app.inject({
+      method: 'GET',
+      url: '/api/assets?q=' + encodeURIComponent('바다'),
+      headers: auth(h),
+    })
+    expect(dialogue.statusCode).toBe(200)
+    expect((dialogue.json() as { total: number }).total).toBe(0)
+
+    const retired = await h.app.inject({
       method: 'GET',
       url: '/api/search/semantic?q=asset1',
       headers: auth(h),
     })
+    expect(retired.statusCode).toBe(404)
 
-    const body = response.json() as { hits: Array<{ kind: string; source: string }> }
-    expect(body.hits[0]?.kind).toBe('asset')
-    expect(body.hits[0]?.source).toBe('title')
-  })
-
-  test('an empty query is rejected', async () => {
-    const h = await harness()
-    const response = await h.app.inject({
+    const scenes = await h.app.inject({
       method: 'GET',
-      url: '/api/search/semantic?q=',
+      url: '/api/assets/asset1/scenes',
       headers: auth(h),
     })
-
-    expect(response.statusCode).toBe(400)
+    expect(scenes.statusCode).toBe(200)
+    expect((scenes.json() as { scenes: Array<{ id: string }> }).scenes).toHaveLength(1)
   })
 })
 

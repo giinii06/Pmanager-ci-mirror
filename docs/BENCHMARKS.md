@@ -73,6 +73,8 @@ Win11 `D:\` DrvFS 실측에서 1,000개 `stat(16)`은 `137 ms`, `enum`은 `111 m
 
 ## 6. 검색 인덱스 (PR 09)
 
+> 이 절의 혼합 검색 API와 처리량 수치는 당시 구현에 대한 **과거 벤치마크 기록**입니다. 현재 전역 검색은 파일명 전용 `/api/assets?q`를 사용하며, 기존 장면·대사 처리 기능은 다른 기능을 위해 유지됩니다.
+
 `scripts/bench-search.ts`로 합성 DB를 만들고(`build`) 측정합니다(`run`). LIKE 경로가 기준값이고, FTS 경로의 결과는 매 측정마다 LIKE 결과와 JSON 단위로 비교해 `equal=true`가 아니면 프로세스가 종료 코드 `1`로 끝납니다. 수치는 `searchAssetNames`/`searchDialogue`/`searchScenes`의 SQL 실행 시간이며 HTTP 직렬화는 제외합니다. `limit=20`, `iterations=40`입니다.
 
 ### 6.1 합성 10,000 자산 / 100,000 세그먼트 / 100,000 장면

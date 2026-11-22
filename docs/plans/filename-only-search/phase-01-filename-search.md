@@ -13,10 +13,11 @@
 3. Revise `apps/web/src/components/Topbar.tsx` text/accessible label and allow one-character debounce. Preserve Cmd/Ctrl+K, Enter and Escape.
 4. Remove `api.semanticSearch` and its sole client type import in `apps/web/src/lib/api.ts`.
 5. Retire `/api/search/semantic`, rank fusion and their helpers in `apps/api/src/routes/scenes.ts`, retaining scene listing, scene generation and scene thumbnail routes. Remove now-unused global semantic DTO definitions from `packages/shared/src/domain.ts`.
-6. Update the search-specific layout assertion in `apps/web/src/components/ui/designSystem.test.tsx` to verify gallery reuse instead of the old inline thumbnail.
-7. GREEN verification: `bun test apps/api/src/navigation.test.ts apps/web/src/components/ui/designSystem.test.tsx`; repo regressions: `bun test`; `bun run typecheck`; `bun run --cwd apps/web build`; `bun run release:check`. Treat unexecuted checks as unknown, never green.
-8. Commit candidate SHA, dispatch effective GitLab->GitHub CI, inspect exact-SHA status and actual provider jobs, review requirements and quality/security; record state checkpoint.
-9. Open Draft MR without merge/deploy. Final user-flow manual browser E2E remains required if no browser fixture is available.
+6. Retire global-semantic-only tests in `apps/api/src/scenes.test.ts`, add filename-vs-dialogue integration regression while preserving scene processing tests; delete orphaned `apps/api/src/scene-query.ts`. Update historic benchmark documentation without rewriting past measurements.
+7. Update the search-specific layout assertion in `apps/web/src/components/ui/designSystem.test.tsx` to verify gallery reuse instead of the old inline thumbnail.
+8. GREEN verification: `bun test apps/api/src/navigation.test.ts apps/web/src/components/ui/designSystem.test.tsx`; repo regressions: `bun test`; `bun run typecheck`; `bun run --cwd apps/web build`; `bun run release:check`. Treat unexecuted checks as unknown, never green.
+9. Commit candidate SHA, dispatch effective GitLab->GitHub CI, inspect exact-SHA status and actual provider jobs, review requirements and quality/security; record state checkpoint.
+10. Open Draft MR without merge/deploy. Final user-flow manual browser E2E remains required if no browser fixture is available.
 
 ## Risk / rollback
 
