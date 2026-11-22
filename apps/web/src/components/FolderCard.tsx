@@ -143,7 +143,7 @@ export function FolderCard({
             <span>{formatCount(folder.voteCount)}</span>
           </button>
         ) : null}
-        {onDelete ? (
+        {onDelete && folder.directImageCount > 0 ? (
           <button
             type="button"
             onClick={(event) => {

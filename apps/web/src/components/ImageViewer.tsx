@@ -24,7 +24,6 @@ import { formatBytes, formatCount, formatDate } from '../lib/format'
 import { useMeasuredElement } from '../lib/hooks'
 import { buildCoverActions, fitPage, groupViewerItems, pageAt, VIEWER_GAP } from '../lib/viewerPages'
 import { useUi } from '../store/ui'
-import { useViewer } from '../store/viewer'
 import { ImageSlot } from './ImageSlot'
 import { useImageFullscreen } from './useImageFullscreen'
 import { IconButton } from './ui/IconButton'
@@ -61,7 +60,6 @@ export function ImageViewer({
   })
   const updateImageTag = (updated: AssetDTO) => {
     patchAssetInCaches(queryClient, updated)
-    useViewer.getState().patchAsset(updated)
     void queryClient.invalidateQueries({ queryKey: ['tags', 'image'] })
   }
   const attachTag = useMutation({
@@ -286,6 +284,13 @@ export function ImageViewer({
               onClick={toggleFullscreen}
             >
               {fullscreenActive ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+            </IconButton>
+            <IconButton
+              label="사진 태그"
+              active={showInfo}
+              onClick={() => setShowInfo((value) => !value)}
+            >
+              <Tag size={17} />
             </IconButton>
             <IconButton
               label="정보"

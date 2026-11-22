@@ -50,7 +50,7 @@ export function queueAlbumPhotoDeletion(
   db: Db,
   input: { folderId: string; userId: string; requestKey: string; now: number },
 ): CreateAlbumDeleteResult {
-  return db.transaction(() => {
+  return db.transaction((): CreateAlbumDeleteResult => {
     const existing = db.query<Batch, Params>(
       `SELECT id, folder_id AS folderId, user_id AS userId, target_count AS targetCount
        FROM album_delete_batches WHERE request_key = ?`,
@@ -85,12 +85,12 @@ export function queueAlbumPhotoDeletion(
     if (assets.length === 0) return { status: 'empty' }
     if (assets.length > 10_000) return { status: 'too_large' }
 
-    const ids = assets.map((asset) => asset.id)
     const conflicts = db.query<{ n: number }, Params>(
       `SELECT COUNT(*) AS n FROM file_mutations m
-       WHERE m.asset_id IN (${ids.map(() => '?').join(',')})
-         AND m.state NOT IN ('completed','blocked','cancelled_pre_commit')`,
-    ).get(...ids)
+       WHERE m.asset_id IN (
+         SELECT id FROM assets WHERE folder_id = ? AND kind = 'image' AND deleted_at IS NULL
+       ) AND m.state NOT IN ('completed','blocked','cancelled_pre_commit')`,
+    ).get(input.folderId)
     if ((conflicts?.n ?? 0) > 0) return { status: 'conflict' }
 
     const id = newId()
