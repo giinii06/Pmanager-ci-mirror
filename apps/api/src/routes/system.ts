@@ -296,12 +296,17 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   })
 
   app.get('/api/backups', async (_request, reply) => {
-    reply.send({ backups: listBackupLogs(ctx.db, 20).map(toBackupRecordDTO) })
+    const backupDir = path.join(ctx.config.dataDir, 'backups')
+    const actual = new Set(await readdir(backupDir).catch(() => []))
+    const recent = listBackupLogs(ctx.db, 100)
+      .filter((entry) => entry.integrity === 'ok' && entry.error === null && actual.has(entry.filename))
+      .slice(0, 5)
+    reply.send({ backups: recent.map(toBackupRecordDTO) })
   })
 
   app.post('/api/backups', async (_request, reply) => {
     const backup = createDatabaseBackup(ctx.db, path.join(ctx.config.dataDir, 'backups'), {
-      retentionCount: 14,
+      retentionCount: 5,
     })
     reply.code(201).send({ backup: toBackupRecordDTO(backup) })
   })

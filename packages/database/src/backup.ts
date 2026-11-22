@@ -50,7 +50,7 @@ export function createDatabaseBackup(
   options: { retentionCount?: number; now?: number; prefix?: string } = {},
 ): BackupLogRecord {
   const now = options.now ?? Date.now()
-  const retentionCount = Math.max(1, options.retentionCount ?? 14)
+  const retentionCount = Math.max(1, Math.min(5, options.retentionCount ?? 5))
   const prefix = options.prefix ?? 'mediavault'
   const stamp = new Date(now).toISOString().replace(/[:.]/g, '-')
   const id = newId()
@@ -72,13 +72,15 @@ export function createDatabaseBackup(
 
     const existing = readdirSync(backupDir)
       .filter((name) => name.startsWith(`${prefix}-`) && name.endsWith('.db'))
-      .map((name) => ({ name, mtimeMs: statSync(path.join(backupDir, name)).mtimeMs }))
-      .sort((a, b) => b.mtimeMs - a.mtimeMs || b.name.localeCompare(a.name))
+      // The UTC filename encodes creation time; filesystem mtime can change on copies.
+      .sort((a, b) => b.localeCompare(a))
 
     for (const stale of existing.slice(retentionCount)) {
       try {
-        rmSync(path.join(backupDir, stale.name), { force: true })
-      } catch {}
+        rmSync(path.join(backupDir, stale), { force: true })
+      } catch {
+        // The new verified backup stays available even when cleanup is denied.
+      }
     }
 
     return {
