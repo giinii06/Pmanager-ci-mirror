@@ -1,3 +1,4 @@
+import type { JournalProperties } from './journalDocument'
 import type { AiStage, FilterTree } from './filters'
 
 export type AssetKind = 'image' | 'video'
