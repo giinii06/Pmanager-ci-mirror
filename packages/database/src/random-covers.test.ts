@@ -74,7 +74,7 @@ describe('random album and tag cover responses', () => {
       expect(photo.assetCount).toBe(2)
       expect(photo.viewCount).toBe(21)
       expect(photo.voteCount).toBe(7)
-      expect(['photo1','photo2']).toContain(photo.coverAssetId)
+      expect(['photo1','photo2']).toContain(photo.coverAssetId ?? '')
       expect(video.assetCount).toBe(1)
       expect(video.viewCount).toBe(50)
       expect(video.voteCount).toBe(9)
