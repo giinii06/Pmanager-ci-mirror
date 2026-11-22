@@ -33,7 +33,7 @@ export const PRIORITY = {
 } as const satisfies Record<string, Priority>
 
 export const GALLERY_TARGET_ROW_HEIGHT = 224
-export const GALLERY_VIDEO_TARGET_ROW_HEIGHT = 640
+export const GALLERY_VIDEO_TARGET_ROW_HEIGHT = 720
 export const GALLERY_GAP = 4
 
 export const MAX_THUMBNAIL_RETRIES = 8
