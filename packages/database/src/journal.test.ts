@@ -29,7 +29,7 @@ describe('journal entries', () => {
       old.close()
 
       const upgraded = openDatabase(filename)
-      expect(upgraded.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version).toBe(27)
+      expect(upgraded.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version).toBe(29)
       const created = createJournalEntry(upgraded, 'u1', 1234)
       expect(getJournalEntry(upgraded, 'u1', created.id)?.createdAt).toBe(1234)
       expect(upgraded.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM users').get()?.n).toBe(1)
