@@ -18,6 +18,26 @@ export interface UpsertFolderInput {
   createdAt?: number
 }
 
+// A queued album is hidden in all folder lists until its worker batch fails.
+// The original folder record remains queryable for safe worker/scanner operations.
+const HIDE_QUEUED_ALBUMS = `
+  NOT EXISTS (
+    SELECT 1 FROM album_delete_batches b
+    WHERE b.folder_id = fb.id
+      AND NOT EXISTS (
+        SELECT 1 FROM album_delete_items i
+        JOIN file_mutations m ON m.id = i.mutation_id
+        WHERE i.batch_id = b.id AND m.state IN ('blocked', 'cancelled_pre_commit')
+      )
+      AND EXISTS (
+        SELECT 1 FROM album_delete_items i
+        JOIN file_mutations m ON m.id = i.mutation_id
+        WHERE i.batch_id = b.id
+          AND m.state NOT IN ('blocked', 'cancelled_pre_commit')
+      )
+  )
+`
+
 const FOLDER_CTE = `
   WITH folder_base AS (
     SELECT
@@ -141,13 +161,13 @@ export function ensureFolderPath(
 export function listFolders(db: Db, libraryId: string, sort?: FolderSort): FolderRecord[] {
   return db
     .query<FolderRecord, Params>(
-      `${FOLDER_CTE} WHERE fb.libraryId = ? ORDER BY ${folderOrderSql(sort)}`,
+      `${FOLDER_CTE} WHERE fb.libraryId = ? AND ${HIDE_QUEUED_ALBUMS} ORDER BY ${folderOrderSql(sort)}`,
     )
     .all(libraryId)
 }
 
 export function listAllFolders(db: Db, sort?: FolderSort): FolderRecord[] {
-  return db.query<FolderRecord, []>(`${FOLDER_CTE} ORDER BY ${folderOrderSql(sort)}`).all()
+  return db.query<FolderRecord, []>(`${FOLDER_CTE} WHERE ${HIDE_QUEUED_ALBUMS} ORDER BY ${folderOrderSql(sort)}`).all()
 }
 
 export function voteFolder(

@@ -165,6 +165,15 @@ export const api = {
     return request<FolderDTO[]>(`/api/folders${qs ? `?${qs}` : ''}`)
   },
   folder: (id: string) => request<FolderDetail>(`/api/folders/${id}`),
+  deleteAlbum: (id: string, requestKey: string) =>
+    request<{ id: string; folderId: string; total: number; completed: number; failed: number; pending: number; state: 'pending' | 'completed' | 'failed' }>(
+      `/api/folders/${encodeURIComponent(id)}/delete-operations`,
+      { method: 'POST', headers: { 'Idempotency-Key': requestKey } },
+    ),
+  albumDeleteStatus: (id: string) =>
+    request<{ id: string; folderId: string; total: number; completed: number; failed: number; pending: number; state: 'pending' | 'completed' | 'failed' }>(
+      `/api/album-delete-batches/${encodeURIComponent(id)}`,
+    ),
   voteFolder: (id: string, clientRequestId?: string) =>
     request<FolderDTO>(`/api/folders/${id}/vote`, {
       method: 'POST',

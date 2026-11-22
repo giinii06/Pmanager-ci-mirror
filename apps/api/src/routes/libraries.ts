@@ -4,6 +4,8 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import {
   breadcrumb,
+  getAlbumDeleteStatus,
+  queueAlbumPhotoDeletion,
   createLibrary,
   deleteLibrary,
   enqueueJob,
@@ -31,6 +33,7 @@ import { parseInput } from '../validate'
 import { resolveSafeDirectory } from './fs'
 
 const idParams = z.object({ id: z.string().min(1).max(64) })
+const deleteKey = z.string().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/)
 
 const createBody = z.object({
   name: z.string().trim().min(1, 'Name the library.').max(80),
@@ -273,6 +276,60 @@ export function registerLibraryRoutes(app: FastifyInstance, ctx: AppContext): vo
       return
     }
     reply.send({ folder: toFolderDTO(folder), breadcrumb: breadcrumb(ctx.db, params.id).map(toFolderDTO) })
+  })
+
+  app.post('/api/folders/:id/delete-operations', async (request, reply) => {
+    if (!ctx.config.fileMutationEnabled) {
+      reply.code(503).send({ error: 'mutation_engine_disabled', message: '파일 삭제 기능이 비활성화되어 있습니다.' })
+      return
+    }
+    const params = parseInput(idParams, request.params, reply)
+    if (!params) return
+    const requestKey = request.headers['idempotency-key']
+    const key = Array.isArray(requestKey) ? requestKey[0] : requestKey
+    if (typeof key !== 'string' || !deleteKey.safeParse(key).success) {
+      reply.code(400).send({ error: 'idempotency_key_required', message: '유효한 Idempotency-Key가 필요합니다.' })
+      return
+    }
+
+    const folder = getFolder(ctx.db, params.id)
+    if (!folder) {
+      reply.code(404).send({ error: 'not_found', message: '앨범을 찾을 수 없습니다.' })
+      return
+    }
+    const health = getLibraryHealth(ctx.db, folder.libraryId)
+    if (!health || health.state !== 'ONLINE') {
+      reply.code(409).send({ error: 'source_offline', message: '라이브러리가 온라인일 때만 영구 삭제할 수 있습니다.' })
+      return
+    }
+    const result = queueAlbumPhotoDeletion(ctx.db, {
+      folderId: folder.id,
+      userId: request.user!.id,
+      requestKey: `${request.user!.id}:album:${folder.id}:${key}`,
+      now: Date.now(),
+    })
+    if (result.status !== 'ok') {
+      const code = result.status === 'not_found' ? 404 : 409
+      reply.code(code).send({
+        error: `album_delete_${result.status}`,
+        message: result.status === 'empty' ? '삭제할 사진이 없습니다.'
+          : result.status === 'too_large' ? '한 번에 최대 10,000장의 사진을 삭제할 수 있습니다.'
+          : '이미 삭제 작업이 진행 중이거나 앨범 상태가 변경되었습니다.',
+      })
+      return
+    }
+    reply.code(202).send(result.batch)
+  })
+
+  app.get('/api/album-delete-batches/:id', async (request, reply) => {
+    const params = parseInput(idParams, request.params, reply)
+    if (!params) return
+    const status = getAlbumDeleteStatus(ctx.db, params.id, request.user!.id)
+    if (!status) {
+      reply.code(404).send({ error: 'not_found', message: '삭제 작업을 찾을 수 없습니다.' })
+      return
+    }
+    reply.send(status)
   })
 
   app.post('/api/folders/:id/vote', async (request, reply) => {

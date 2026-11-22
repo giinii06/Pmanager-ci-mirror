@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 28
+export const SCHEMA_VERSION = 29
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -1129,6 +1129,27 @@ WHERE a.kind = 'image';
 DELETE FROM asset_tags WHERE asset_id IN (SELECT id FROM assets WHERE kind = 'image');
 `
 
+// Album batches are durable user requests; source folder rows may disappear after a scan.
+export const V29_ALBUM_DELETE_SQL = `
+CREATE TABLE IF NOT EXISTS album_delete_batches (
+  id TEXT PRIMARY KEY,
+  folder_id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  request_key TEXT NOT NULL UNIQUE,
+  target_count INTEGER NOT NULL CHECK (target_count > 0),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_album_delete_folder ON album_delete_batches(folder_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS album_delete_items (
+  batch_id TEXT NOT NULL REFERENCES album_delete_batches(id) ON DELETE CASCADE,
+  mutation_id TEXT NOT NULL UNIQUE REFERENCES file_mutations(id) ON DELETE RESTRICT,
+  asset_id TEXT NOT NULL,
+  PRIMARY KEY (batch_id, asset_id)
+);
+CREATE INDEX IF NOT EXISTS idx_album_delete_mutation ON album_delete_items(mutation_id);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -1192,4 +1213,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V26_SEARCH_INDEX_SQL),
   (exec) => exec(V27_JOURNAL_SQL),
   (exec) => exec(V28_PHOTO_TAGS_SQL),
+  (exec) => exec(V29_ALBUM_DELETE_SQL),
 ]
