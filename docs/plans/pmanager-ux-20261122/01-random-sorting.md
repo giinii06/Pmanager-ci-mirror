@@ -11,4 +11,4 @@ GET /api/assets?kind=video&sort=random&seed=N returns repeatable non-duplicated 
 - No missing evidence can count as a passed gate.
 
 ## Status
-Not started. No implementation or passing tests claimed.
+Implemented in code SHA `8da488202513a59ee455f63e8056d248c0441975` but blocked on actual test/job evidence. CI dispatch-only success is not verification. `docs/plans/pmanager-ux-20261122/review.md` records review.

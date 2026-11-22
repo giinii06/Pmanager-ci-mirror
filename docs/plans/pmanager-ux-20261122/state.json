@@ -8,9 +8,26 @@
   "phases": [
     {
       "id": "01-random-sorting",
-      "state": "not_started",
+      "state": "blocked",
       "verified_sha": null,
-      "evidence": []
+      "evidence": [
+        {
+          "level": "dispatch",
+          "sha": "e06e744707c205c7fdf492ad59d0b932b516da64",
+          "pipeline_id": 3098833700,
+          "status": "success",
+          "job_results_verified": false
+        },
+        {
+          "level": "dispatch",
+          "sha": "8da488202513a59ee455f63e8056d248c0441975",
+          "pipeline_id": 3098835154,
+          "status": "success",
+          "job_results_verified": false
+        }
+      ],
+      "implemented_sha": "8da488202513a59ee455f63e8056d248c0441975",
+      "blocked_reason": "No matched-SHA provider jobs/logs accessible; GitLab pipeline only dispatch_github_actions success with zero jobs"
     },
     {
       "id": "02-album-navigation",
@@ -55,5 +72,25 @@
       "evidence": []
     }
   ],
-  "history": []
+  "history": [
+    {
+      "phase": "01-random-sorting",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "plan committed and source investigation complete"
+    },
+    {
+      "phase": "01-random-sorting",
+      "from": "in_progress",
+      "to": "implemented",
+      "sha": "8da488202513a59ee455f63e8056d248c0441975",
+      "reason": "source/tests committed; tests not executed"
+    },
+    {
+      "phase": "01-random-sorting",
+      "from": "implemented",
+      "to": "blocked",
+      "reason": "exact-SHA real job evidence unavailable"
+    }
+  ]
 }
