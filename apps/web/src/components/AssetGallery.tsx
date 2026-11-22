@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { AssetDTO, AssetQuery, Page } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { formatCount } from '../lib/format'
 import { useViewer } from '../store/viewer'
+import { assetUrl } from '../lib/mediaRoutes'
 import { EmptyState } from './EmptyState'
 import { JustifiedGrid } from './JustifiedGrid'
 import { PageHeading } from './PageHeading'
@@ -41,6 +43,8 @@ export function AssetGallery({
   showFilenames = false,
 }: AssetGalleryProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
+  const location = useLocation()
 
   const query = useInfiniteQuery({
     queryKey: ['assets', filters],
@@ -112,7 +116,12 @@ export function AssetGallery({
           hasNextPage={query.hasNextPage}
           isFetchingNextPage={query.isFetchingNextPage}
           fetchNextPage={() => query.fetchNextPage()}
-          onOpen={(index) => useViewer.getState().open(items, index, { filter: filters })}
+          onOpen={(index) => {
+            const item = items[index]
+            if (!item) return
+            useViewer.getState().open(items, index, { filter: filters })
+            navigate(assetUrl(item.kind, item.id), { state: { background: location.pathname + location.search } })
+          }}
           groupByMonth={groupByMonth}
           showFilenames={showFilenames}
           empty={

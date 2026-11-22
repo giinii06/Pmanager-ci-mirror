@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -5,11 +6,13 @@ import {
   Routes,
   useNavigate,
   useSearchParams,
+  useParams,
 } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Aperture } from 'lucide-react'
 import { api } from './lib/api'
 import { AppShell } from './components/AppShell'
+import { useViewer } from './store/viewer'
 import { EmptyState } from './components/EmptyState'
 import { Spinner } from './components/ui/Spinner'
 import { Button } from './components/ui/Button'
@@ -52,6 +55,40 @@ function SearchRoute() {
   return <SearchPage query={params.get('q') ?? ''} />
 }
 
+/** Resolve direct photo and video URLs and synchronize browser history. */
+function MediaRoute({ kind }: { kind: 'image' | 'video' }) {
+  const { assetId } = useParams()
+  const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (!assetId) return
+    const state = useViewer.getState()
+    if (state.items[state.index]?.id === assetId) return
+    const cached = state.items.find((item) => item.id === assetId)
+    if (cached && cached.kind === kind) {
+      state.select(cached)
+      return
+    }
+    let cancelled = false
+    setError(null)
+    void api.asset(assetId).then((item) => {
+      if (cancelled) return
+      if (item.kind !== kind) {
+        setError('주소에 해당하는 미디어 종류가 다릅니다.')
+        return
+      }
+      useViewer.getState().open([item], 0, { filter: { kind } })
+    }).catch(() => { if (!cancelled) setError('미디어를 찾을 수 없거나 접근할 수 없습니다.') })
+    return () => { cancelled = true }
+  }, [assetId, kind])
+  return error ? (
+    <div className="workspace-page">
+      <EmptyState title="미디어를 열지 못했습니다" body={error}
+        action={<Button onClick={() => navigate(kind === 'video' ? '/videos' : '/')}>목록으로 돌아가기</Button>} />
+    </div>
+  ) : <div className="h-full bg-canvas" />
+}
+
 function NotFound() {
   const navigate = useNavigate()
   return (
@@ -79,6 +116,8 @@ export function App() {
         <Route element={<AppShell />}>
           <Route index element={<FoldersPage />} />
           <Route path="videos" element={<VideosPage />} />
+          <Route path="videos/:assetId" element={<MediaRoute kind="video" />} />
+          <Route path="photos/:assetId" element={<MediaRoute kind="image" />} />
           <Route path="videos/tags" element={<VideoTagsPage />} />
           <Route path="videos/tags/:tagId" element={<VideoTagsPage />} />
           <Route path="photos/tags" element={<PhotoTagsPage />} />
