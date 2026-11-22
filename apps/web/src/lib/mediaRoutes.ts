@@ -7,5 +7,5 @@ export function assetUrl(kind: AssetKind, id: string): string {
 
 export function isMediaPath(pathname: string): boolean {
   const parts = pathname.split('/')
-  return parts.length === 3 && (parts[1] === 'videos' || parts[1] === 'photos') && Boolean(parts[2])
+  return parts.length === 3 && (parts[1] === 'videos' || parts[1] === 'photos') && Boolean(parts[2]) && parts[2] !== 'tags'
 }

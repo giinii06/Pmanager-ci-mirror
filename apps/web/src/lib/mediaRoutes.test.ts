@@ -7,5 +7,7 @@ test('media URL routing uses opaque IDs', () => {
   expect(isMediaPath('/photos/abc-123')).toBe(true)
   expect(isMediaPath('/videos/abc-123')).toBe(true)
   expect(isMediaPath('/videos/tags/abc')).toBe(false)
+  expect(isMediaPath('/videos/tags')).toBe(false)
+  expect(isMediaPath('/photos/tags')).toBe(false)
   expect(isMediaPath('/journal')).toBe(false)
 })

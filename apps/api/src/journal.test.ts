@@ -112,6 +112,27 @@ describe('authenticated journal routes', () => {
     })).statusCode).toBe(404)
     expect((await app.inject({ method: 'GET', url: '/api/journal/' + page.id, headers: owner })).json().title).toBe('여행 일지')
 
+    // Inline images are private to their owner and cascade with their page.
+    const image = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0])
+    const upload = await app.inject({
+      method: 'POST', url: '/api/journal/' + page.id + '/images',
+      headers: { ...owner, 'content-type': 'image/png' }, payload: image,
+    })
+    expect(upload.statusCode).toBe(201)
+    const imageId = (upload.json() as { id: string }).id
+    const imageUrl = '/api/journal/' + page.id + '/images/' + imageId
+    const ownerImage = await app.inject({ method: 'GET', url: imageUrl, headers: owner })
+    expect(ownerImage.statusCode).toBe(200)
+    expect(ownerImage.headers['content-type']).toContain('image/png')
+    expect(ownerImage.rawPayload).toEqual(image)
+    expect((await app.inject({ method: 'GET', url: imageUrl, headers: guest })).statusCode).toBe(404)
+    const invalidImage = await app.inject({
+      method: 'POST', url: '/api/journal/' + page.id + '/images',
+      headers: { ...owner, 'content-type': 'image/png' }, payload: Buffer.from('not-an-image'),
+    })
+    expect(invalidImage.statusCode).toBe(415)
+    expect(db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM journal_images').get()?.n).toBe(1)
+
     createLibrary(db, { id: 'lib', name: 'My library', rootPath: 'My library', createdAt: 1 })
     upsertFolder(db, {
       id: 'photos',
@@ -162,6 +183,7 @@ describe('authenticated journal routes', () => {
       headers: owner,
     })).statusCode).toBe(204)
     expect((await app.inject({ method: 'GET', url: '/api/journal/' + page.id, headers: owner })).statusCode).toBe(404)
+    expect(db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM journal_images').get()?.n).toBe(0)
     await app.close()
     db.close()
   })
