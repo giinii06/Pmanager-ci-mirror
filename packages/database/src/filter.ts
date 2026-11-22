@@ -146,25 +146,30 @@ const nameField: FieldCompiler = (operator, value) => {
   }
 }
 
+// Images and videos keep separate tag tables, so a tag filter reads both.
 const tagField: FieldCompiler = (operator, value) => {
   const ids = list(value)
-  const inList = `at.tag_id IN (${placeholders(ids.length)})`
+  const inList = `IN (${placeholders(ids.length)})`
+  const linked = (table: string) =>
+    `EXISTS (SELECT 1 FROM ${table} t WHERE t.asset_id = a.id AND t.tag_id ${inList})`
   switch (operator) {
     case 'any':
       return {
-        sql: `EXISTS (SELECT 1 FROM asset_tags at WHERE at.asset_id = a.id AND ${inList})`,
-        params: [...ids],
+        sql: `(${linked('asset_tags')} OR ${linked('photo_asset_tags')})`,
+        params: [...ids, ...ids],
       }
     case 'all':
       return {
-        sql: `(SELECT COUNT(DISTINCT at.tag_id) FROM asset_tags at
-               WHERE at.asset_id = a.id AND ${inList}) = ?`,
-        params: [...ids, ids.length],
+        sql: `((SELECT COUNT(DISTINCT t.tag_id) FROM asset_tags t
+               WHERE t.asset_id = a.id AND t.tag_id ${inList})
+             + (SELECT COUNT(DISTINCT t.tag_id) FROM photo_asset_tags t
+               WHERE t.asset_id = a.id AND t.tag_id ${inList})) = ?`,
+        params: [...ids, ...ids, ids.length],
       }
     case 'none':
       return {
-        sql: `NOT EXISTS (SELECT 1 FROM asset_tags at WHERE at.asset_id = a.id AND ${inList})`,
-        params: [...ids],
+        sql: `NOT (${linked('asset_tags')} OR ${linked('photo_asset_tags')})`,
+        params: [...ids, ...ids],
       }
     default:
       throw new FilterCompileError(`operator ${operator} does not apply to tag`)

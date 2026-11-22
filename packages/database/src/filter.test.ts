@@ -149,12 +149,14 @@ function seed(db: Db): void {
   createTag(db, 't1', 'Favourites', 1)
   createTag(db, 't2', 'Korean', 1)
   createTag(db, 't3', 'Photos', 1)
-  for (const [tagId, assetId] of [
-    ['t1', 'a1'], ['t1', 'a2'],
-    ['t2', 'a1'], ['t2', 'a6'],
-    ['t3', 'a3'], ['t3', 'a6'],
+  createTag(db, 'p1', 'Photos', 1, 'image')
+  for (const [tagId, assetId, kind] of [
+    ['t1', 'a1', 'video'], ['t1', 'a2', 'video'],
+    ['t2', 'a1', 'video'], ['t2', 'a6', 'video'],
+    ['t3', 'a6', 'video'],
+    ['p1', 'a3', 'image'],
   ] as const) {
-    addTagToAsset(db, assetId, tagId, 1)
+    addTagToAsset(db, assetId, tagId, 1, kind)
   }
 
   putProgress(db, 'u1', 'a1', 5_000, 60_000, 1000, 1)
@@ -252,11 +254,15 @@ describe('filter compiler', () => {
     expect(matched(not(cond('kind', 'eq', 'image')))).not.toContain('a5')
   })
 
-  test('tag any, all and none read the join table', () => {
-    expect(matched(cond('tag', 'any', ['t1', 't3']))).toEqual(['a1', 'a2', 'a3', 'a6'])
+  test('tag any, all and none read the video and photo join tables', () => {
+    expect(matched(cond('tag', 'any', ['t1', 't3']))).toEqual(['a1', 'a2', 'a6'])
     expect(matched(cond('tag', 'all', ['t1', 't2']))).toEqual(['a1'])
-    expect(matched(cond('tag', 'none', ['t1', 't3']))).toEqual(['a4', 'a8'])
+    expect(matched(cond('tag', 'none', ['t1', 't3']))).toEqual(['a3', 'a4', 'a8'])
     expect(matched(cond('tag', 'any', ['t-missing']))).toEqual([])
+    // A photo tag lives in its own namespace and still matches the same field.
+    expect(matched(cond('tag', 'any', ['p1']))).toEqual(['a3'])
+    expect(matched(cond('tag', 'any', ['t1', 'p1']))).toEqual(['a1', 'a2', 'a3'])
+    expect(matched(cond('tag', 'none', ['p1']))).toEqual(['a1', 'a2', 'a4', 'a6', 'a8'])
   })
 
   test('kind, library and folder match their ids', () => {
