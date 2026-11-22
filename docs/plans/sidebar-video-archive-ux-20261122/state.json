@@ -1,0 +1,26 @@
+{
+  "gate_version": "2.2",
+  "target": {
+    "project": "blond11qq/Pmanager",
+    "base_sha": "58e44ed5b6769de2f84a2117faf3bdfd04654f14",
+    "branch": "feature/sidebar-video-archive-ux-20261122",
+    "ci_config_path": ".gitlab/ci-hub-request.yml@blond11qq/ci-hub-smoke"
+  },
+  "phases": [
+    {
+      "id": "01-behavior",
+      "state": "not_started",
+      "implemented_sha": null,
+      "verified_sha": null,
+      "evidence": []
+    },
+    {
+      "id": "02-verification",
+      "state": "not_started",
+      "implemented_sha": null,
+      "verified_sha": null,
+      "evidence": []
+    }
+  ],
+  "transitions": []
+}
