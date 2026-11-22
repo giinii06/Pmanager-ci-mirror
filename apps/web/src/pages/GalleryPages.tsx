@@ -29,13 +29,15 @@ const SORT_OPTIONS: Array<{ value: VideoSort; label: string }> = [
 function SortBar({
   sort,
   onChange,
+  kind = 'video',
 }: {
   sort: VideoSort
   onChange: (next: VideoSort) => void
+  kind?: AssetKind
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="동영상 정렬">
-      {SORT_OPTIONS.map((option) => (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={kind === 'image' ? '사진 정렬' : '동영상 정렬'}>
+      {SORT_OPTIONS.filter((option) => kind === 'video' || (option.value !== 'rate' && option.value !== 'watch_time')).map((option) => (
         <button
           key={option.value}
           type="button"
@@ -210,7 +212,7 @@ function TagsPage({ kind }: { kind: AssetKind }) {
           }
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              <SortBar sort={sort} onChange={setSort} />
+              <SortBar sort={sort} onChange={setSort} kind={kind} />
             </div>
           }
           emptyTitle={`이 태그의 ${mediaLabel}이 없습니다`}
