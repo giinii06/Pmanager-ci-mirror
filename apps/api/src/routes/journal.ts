@@ -12,7 +12,7 @@ import {
   type JournalEntryRecord,
   type JournalEntrySummary,
 } from '@mediavault/database'
-import type { JournalEntryDTO, JournalEntrySummaryDTO } from '@mediavault/shared'
+import { journalDocumentProperties, type JournalEntryDTO, type JournalEntrySummaryDTO } from '@mediavault/shared'
 import type { AppContext } from '../context'
 import { parseInput } from '../validate'
 
@@ -33,6 +33,7 @@ function summary(record: JournalEntrySummary): JournalEntrySummaryDTO {
   return {
     id: record.id,
     title: record.title,
+    properties: journalDocumentProperties(record.body),
     createdAt: new Date(record.createdAt).toISOString(),
     updatedAt: new Date(record.updatedAt).toISOString(),
   }

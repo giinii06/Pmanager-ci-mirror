@@ -16,7 +16,7 @@ export interface JournalEntryRecord {
   updatedAt: number
 }
 
-export type JournalEntrySummary = Omit<JournalEntryRecord, 'body'>
+export type JournalEntrySummary = JournalEntryRecord
 
 export interface JournalEntryPage {
   items: JournalEntrySummary[]
@@ -66,7 +66,7 @@ export function listJournalEntries(
   const params: Params =
     after === null ? [userId, limit + 1] : [userId, after, after, match![2]!, limit + 1]
   const rows = db.query<JournalEntrySummary, Params>(
-    `SELECT id, user_id AS userId, title, created_at AS createdAt, updated_at AS updatedAt
+    `SELECT ${SELECT}
      FROM journal_entries
      WHERE user_id = ?${where}
      ORDER BY created_at DESC, id DESC LIMIT ?`,

@@ -1,4 +1,5 @@
 export * from './domain'
+export * from './journalDocument'
 export * from './filters'
 export * from './media'
 export * from './constants'

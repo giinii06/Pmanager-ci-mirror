@@ -93,6 +93,7 @@ export interface JournalEntryDTO {
   id: string
   title: string
   body: string
+  properties?: JournalProperties
   createdAt: string
   updatedAt: string
 }

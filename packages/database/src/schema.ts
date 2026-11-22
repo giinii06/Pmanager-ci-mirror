@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 29
+export const SCHEMA_VERSION = 30
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -1150,6 +1150,20 @@ CREATE TABLE IF NOT EXISTS album_delete_items (
 CREATE INDEX IF NOT EXISTS idx_album_delete_mutation ON album_delete_items(mutation_id);
 `
 
+// Binary attachments live under /data/journal-images; the ACL is this row's owner.
+export const V30_JOURNAL_IMAGES_SQL = `
+CREATE TABLE IF NOT EXISTS journal_images (
+  id TEXT PRIMARY KEY,
+  entry_id TEXT NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mime_type TEXT NOT NULL,
+  extension TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_journal_images_owner ON journal_images(user_id, entry_id);
+`
+
 export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(SCHEMA_SQL),
   (exec) => exec('ALTER TABLE folders ADD COLUMN cover_asset_id TEXT'),
@@ -1214,4 +1228,5 @@ export const MIGRATIONS: Array<(exec: (sql: string) => void) => void> = [
   (exec) => exec(V27_JOURNAL_SQL),
   (exec) => exec(V28_PHOTO_TAGS_SQL),
   (exec) => exec(V29_ALBUM_DELETE_SQL),
+  (exec) => exec(V30_JOURNAL_IMAGES_SQL),
 ]
