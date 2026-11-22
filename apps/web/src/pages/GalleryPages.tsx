@@ -14,6 +14,7 @@ import { Thumb } from '../components/Thumb'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { LoadingBlock } from '../components/ui/Spinner'
+import { VideoTagGrid } from '../components/VideoTagGrid'
 
 const SORT_OPTIONS: Array<{ value: VideoSort; label: string }> = [
   { value: 'rate', label: 'Rate순' },
@@ -313,8 +314,8 @@ function TagsPage({ kind }: { kind: AssetKind }) {
           icon={<Tag size={20} />}
           action={<Button onClick={() => navigate(backPath)}>전체 {mediaLabel}으로 이동</Button>}
         />
-      ) : (
-        <div className={cn("grid gap-3", isPhoto ? "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3")}>
+      ) : isPhoto ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
           {populatedTags.map((tag) => (
             <Link
               key={tag.id}
@@ -349,6 +350,8 @@ function TagsPage({ kind }: { kind: AssetKind }) {
             </Link>
           ))}
         </div>
+      ) : (
+        <VideoTagGrid tags={populatedTags} />
       )}
     </div>
   )

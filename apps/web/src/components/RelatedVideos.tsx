@@ -26,9 +26,9 @@ export function RelatedVideos({
                 key={item.id}
                 type="button"
                 onClick={() => onSelect(item)}
-                className="flex w-full gap-3 rounded-xl p-1.5 text-left transition-colors hover:bg-panel-2"
+                className="flex w-full flex-col items-start gap-2 rounded-xl p-2 text-left transition-colors hover:bg-panel-2"
               >
-                <span className="h-[94px] w-[168px] shrink-0 overflow-hidden rounded-lg bg-panel-2">
+                <span className="block aspect-[84/47] w-[336px] max-w-full overflow-hidden rounded-lg bg-panel-2">
                   <img
                     src={item.thumbnails.medium}
                     alt=""
@@ -36,7 +36,7 @@ export function RelatedVideos({
                     className="h-full w-full object-cover"
                   />
                 </span>
-                <span className="min-w-0 flex-1 py-0.5">
+                <span className="block w-full min-w-0 pb-1">
                   <span className="line-clamp-2 block text-[13.5px] font-medium leading-snug text-ink">
                     {item.filename}
                   </span>
