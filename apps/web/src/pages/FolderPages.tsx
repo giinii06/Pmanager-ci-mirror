@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Eye, FolderPlus, Images, Tag, ThumbsUp, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, FolderPlus, Images, Shuffle, Tag, ThumbsUp, Trash2 } from 'lucide-react'
 import type { FolderDTO, FolderSort } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { invalidateVoteCaches } from '../lib/cachePatch'
@@ -17,6 +17,8 @@ import {
 } from '../lib/folderLayout'
 import { formatCount } from '../lib/format'
 import { randomToken } from '../lib/random'
+import { selectAlbumNeighbor, selectRandomAlbum } from '../lib/albumNavigation'
+import { useViewer } from '../store/viewer'
 import { useElementWidth, useMeasuredElement } from '../lib/hooks'
 import { useUi } from '../store/ui'
 import { Breadcrumbs } from '../components/Breadcrumbs'
@@ -130,6 +132,11 @@ export function FoldersPage() {
     () => (folders.data ?? []).filter((folder) => folder.directImageCount > 0),
     [folders.data],
   )
+
+  // Keep the visible gallery order for the next/previous album controls.
+  useEffect(() => {
+    if (folders.isSuccess) queryClient.setQueryData(['album-navigation'], collections.map((folder) => folder.id))
+  }, [collections, folders.isSuccess, queryClient])
 
   const sectionInputs = useMemo<FolderSectionInput[]>(() => {
     const byLib = new Map<string, FolderDTO[]>()
@@ -259,6 +266,33 @@ export function FolderPage() {
   })
   const folders = useQuery({ queryKey: ['folders'], queryFn: () => api.folders() })
 
+  const galleryOrder = queryClient.getQueryData<string[]>(['album-navigation'])
+  const fallbackOrder = (folders.data ?? []).filter((item) => item.directImageCount > 0).map((item) => item.id)
+  const activeOrder = galleryOrder?.filter((id) => fallbackOrder.includes(id)) ?? fallbackOrder
+  const orderedAlbumIds = activeOrder.includes(folderId ?? '')
+    ? activeOrder
+    : [...activeOrder, ...fallbackOrder.filter((id) => !activeOrder.includes(id))]
+  const goAlbum = (direction: 'prev' | 'next' | 'random') => {
+    if (!folderId) return
+    const id = direction === 'random'
+      ? selectRandomAlbum(orderedAlbumIds, folderId)
+      : selectAlbumNeighbor(orderedAlbumIds, folderId, direction)
+    if (id && id !== folderId) navigate(`/folders/${encodeURIComponent(id)}`)
+  }
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!folderId || useViewer.getState().items.length > 0 || document.querySelector('dialog[open]')) return
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey && event.key !== '<' && event.key !== '>') return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return
+      if (event.key === 'ArrowLeft' || event.key === '<') goAlbum('prev')
+      if (event.key === 'ArrowRight' || event.key === '>') goAlbum('next')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   const vote = useMutation({
     mutationFn: (targetId: string) => api.voteFolder(targetId, randomToken()),
     onSuccess: (updated) => {
@@ -329,7 +363,16 @@ export function FolderPage() {
         </span>
       }
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={() => goAlbum('prev')} disabled={orderedAlbumIds.length < 2} title="이전 앨범 (← 또는 <)">
+            <ChevronLeft size={13} /> 이전 앨범
+          </Button>
+          <Button size="sm" onClick={() => goAlbum('next')} disabled={orderedAlbumIds.length < 2} title="다음 앨범 (→ 또는 >)">
+            다음 앨범 <ChevronRight size={13} />
+          </Button>
+          <Button size="sm" onClick={() => goAlbum('random')} disabled={orderedAlbumIds.length < 2} title="다른 앨범 랜덤 이동">
+            <Shuffle size={13} /> Shuffle
+          </Button>
           <Button
             size="sm"
             variant="primary"
