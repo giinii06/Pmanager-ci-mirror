@@ -252,3 +252,20 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Theme-aware media chrome. Keep only the actual video canvas black. */
+:root[data-theme='light'] .media-chrome,
+:root[data-theme='ash'] .media-chrome,
+:root[data-theme='dark'] .media-chrome,
+:root[data-theme='onyx'] .media-chrome {
+  color: var(--color-ink);
+  background-color: var(--color-canvas);
+}
+
+:root[data-theme='light'] .media-chrome button:focus-visible,
+:root[data-theme='ash'] .media-chrome button:focus-visible,
+:root[data-theme='dark'] .media-chrome button:focus-visible,
+:root[data-theme='onyx'] .media-chrome button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

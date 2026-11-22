@@ -133,7 +133,7 @@ export function Lightbox() {
           <motion.div
             key="watch"
             ref={watchScrollRef}
-            className="fixed inset-0 z-[70] overflow-y-auto overscroll-contain bg-[#0f0f0f]"
+            className="fixed inset-0 z-[70] overflow-y-auto overscroll-contain bg-canvas"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -168,7 +168,7 @@ export function Lightbox() {
         ) : (
           <motion.div
             key="lightbox"
-            className="fixed inset-0 z-[70] flex flex-col bg-[#05060a]/95 backdrop-blur-[6px]"
+            className="fixed inset-0 z-[70] flex flex-col bg-canvas/95 backdrop-blur-[6px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

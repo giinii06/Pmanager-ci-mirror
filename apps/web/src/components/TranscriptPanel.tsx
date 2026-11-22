@@ -43,7 +43,7 @@ function JobProgress({
         <span>{label}</span>
         <span className="ml-auto tabular-nums text-muted">{progress}%</span>
       </div>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-panel-2">
         <div
           className="h-full rounded-full bg-accent transition-[width] duration-500"
           style={{ width: `${progress}%` }}
@@ -195,8 +195,8 @@ export function TranscriptPanel({
   const targetName = target ? languageName(target) : '번역'
 
   return (
-    <aside className="flex h-full w-full flex-col border-l border-white/10 bg-[#0b0c0f]/97">
-      <div className="flex min-h-14 items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+    <aside className="flex h-full w-full flex-col border-l border-line bg-panel">
+      <div className="flex min-h-14 items-center justify-between gap-2 border-b border-line px-4 py-3">
         <div className="flex items-center gap-2">
           <Sparkles size={15} className="text-accent" />
           <h3 className="text-[15px] font-semibold text-ink">AI 자막</h3>
@@ -205,7 +205,7 @@ export function TranscriptPanel({
           type="button"
           onClick={onClose}
           aria-label="자막 닫기"
-          className="rounded-full p-1.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+          className="rounded-full p-1.5 text-muted transition-colors hover:bg-panel-2 hover:text-ink"
         >
           <X size={15} />
         </button>
@@ -262,9 +262,9 @@ export function TranscriptPanel({
               type="button"
               onClick={() => create.mutate(false)}
               disabled={create.isPending}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-[var(--ui-on-accent)] transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              {create.isPending ? <Spinner className="text-black" /> : <Sparkles size={13} />}
+              {create.isPending ? <Spinner className="text-[var(--ui-on-accent)]" /> : <Sparkles size={13} />}
               AI 자막 생성
             </button>
             {create.error ? (
@@ -278,7 +278,7 @@ export function TranscriptPanel({
         ) : (
           <>
             {tabs.length > 1 ? (
-              <div className="flex items-center gap-1.5 border-b border-white/10 px-3 py-3">
+              <div className="flex items-center gap-1.5 border-b border-line px-3 py-3">
                 {tabs.map((tag) => (
                   <button
                     key={tag}
@@ -288,8 +288,8 @@ export function TranscriptPanel({
                     className={cn(
                       'rounded-lg px-3 py-2 text-[12.5px] transition-colors',
                       tag === activeTab
-                        ? 'bg-white/10 text-ink'
-                        : 'text-muted hover:bg-white/5 hover:text-ink',
+                        ? 'bg-panel-2 text-ink'
+                        : 'text-muted hover:bg-panel-2 hover:text-ink',
                     )}
                   >
                     {languageName(tag)}
@@ -330,10 +330,10 @@ export function TranscriptPanel({
                     type="button"
                     onClick={() => createTranslation.mutate(false)}
                     disabled={createTranslation.isPending}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-[var(--ui-on-accent)] transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
                     {createTranslation.isPending ? (
-                      <Spinner className="text-black" />
+                      <Spinner className="text-[var(--ui-on-accent)]" />
                     ) : (
                       <Sparkles size={13} />
                     )}
@@ -350,8 +350,8 @@ export function TranscriptPanel({
               )
             ) : (
               <>
-                <div className="border-b border-white/10 px-4 py-2.5">
-                  <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5">
+                <div className="border-b border-line px-4 py-2.5">
+                  <label className="flex items-center gap-2 rounded-xl border border-line bg-panel-2 px-3.5 py-2.5">
                     <Search size={13} className="shrink-0 text-faint" />
                     <input
                       value={query}
@@ -395,7 +395,7 @@ export function TranscriptPanel({
                         onClick={() => seek(segment.startMs)}
                         className={cn(
                           'flex w-full gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
-                          'hover:bg-white/8 focus-visible:bg-white/8 focus-visible:outline-none',
+                          'hover:bg-raised focus-visible:bg-raised focus-visible:outline-none',
                         )}
                       >
                         <span className="mt-0.5 shrink-0 tabular-nums text-[11px] text-faint">
@@ -410,7 +410,7 @@ export function TranscriptPanel({
                 </div>
 
                 {!onTranslationTab ? (
-                  <div className="border-t border-white/10 px-4 py-2.5">
+                  <div className="border-t border-line px-4 py-2.5">
                     <button
                       type="button"
                       onClick={() => create.mutate(true)}

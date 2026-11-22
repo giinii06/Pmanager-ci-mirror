@@ -17,7 +17,7 @@ function StarRow({ rating, size = 15 }: { rating: number; size?: number }) {
           size={size}
           aria-hidden
           fill={value <= rating ? STAR_COLOR : 'none'}
-          className={value <= rating ? 'text-[#ffb020]' : 'text-white/20'}
+          className={value <= rating ? 'text-[#ffb020]' : 'text-faint'}
         />
       ))}
     </span>
@@ -72,9 +72,9 @@ export function ReviewSection({ asset }: { asset: AssetDTO }) {
 
   return (
     <section className="mt-8">
-      <h2 className="text-[18px] font-semibold tracking-tight text-white">후기 {review ? 1 : 0}개</h2>
+      <h2 className="text-[18px] font-semibold tracking-tight text-ink">후기 {review ? 1 : 0}개</h2>
 
-      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="mt-4 rounded-2xl border border-line bg-panel-2 p-4">
         <div className="flex items-center gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/20 text-[12.5px] font-semibold text-accent">
             나
@@ -93,7 +93,7 @@ export function ReviewSection({ asset }: { asset: AssetDTO }) {
                 <Star
                   size={21}
                   fill={value <= rating ? STAR_COLOR : 'none'}
-                  className={value <= rating ? 'text-[#ffb020]' : 'text-white/25'}
+                  className={value <= rating ? 'text-[#ffb020]' : 'text-faint'}
                 />
               </button>
             ))}
@@ -111,7 +111,7 @@ export function ReviewSection({ asset }: { asset: AssetDTO }) {
               ? '후기를 고쳐 보세요.'
               : '이 영상에 대한 후기를 남겨 보세요.'
           }
-          className="mt-3 w-full resize-y rounded-xl border border-white/10 bg-[#0f0f0f] px-4 py-3 text-[14px] leading-relaxed text-white outline-none transition-shadow placeholder:text-white/40 focus:border-white/25 focus:ring-2 focus:ring-white/10"
+          className="mt-3 w-full resize-y rounded-xl border border-line bg-panel-2 px-4 py-3 text-[14px] leading-relaxed text-ink outline-none transition-shadow placeholder:text-faint focus:border-line-strong focus:ring-2 focus:ring-accent/20"
         />
 
         <div className="mt-2 flex items-center justify-end gap-1.5">
@@ -120,7 +120,7 @@ export function ReviewSection({ asset }: { asset: AssetDTO }) {
               type="button"
               onClick={() => remove.mutate()}
               disabled={remove.isPending}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] text-white/50 transition-colors hover:bg-white/10 hover:text-danger disabled:opacity-50"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] text-muted transition-colors hover:bg-panel-2 hover:text-danger disabled:opacity-50"
             >
               <Trash2 size={14} />
               삭제
@@ -130,7 +130,7 @@ export function ReviewSection({ asset }: { asset: AssetDTO }) {
             type="button"
             onClick={() => save.mutate()}
             disabled={!canSubmit || save.isPending}
-            className="min-h-10 rounded-xl bg-accent px-4 text-[13px] font-semibold text-[#0b0c0f] transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
+            className="min-h-10 rounded-xl bg-accent px-4 text-[13px] font-semibold text-[var(--ui-on-accent)] transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
           >
             {save.isPending ? '저장 중' : review ? '수정' : '등록'}
           </button>
@@ -144,19 +144,19 @@ export function ReviewSection({ asset }: { asset: AssetDTO }) {
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-[13px] font-medium text-white">나</span>
-              <span className="text-[12px] text-white/45">{formatDay(review.updatedAt)}</span>
+              <span className="text-[13px] font-medium text-ink">나</span>
+              <span className="text-[12px] text-faint">{formatDay(review.updatedAt)}</span>
             </div>
             <div className="mt-0.5">
               <StarRow rating={review.rating} />
             </div>
-            <p className="mt-1.5 whitespace-pre-line text-[13.5px] leading-relaxed text-white/85">
+            <p className="mt-1.5 whitespace-pre-line text-[13.5px] leading-relaxed text-ink">
               {review.body}
             </p>
           </div>
         </article>
       ) : reviewQuery.isPending ? null : (
-        <p className="mt-4 text-[13px] text-white/45">
+        <p className="mt-4 text-[13px] text-faint">
           아직 후기가 없습니다. 이 영상을 어떻게 봤는지 남겨 보세요.
         </p>
       )}

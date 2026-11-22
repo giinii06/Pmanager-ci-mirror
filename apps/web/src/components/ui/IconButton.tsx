@@ -21,8 +21,8 @@ export function IconButton({
       className={cn(
         'rounded-full p-2 transition-colors',
         active
-          ? 'bg-white/15 text-accent'
-          : 'text-white/75 hover:bg-white/10 hover:text-white',
+          ? 'bg-accent/15 text-accent'
+          : 'text-muted hover:bg-raised hover:text-ink',
       )}
     >
       {children}

@@ -223,20 +223,20 @@ export function ImageViewer({
   return (
     <>
       {fullscreenActive ? null : (
-        <div className="relative z-20 flex min-h-16 items-center justify-between gap-4 bg-gradient-to-b from-black/75 to-transparent px-4 py-3 sm:px-6">
+        <div className="relative z-20 flex min-h-16 items-center justify-between gap-4 bg-gradient-to-b from-panel via-panel/80 to-transparent px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2.5">
             <button
               ref={closeRef}
               type="button"
               onClick={onClose}
               aria-label="닫기"
-              className="rounded-full p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+              className="rounded-full p-2 text-muted transition-colors hover:bg-raised hover:text-ink"
             >
               <X size={19} />
             </button>
             <div className="min-w-0">
-              <p className="truncate text-[14px] font-semibold text-white">{asset.filename}</p>
-              <p className="truncate text-[11.5px] text-white/45">
+              <p className="truncate text-[14px] font-semibold text-ink">{asset.filename}</p>
+              <p className="truncate text-[11.5px] text-faint">
                 {formatDate(asset.takenAt)} · 조회수 {formatCount(asset.viewCount)}회
               </p>
             </div>
@@ -263,7 +263,7 @@ export function ImageViewer({
                         'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11.5px] font-medium leading-none whitespace-nowrap transition-colors disabled:opacity-50',
                         isCurrent
                           ? 'border-amber-400/50 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25'
-                          : 'border-white/15 bg-white/[0.06] text-white/80 hover:border-white/30 hover:bg-white/14 hover:text-white',
+                          : 'border-line bg-panel-2 text-muted hover:border-line-strong hover:bg-raised hover:text-ink',
                       )}
                     >
                       {isCurrent ? <Check size={12} /> : <ImageIcon size={12} />}
@@ -311,7 +311,7 @@ export function ImageViewer({
               download={asset.filename}
               aria-label="원본 내려받기"
               title="원본 내려받기"
-              className="rounded-full p-2 text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+              className="rounded-full p-2 text-white/75 transition-colors hover:bg-raised hover:text-ink"
             >
               <Download size={17} />
             </a>
@@ -326,7 +326,7 @@ export function ImageViewer({
               type="button"
               onClick={goPrev}
               aria-label="이전"
-              className="absolute left-1 z-20 rounded-full bg-black/40 p-2.5 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/65 hover:text-white sm:left-4"
+              className="absolute left-1 z-20 rounded-full bg-black/40 p-2.5 text-muted backdrop-blur-sm transition-colors hover:bg-black/65 hover:text-ink sm:left-4"
             >
               <ChevronLeft size={20} />
             </button>
@@ -364,7 +364,7 @@ export function ImageViewer({
               type="button"
               onClick={goNext}
               aria-label="다음"
-              className="absolute right-1 z-20 rounded-full bg-black/40 p-2.5 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/65 hover:text-white sm:right-4"
+              className="absolute right-1 z-20 rounded-full bg-black/40 p-2.5 text-muted backdrop-blur-sm transition-colors hover:bg-black/65 hover:text-ink sm:right-4"
             >
               <ChevronRight size={20} />
             </button>
@@ -379,7 +379,7 @@ export function ImageViewer({
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 24, opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="w-[340px] max-w-[86vw] shrink-0 overflow-y-auto border-l border-white/10 bg-[#0b0c0f]/97 px-6 py-7"
+              className="w-[340px] max-w-[86vw] shrink-0 overflow-y-auto border-l border-line bg-panel px-6 py-7"
             >
               <h3 className="text-[13px] font-semibold text-ink">정보</h3>
               <dl className="mt-4 space-y-3.5 text-[12.5px]">
@@ -418,7 +418,7 @@ export function ImageViewer({
                   <dd className="mt-0.5 break-all text-muted">{asset.relativePath}</dd>
                 </div>
               </dl>
-              <div className="mt-6 border-t border-white/10 pt-5">
+              <div className="mt-6 border-t border-line pt-5">
                 <h4 className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
                   <Tag size={14} /> 사진 태그
                 </h4>
@@ -487,7 +487,7 @@ export function ImageViewer({
       </div>
 
       {fullscreenActive ? null : (
-        <div className="pointer-events-none absolute bottom-3 left-0 right-0 z-10 flex items-center justify-center gap-3 text-[11.5px] text-white/45">
+        <div className="pointer-events-none absolute bottom-3 left-0 right-0 z-10 flex items-center justify-center gap-3 text-[11.5px] text-faint">
           <span className="tabular-nums">
             {counter} / {items.length}
           </span>
