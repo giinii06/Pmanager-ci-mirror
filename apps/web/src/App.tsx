@@ -62,15 +62,15 @@ function MediaRoute({ kind }: { kind: 'image' | 'video' }) {
   const navigate = useNavigate()
   useEffect(() => {
     if (!assetId) return
+    setError(null)
     const state = useViewer.getState()
-    if (state.items[state.index]?.id === assetId) return
+    if (state.items[state.index]?.id === assetId && state.items[state.index]?.kind === kind) return
     const cached = state.items.find((item) => item.id === assetId)
     if (cached && cached.kind === kind) {
       state.select(cached)
       return
     }
     let cancelled = false
-    setError(null)
     void api.asset(assetId).then((item) => {
       if (cancelled) return
       if (item.kind !== kind) {
