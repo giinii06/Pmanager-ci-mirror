@@ -6,6 +6,7 @@ import { POSTER_SCHEME, type AssetKind, type VideoSort } from '@mediavault/share
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
+import { useUi } from '../store/ui'
 import { AssetGallery } from '../components/AssetGallery'
 import { EmptyState } from '../components/EmptyState'
 import { PageHeading } from '../components/PageHeading'
