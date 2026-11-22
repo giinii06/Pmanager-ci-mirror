@@ -7,20 +7,40 @@
     {
       "id": "01",
       "name": "filename-only-search",
-      "state": "not_started",
-      "implemented": false,
+      "state": "implemented_pending_verification",
+      "implemented": true,
       "tested": false,
       "verified": false,
       "completed": false,
       "verified_sha": null,
-      "ci_evidence": null,
-      "reviews": null,
+      "ci_evidence": {
+        "dispatch_pipeline": 3098779597,
+        "dispatch_pipeline_status": "success",
+        "dispatch_sha": "396c8a150c129bc97ced519de6e037359c85d6c7",
+        "child_pipeline": 3098779613,
+        "child_status": "skipped",
+        "child_manual_job": 18253380690,
+        "actual_github_checks": "not_observed",
+        "result": "not_verified"
+      },
+      "reviews": {
+        "requirements": "static_pass_only",
+        "quality_security": "static_pass_only",
+        "independent": "unavailable",
+        "runtime": "not_executed"
+      },
       "history": [
         {
           "state": "not_started",
           "reason": "Plan committed prior to implementation"
+        },
+        {
+          "state": "implemented_pending_verification",
+          "reason": "Code committed, but effective CI only dispatched a manual child; no real tests run",
+          "implementation_sha": "396c8a150c129bc97ced519de6e037359c85d6c7"
         }
-      ]
+      ],
+      "implemented_sha": "396c8a150c129bc97ced519de6e037359c85d6c7"
     }
   ]
 }

@@ -11,8 +11,8 @@
 - **CI authority:** GitLab effective `ci_config_path = .gitlab/ci-hub-request.yml@blond11qq/ci-hub-smoke`, which requests GitHub Actions. GitLab `.gitlab-ci.yml` is not the effective config. Exact-SHA provider jobs are required to verify.
 - **Implementation plan:** [phase-01-filename-search.md](phase-01-filename-search.md)
 - **Design & acceptance:** [design.md](design.md)
-- **State:** [state.json](state.json)
+- **State:** [state.json](state.json) · [review.md](review.md)
 
 ## Evidence policy
 
-Local environment has no Bun executable and no authorized checkout, so pre-commit commands and observed RED are currently unavailable. Tests added in code are *not* proof they were run. After candidate commit, dispatch only the configured CI provider at the same SHA and inspect dispatch status independently from real job evidence. A Draft MR is not merge/deploy authorization.
+Local environment has no Bun executable and no runnable checkout, so pre-commit commands and observed RED are unavailable. Tests added in code are *not* proof they were run. At candidate SHA `396c8a150c129bc97ced519de6e037359c85d6c7`, the GitLab dispatch pipeline succeeded, **but its downstream child was skipped with a manual job and NO GitHub Actions tests were observed**. Do not mark Tested/Verified. A Draft MR is not merge/deploy authorization.
