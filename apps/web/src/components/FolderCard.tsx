@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye, Folder as FolderIcon, Info, Percent, ThumbsUp } from 'lucide-react'
+import { Eye, Folder as FolderIcon, Info, Percent, ThumbsUp, Trash2 } from 'lucide-react'
 import { POSTER_SCHEME, type FolderDTO } from '@mediavault/shared'
 import { cn } from '../lib/cn'
 import { clampedCoverAspectRatio } from '../lib/folderLayout'
@@ -14,6 +14,7 @@ export function FolderCard({
   imageHeight,
   priority = false,
   onVote,
+  onDelete,
 }: {
   folder: FolderDTO
   count?: number
@@ -21,6 +22,7 @@ export function FolderCard({
   imageHeight?: number
   priority?: boolean
   onVote?: (folderId: string) => void
+  onDelete?: (folderId: string) => void
 }) {
   const [infoOpen, setInfoOpen] = useState(false)
   const photoCount = count ?? folder.assetCount
@@ -139,6 +141,21 @@ export function FolderCard({
           >
             <ThumbsUp size={11} />
             <span>{formatCount(folder.voteCount)}</span>
+          </button>
+        ) : null}
+        {onDelete ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onDelete(folder.id)
+            }}
+            aria-label={`${folder.name} 앨범 삭제`}
+            title="앨범 삭제"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#3c191d] text-[#ffc9c9] transition-colors hover:bg-[#522127]"
+          >
+            <Trash2 size={14} />
           </button>
         ) : null}
       </div>

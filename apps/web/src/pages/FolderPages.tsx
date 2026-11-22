@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Eye, FolderPlus, Images, Tag, ThumbsUp } from 'lucide-react'
+import { Eye, FolderPlus, Images, Tag, ThumbsUp, Trash2 } from 'lucide-react'
 import type { FolderDTO, FolderSort } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { invalidateVoteCaches } from '../lib/cachePatch'
@@ -26,6 +26,7 @@ import { LoadingBlock } from '../components/ui/Spinner'
 import { PageHeading } from '../components/PageHeading'
 import { Button } from '../components/ui/Button'
 import { AssetGallery } from '../components/AssetGallery'
+import { AlbumDeleteDialog } from '../components/AlbumDeleteDialog'
 
 const FOLDER_SORTS: Array<{ value: FolderSort; label: string }> = [
   { value: 'views', label: '조회수순' },
@@ -39,11 +40,13 @@ function PositionedFolderCard({
   count,
   priority = false,
   onVote,
+  onDelete,
 }: {
   node: PlacedFolderCard
   count?: number
   priority?: boolean
   onVote: (folderId: string) => void
+  onDelete: (folderId: string) => void
 }) {
   return (
     <div
@@ -60,6 +63,7 @@ function PositionedFolderCard({
         imageHeight={node.imageHeight}
         priority={priority}
         onVote={onVote}
+        onDelete={onDelete}
       />
     </div>
   )
@@ -68,9 +72,11 @@ function PositionedFolderCard({
 function SubfolderGrid({
   folders,
   onVote,
+  onDelete,
 }: {
   folders: FolderDTO[]
   onVote: (folderId: string) => void
+  onDelete: (folderId: string) => void
 }) {
   const [widthRef, width] = useElementWidth<HTMLDivElement>()
   const layout = useMemo(() => buildFlatFolderMasonry(folders, width), [folders, width])
@@ -83,6 +89,7 @@ function SubfolderGrid({
           node={node}
           count={node.folder.assetCount}
           onVote={onVote}
+          onDelete={onDelete}
         />
       ))}
     </div>
@@ -94,6 +101,7 @@ export function FoldersPage() {
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
   const [sort, setSort] = useState<FolderSort>('date')
+  const [deletingFolder, setDeletingFolder] = useState<FolderDTO | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const { attach: attachHeader, height: headerHeight } = useMeasuredElement<HTMLDivElement>()
   const [widthRef, width] = useElementWidth<HTMLDivElement>()
@@ -225,11 +233,13 @@ export function FoldersPage() {
                 count={node.folder.directImageCount}
                 priority={node.index < 12}
                 onVote={handleVote}
+                onDelete={(id) => setDeletingFolder((folders.data ?? []).find((folder) => folder.id === id) ?? null)}
               />
             ),
           )}
         </div>
       )}
+      <AlbumDeleteDialog folder={deletingFolder} onClose={() => setDeletingFolder(null)} />
     </div>
   )
 }
@@ -239,6 +249,7 @@ export function FolderPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
+  const [deletingFolder, setDeletingFolder] = useState<FolderDTO | null>(null)
 
   const detail = useQuery({
     queryKey: ['folder', folderId],
@@ -299,6 +310,7 @@ export function FolderPage() {
   const children = (folders.data ?? []).filter((item) => item.parentId === folder.id)
 
   return (
+    <>
     <AssetGallery
       title={folder.name}
       filters={{ folderId: folder.id }}
@@ -316,21 +328,32 @@ export function FolderPage() {
         </span>
       }
       actions={
-        <Button
-          size="sm"
-          variant="primary"
-          onClick={() => vote.mutate(folder.id)}
-          disabled={vote.isPending}
-        >
-          <ThumbsUp size={13} />
-          Vote {formatCount(folder.voteCount)}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => vote.mutate(folder.id)}
+            disabled={vote.isPending}
+          >
+            <ThumbsUp size={13} />
+            Vote {formatCount(folder.voteCount)}
+          </Button>
+          {folder.directImageCount > 0 ? (
+            <Button size="sm" variant="danger" onClick={() => setDeletingFolder(folder)}>
+              <Trash2 size={13} /> 앨범 삭제
+            </Button>
+          ) : null}
+        </div>
       }
       groupByMonth={false}
       breadcrumb={<Breadcrumbs trail={breadcrumb} />}
       subheader={
         children.length > 0 ? (
-          <SubfolderGrid folders={children} onVote={handleSubfolderVote} />
+          <SubfolderGrid
+            folders={children}
+            onVote={handleSubfolderVote}
+            onDelete={(id) => setDeletingFolder(children.find((item) => item.id === id) ?? null)}
+          />
         ) : null
       }
       hideEmpty={children.length > 0}
@@ -338,5 +361,11 @@ export function FolderPage() {
       emptyBody="지원하는 사진과 영상이 없거나 아직 스캔하지 않았습니다."
       emptyIcon={<Images size={20} />}
     />
+    <AlbumDeleteDialog
+      folder={deletingFolder}
+      onClose={() => setDeletingFolder(null)}
+      onAccepted={() => navigate('/')}
+    />
+    </>
   )
 }
