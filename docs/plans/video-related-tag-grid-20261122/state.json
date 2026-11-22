@@ -1,0 +1,26 @@
+{
+  "gate_version": "2.2",
+  "target": {
+    "project": "blond11qq/Pmanager",
+    "base_sha": "5b73bbd1e62fea239161f46a70c066f4cbcb5005",
+    "branch": "feature/video-related-tag-grid-20261122",
+    "ci_config_path": ".gitlab/ci-hub-request.yml@blond11qq/ci-hub-smoke"
+  },
+  "phases": [
+    {
+      "id": "01-ui",
+      "state": "not_started",
+      "implemented_sha": null,
+      "verified_sha": null,
+      "evidence": []
+    },
+    {
+      "id": "02-verification",
+      "state": "not_started",
+      "implemented_sha": null,
+      "verified_sha": null,
+      "evidence": []
+    }
+  ],
+  "transitions": []
+}
