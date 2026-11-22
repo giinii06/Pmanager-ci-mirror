@@ -33,7 +33,7 @@ const HIDE_QUEUED_ALBUMS = `
         SELECT 1 FROM album_delete_items i
         JOIN file_mutations m ON m.id = i.mutation_id
         WHERE i.batch_id = b.id
-          AND m.state NOT IN ('blocked', 'cancelled_pre_commit')
+          AND m.state NOT IN ('completed', 'blocked', 'cancelled_pre_commit')
       )
   )
 `

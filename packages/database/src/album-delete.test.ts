@@ -75,6 +75,17 @@ describe('photo album deletion queue', () => {
     db.close()
   })
 
+  test('a fully finished batch never hides newly indexed photos', () => {
+    const db = seededAlbum()
+    const result = queueAlbumPhotoDeletion(db, {
+      folderId: 'album', userId: 'user', requestKey: 'finished', now: 100,
+    })
+    expect(result.status).toBe('ok')
+    db.query("UPDATE file_mutations SET state = 'completed'").run()
+    expect(listAllFolders(db).map((folder) => folder.id)).toContain('album')
+    db.close()
+  })
+
   test('empty album cannot start a deletion', () => {
     const db = seededAlbum()
     expect(queueAlbumPhotoDeletion(db, {
