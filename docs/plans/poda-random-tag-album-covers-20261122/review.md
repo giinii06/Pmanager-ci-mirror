@@ -23,3 +23,11 @@
 
 ## Verdict
 **Code implemented, tests/E2E unverified; external CI failed with no accessible job-level reason.** Stop at implemented/blocked. Preserve Draft MR, do not merge or deploy until the failing run and exact checkout/job logs are inspected and required tests pass.
+
+
+## Incremental review — one-line TS2769 repair at `b1772b2342e5cf128eafb0354322aad8677569db`
+**Requirements self-review:** The existing multi-photo tag test still accepts only `photo1` or `photo2`. A null cover is converted to an empty string and fails the same membership assertion, so the test does not become weaker.
+
+**Quality/security self-review:** The diff changes a test-only TypeScript expression. No production APIs, DB state, SQL filters, runtime paths, network permissions or CI settings were changed. Existing `string | null` types remain correct and explicit.
+
+**Evidence:** User-supplied failing run has direct TS2769 line proof, and the repaired SHA has a `github-actions/ci-hub-request: success` provider callback. The successful job logs and browser E2E were not independently inspected; this remains self-review only and unverified at the full user-flow level.

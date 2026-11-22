@@ -34,3 +34,12 @@
 - Original failing provider run: https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44992687882 . Same feature source code; repeat failure means transient-job hypothesis was not supported, but root cause still unknown.
 - Limited local checks: exact tagSort implementation transcribed into isolated TypeScript module, compiled with global `tsc` and six Node assertions passed; tag and album SQL shapes reproduced in Python stdlib sqlite3 with 30 trials each. Neither is the repository's Bun test/typecheck/build or actual E2E.
 - Full Bun executable/repository checkout unavailable in this container; GitLab bridge supplies no GitHub job traces; direct GitHub URLs inaccessible here. Do not change runtime code or CI provider on unobserved assumptions.
+
+
+## Diagnosis and repair checkpoint (2026-11-22)
+- The user supplied the real `gh run view 44993554908 -R giinii06/Pmanager-ci-mirror --log-failed` trace. The checked-out SHA was `ef3498c4b08fb9f8a12c868a8fa17cef9d006196` (matching bridge input), Bun setup and `bun install` succeeded.
+- Observed first failure: `src/random-covers.test.ts(77,45): error TS2769` during `bun run --cwd packages/database typecheck`. Assertion `expect(['photo1','photo2']).toContain(photo.coverAssetId)` passed `string | null` to a `string` parameter. Tests and build did **not** run in that failing job because of TypeScript error.
+- Minimal repair committed as **code SHA `b1772b2342e5cf128eafb0354322aad8677569db`**: `expect(['photo1','photo2']).toContain(photo.coverAssetId ?? '')`. This preserves the assertion that null is not an acceptable cover, but satisfies the TypeScript expected string type. No production implementation changed.
+- [GitLab pipeline 3099052889](https://gitlab.com/blond11qq/Pmanager/-/pipelines/3099052889) ran for exactly `b1772b2342e5cf128eafb0354322aad8677569db`: dispatch `success`, GitHub callback `github-actions/ci-hub-request: success` on [GitHub Actions run 44993844861](https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44993844861) at 2026-11-22T06:29:36.950Z.
+- GitHub job command-by-command logs for the successful run were *not* independently retrieved. No direct authenticated browser user-flow E2E. Therefore the provider reports **success**, but `jobs_verified=false`, `e2e_verified=false`; do **not** claim verified/completed.
+- Review: one-line test-only change has no DB or API impact; keeps intended test behavior. `main` unchanged, Draft MR retained, no deployment.

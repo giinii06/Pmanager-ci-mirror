@@ -25,7 +25,7 @@
         "provider_run_url": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44992687882",
         "jobs_verified": false,
         "e2e_verified": false,
-        "root_cause": "unknown (no accessible job logs)",
+        "root_cause": "Confirmed by user-provided gh run --log-failed output for run 44993554908: TS2769 at packages/database/src/random-covers.test.ts:77, string | null supplied to toContain expecting string.",
         "repro_attempt": {
           "pipeline_id": 3099047910,
           "sha": "ef3498c4b08fb9f8a12c868a8fa17cef9d006196",
@@ -35,10 +35,25 @@
           "run_url": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44993554908",
           "jobs_verified": false,
           "e2e_verified": false
+        },
+        "repair": {
+          "code_sha": "b1772b2342e5cf128eafb0354322aad8677569db",
+          "corrective_commit": "b1772b2342e5cf128eafb0354322aad8677569db",
+          "changed_file": "packages/database/src/random-covers.test.ts",
+          "change": "toContain(photo.coverAssetId) -> toContain(photo.coverAssetId ?? '')",
+          "pipeline_id": 3099052889,
+          "pipeline_sha": "b1772b2342e5cf128eafb0354322aad8677569db",
+          "dispatch": "success",
+          "provider_result": "success",
+          "provider_url": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44993844861",
+          "provider_finished_at": "2026-11-22T06:29:36.950Z",
+          "jobs_verified": false,
+          "e2e_verified": false,
+          "observed_source": "GitLab list_commit_statuses + get_pipeline"
         }
       },
-      "candidate_code_sha": "dc355768bd517f237ee3e57ee4e87586e55e2e93",
-      "blocker": "Original code-SHA GitHub Actions run 44992687882 FAILED; unmodified-code rerun 44993554908 FAILED on docs-only HEAD ef3498c4. GitHub failure job logs inaccessible. No Bun project checkout; root cause UNKNOWN.",
+      "candidate_code_sha": "b1772b2342e5cf128eafb0354322aad8677569db",
+      "blocker": "TypeScript TS2769 has a one-line fix and GitHub Actions reports success at exact code SHA b1772b2. Individual job logs and UI E2E remain unverified; phase stays implemented, not verified/completed.",
       "diagnostics": "docs/plans/poda-random-tag-album-covers-20261122/ci-failure-diagnostics.md"
     }
   ],

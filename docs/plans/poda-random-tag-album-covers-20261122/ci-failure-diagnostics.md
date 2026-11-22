@@ -38,3 +38,11 @@ Check whether the checkout SHA in the actual job is the GitLab branch HEAD expec
 
 ## Outcome
 **Blocked: code not modified in CI repair investigation; two external provider runs failed.** Keep MR Draft, no merge or deploy. Missing job traces prevent an evidence-backed fix. A third speculative corrective commit is not justified.
+
+
+## Confirmed root cause and single corrective patch
+The previous "root cause unknown" state above is superseded by the user-supplied full failed-job log for run 44993554908.
+
+The trace explicitly shows checkout of `ef3498c4b08fb9f8a12c868a8fa17cef9d006196`, then the first compile failure at `packages/database/src/random-covers.test.ts:77`: `TS2769` from passing nullable `photo.coverAssetId` into `toContain` with a `string` expectation. It was a **test type error**, not a failed random-cover assertion. Bun package install succeeded; test/build steps were skipped due to typecheck exit code 2.
+
+Exactly one source line was changed in corrective commit `b1772b2342e5cf128eafb0354322aad8677569db`. CI re-dispatched at [GitLab 3099052889](https://gitlab.com/blond11qq/Pmanager/-/pipelines/3099052889) and received a **successful GitHub Actions provider callback** from [run 44993844861](https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44993844861). Since the successful job's detailed logs are not accessible in this session, do not treat callback success as independently verified build/test categories. Browser E2E still missing. No further speculative changes needed for confirmed TS2769.
