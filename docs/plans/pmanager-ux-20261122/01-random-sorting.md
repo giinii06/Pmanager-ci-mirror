@@ -11,4 +11,6 @@ GET /api/assets?kind=video&sort=random&seed=N returns repeatable non-duplicated 
 - No missing evidence can count as a passed gate.
 
 ## Status
-Implemented in code SHA `8da488202513a59ee455f63e8056d248c0441975` but blocked on actual test/job evidence. CI dispatch-only success is not verification. `docs/plans/pmanager-ux-20261122/review.md` records review.
+Code attempted and committed at `8da488202513a59ee455f63e8056d248c0441975`; **blocked/unverified**. Photo and video random sort defaults added; missing tag import repaired in later SHA. Real provider status on initial implementation is FAILED, logs inaccessible.
+
+No local unit/typecheck/build/visual E2E runs; GitLab dispatch is not provider job success. See `review.md` for actual provider statuses and risks.

@@ -30,3 +30,11 @@ CI authority: effective `ci_config_path=.gitlab/ci-hub-request.yml@blond11qq/ci-
 - No accessible local checkout/runner in this session; remote exact-SHA provider job evidence is required, and a GitLab bridge dispatch is not a test pass.
 - No merge, deploy, server change, DNS or certificate provisioning without explicit authorization and real access.
 - Notion complete feature parity, global theme perfection and HTTPS for an unknown host must remain **unverified** until a concrete acceptance matrix and environment are available. Do not describe a subset as complete.
+
+## Implementation checkpoint (2026-11-22)
+- Eight requested workstreams have code changes in the branch. **All eight remain unverified/blocked** because matching-SHA build/typecheck/test/E2E evidence was not available.
+- The latest code candidate at this checkpoint is `7d681bb1c5ea7d471f2f38f8b053206ab76b815d`; external CI request pipeline `3098870722` was dispatched. The provider callback was pending at last inspection. Earlier candidate `e840d301e049b32515020262b7d99332fb8af027` had a failed GitHub Actions provider result with no job logs available to distinguish source failure from integration/CI failure.
+- No local Bun checkout/executor or authorized live server verification; no merge/deploy.
+- Journal implements Notion-**inspired core subset**, not every proprietary Notion feature. Missing: collaborative realtime editing, permissions/workspaces, arbitrary schema properties, formula/rollup/relation engines, sync/integrations, Notion AI, advanced nested page support, and complete visual parity.
+- TLS is configured but certificate issuance/trust, reverse-proxy origin semantics and real browser end-to-end are not proven.
+- See `review.md` and individual phase files for exact limitations and risk.

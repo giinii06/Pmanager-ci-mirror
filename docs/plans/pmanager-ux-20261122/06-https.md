@@ -11,4 +11,6 @@ TLS termination with persistent certificate state, reverse proxy, secure cookies
 - No missing evidence can count as a passed gate.
 
 ## Status
-Not started. No implementation or passing tests claimed.
+Code attempted and committed at `63780f3ea04b89f4d6552ec53d554efb1b7538c2`; **blocked/unverified**. Caddy TLS proxy, Docker Compose port bindings and secure-cookie default added; actual DNS, certificates, CA trust and on-host user flow NOT verified.
+
+No local unit/typecheck/build/visual E2E runs; GitLab dispatch is not provider job success. See `review.md` for actual provider statuses and risks.

@@ -3,7 +3,11 @@
   "target": {
     "project": "blond11qq/Pmanager",
     "base_sha": "8d714bd31639bd5b7d01118f82ede67dd6d50b89",
-    "branch": "feature/media-random-history-journal-https-20261122"
+    "branch": "feature/media-random-history-journal-https-20261122",
+    "current_code_candidate_sha": "7d681bb1c5ea7d471f2f38f8b053206ab76b815d",
+    "candidate_pipeline_id": 3098870722,
+    "provider_status_at_checkpoint": "pending",
+    "docs_head_sha_is_not_a_tested_sha": true
   },
   "phases": [
     {
@@ -24,52 +28,173 @@
           "pipeline_id": 3098835154,
           "status": "success",
           "job_results_verified": false
+        },
+        {
+          "level": "provider_result",
+          "sha": "8da488202513a59ee455f63e8056d248c0441975",
+          "pipeline_id": 3098835154,
+          "status": "failed",
+          "provider_context": "github-actions/ci-hub-request",
+          "provider_run": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44982754791",
+          "jobs_verified": false
         }
       ],
       "implemented_sha": "8da488202513a59ee455f63e8056d248c0441975",
-      "blocked_reason": "No matched-SHA provider jobs/logs accessible; GitLab pipeline only dispatch_github_actions success with zero jobs"
+      "blocked_reason": "Actual GitHub Actions provider_result FAILED on initial phase SHA (no job logs accessible); new candidate SHA requires distinct verification"
     },
     {
       "id": "02-album-navigation",
-      "state": "not_started",
+      "state": "blocked",
       "verified_sha": null,
-      "evidence": []
+      "evidence": [
+        {
+          "level": "code_commit",
+          "sha": "0106e248436fef493deba85095e7c8ce25c8426b",
+          "verified": false
+        },
+        {
+          "level": "provider_result",
+          "sha": "e840d301e049b32515020262b7d99332fb8af027",
+          "pipeline_id": 3098865004,
+          "status": "failed",
+          "provider_run": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44983856657",
+          "jobs_verified": false
+        }
+      ],
+      "implemented_sha": "0106e248436fef493deba85095e7c8ce25c8426b",
+      "blocked_reason": "Code changes committed; actual typecheck/test/build/E2E evidence unavailable. Provider result failed or pending, not a passing check."
     },
     {
       "id": "03-media-history",
-      "state": "not_started",
+      "state": "blocked",
       "verified_sha": null,
-      "evidence": []
+      "evidence": [
+        {
+          "level": "code_commit",
+          "sha": "438afdebea5583b932c06f048d9057195c2baaec",
+          "verified": false
+        },
+        {
+          "level": "provider_result",
+          "sha": "e840d301e049b32515020262b7d99332fb8af027",
+          "pipeline_id": 3098865004,
+          "status": "failed",
+          "provider_run": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44983856657",
+          "jobs_verified": false
+        }
+      ],
+      "implemented_sha": "438afdebea5583b932c06f048d9057195c2baaec",
+      "blocked_reason": "Code changes committed; actual typecheck/test/build/E2E evidence unavailable. Provider result failed or pending, not a passing check."
     },
     {
       "id": "04-backup-retention",
-      "state": "not_started",
+      "state": "blocked",
       "verified_sha": null,
-      "evidence": []
+      "evidence": [
+        {
+          "level": "code_commit",
+          "sha": "26274c5f72b617caa79ad0d7af3e8f72b344e7f8",
+          "verified": false
+        },
+        {
+          "level": "provider_result",
+          "sha": "e840d301e049b32515020262b7d99332fb8af027",
+          "pipeline_id": 3098865004,
+          "status": "failed",
+          "provider_run": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44983856657",
+          "jobs_verified": false
+        }
+      ],
+      "implemented_sha": "26274c5f72b617caa79ad0d7af3e8f72b344e7f8",
+      "blocked_reason": "Code changes committed; actual typecheck/test/build/E2E evidence unavailable. Provider result failed or pending, not a passing check."
     },
     {
       "id": "05-remove-video-bookmarks",
-      "state": "not_started",
+      "state": "blocked",
       "verified_sha": null,
-      "evidence": []
+      "evidence": [
+        {
+          "level": "code_commit",
+          "sha": "47f9c466a41673687681846822be2fd215e48a10",
+          "verified": false
+        },
+        {
+          "level": "provider_result",
+          "sha": "e840d301e049b32515020262b7d99332fb8af027",
+          "pipeline_id": 3098865004,
+          "status": "failed",
+          "provider_run": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44983856657",
+          "jobs_verified": false
+        }
+      ],
+      "implemented_sha": "47f9c466a41673687681846822be2fd215e48a10",
+      "blocked_reason": "Code changes committed; actual typecheck/test/build/E2E evidence unavailable. Provider result failed or pending, not a passing check."
     },
     {
       "id": "06-https",
-      "state": "not_started",
+      "state": "blocked",
       "verified_sha": null,
-      "evidence": []
+      "evidence": [
+        {
+          "level": "code_commit",
+          "sha": "63780f3ea04b89f4d6552ec53d554efb1b7538c2",
+          "verified": false
+        },
+        {
+          "level": "provider_result",
+          "sha": "e840d301e049b32515020262b7d99332fb8af027",
+          "pipeline_id": 3098865004,
+          "status": "failed",
+          "provider_run": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44983856657",
+          "jobs_verified": false
+        }
+      ],
+      "implemented_sha": "63780f3ea04b89f4d6552ec53d554efb1b7538c2",
+      "blocked_reason": "Code changes committed; actual typecheck/test/build/E2E evidence unavailable. Provider result failed or pending, not a passing check."
     },
     {
       "id": "07-theme-parity",
-      "state": "not_started",
+      "state": "blocked",
       "verified_sha": null,
-      "evidence": []
+      "evidence": [
+        {
+          "level": "code_commit",
+          "sha": "8ab06544a39051302b6ca5b7af9d4070e6ee9c45",
+          "verified": false
+        },
+        {
+          "level": "provider_result",
+          "sha": "e840d301e049b32515020262b7d99332fb8af027",
+          "pipeline_id": 3098865004,
+          "status": "failed",
+          "provider_run": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44983856657",
+          "jobs_verified": false
+        }
+      ],
+      "implemented_sha": "8ab06544a39051302b6ca5b7af9d4070e6ee9c45",
+      "blocked_reason": "Code changes committed; actual typecheck/test/build/E2E evidence unavailable. Provider result failed or pending, not a passing check."
     },
     {
       "id": "08-journal-block-editor",
-      "state": "not_started",
+      "state": "blocked",
       "verified_sha": null,
-      "evidence": []
+      "evidence": [
+        {
+          "level": "code_commit",
+          "sha": "7d681bb1c5ea7d471f2f38f8b053206ab76b815d",
+          "verified": false
+        },
+        {
+          "level": "provider_result",
+          "sha": "e840d301e049b32515020262b7d99332fb8af027",
+          "pipeline_id": 3098865004,
+          "status": "failed",
+          "provider_run": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44983856657",
+          "jobs_verified": false
+        }
+      ],
+      "implemented_sha": "7d681bb1c5ea7d471f2f38f8b053206ab76b815d",
+      "blocked_reason": "Code changes committed; actual typecheck/test/build/E2E evidence unavailable. Provider result failed or pending, not a passing check."
     }
   ],
   "history": [
@@ -91,6 +216,139 @@
       "from": "implemented",
       "to": "blocked",
       "reason": "exact-SHA real job evidence unavailable"
+    },
+    {
+      "phase": "02-album-navigation",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "User explicitly requested sequential implementation after CI blocker was disclosed; not a test waiver"
+    },
+    {
+      "phase": "02-album-navigation",
+      "from": "in_progress",
+      "to": "implemented",
+      "sha": "0106e248436fef493deba85095e7c8ce25c8426b",
+      "reason": "Source and regression tests authored/committed, no local executor or exact-SHA job logs"
+    },
+    {
+      "phase": "02-album-navigation",
+      "from": "implemented",
+      "to": "blocked",
+      "reason": "Missing actual jobs evidence and user-flow E2E; Notion full parity and on-host HTTPS require further acceptance"
+    },
+    {
+      "phase": "03-media-history",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "User explicitly requested sequential implementation after CI blocker was disclosed; not a test waiver"
+    },
+    {
+      "phase": "03-media-history",
+      "from": "in_progress",
+      "to": "implemented",
+      "sha": "438afdebea5583b932c06f048d9057195c2baaec",
+      "reason": "Source and regression tests authored/committed, no local executor or exact-SHA job logs"
+    },
+    {
+      "phase": "03-media-history",
+      "from": "implemented",
+      "to": "blocked",
+      "reason": "Missing actual jobs evidence and user-flow E2E; Notion full parity and on-host HTTPS require further acceptance"
+    },
+    {
+      "phase": "04-backup-retention",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "User explicitly requested sequential implementation after CI blocker was disclosed; not a test waiver"
+    },
+    {
+      "phase": "04-backup-retention",
+      "from": "in_progress",
+      "to": "implemented",
+      "sha": "26274c5f72b617caa79ad0d7af3e8f72b344e7f8",
+      "reason": "Source and regression tests authored/committed, no local executor or exact-SHA job logs"
+    },
+    {
+      "phase": "04-backup-retention",
+      "from": "implemented",
+      "to": "blocked",
+      "reason": "Missing actual jobs evidence and user-flow E2E; Notion full parity and on-host HTTPS require further acceptance"
+    },
+    {
+      "phase": "05-remove-video-bookmarks",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "User explicitly requested sequential implementation after CI blocker was disclosed; not a test waiver"
+    },
+    {
+      "phase": "05-remove-video-bookmarks",
+      "from": "in_progress",
+      "to": "implemented",
+      "sha": "47f9c466a41673687681846822be2fd215e48a10",
+      "reason": "Source and regression tests authored/committed, no local executor or exact-SHA job logs"
+    },
+    {
+      "phase": "05-remove-video-bookmarks",
+      "from": "implemented",
+      "to": "blocked",
+      "reason": "Missing actual jobs evidence and user-flow E2E; Notion full parity and on-host HTTPS require further acceptance"
+    },
+    {
+      "phase": "06-https",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "User explicitly requested sequential implementation after CI blocker was disclosed; not a test waiver"
+    },
+    {
+      "phase": "06-https",
+      "from": "in_progress",
+      "to": "implemented",
+      "sha": "63780f3ea04b89f4d6552ec53d554efb1b7538c2",
+      "reason": "Source and regression tests authored/committed, no local executor or exact-SHA job logs"
+    },
+    {
+      "phase": "06-https",
+      "from": "implemented",
+      "to": "blocked",
+      "reason": "Missing actual jobs evidence and user-flow E2E; Notion full parity and on-host HTTPS require further acceptance"
+    },
+    {
+      "phase": "07-theme-parity",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "User explicitly requested sequential implementation after CI blocker was disclosed; not a test waiver"
+    },
+    {
+      "phase": "07-theme-parity",
+      "from": "in_progress",
+      "to": "implemented",
+      "sha": "8ab06544a39051302b6ca5b7af9d4070e6ee9c45",
+      "reason": "Source and regression tests authored/committed, no local executor or exact-SHA job logs"
+    },
+    {
+      "phase": "07-theme-parity",
+      "from": "implemented",
+      "to": "blocked",
+      "reason": "Missing actual jobs evidence and user-flow E2E; Notion full parity and on-host HTTPS require further acceptance"
+    },
+    {
+      "phase": "08-journal-block-editor",
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "User explicitly requested sequential implementation after CI blocker was disclosed; not a test waiver"
+    },
+    {
+      "phase": "08-journal-block-editor",
+      "from": "in_progress",
+      "to": "implemented",
+      "sha": "7d681bb1c5ea7d471f2f38f8b053206ab76b815d",
+      "reason": "Source and regression tests authored/committed, no local executor or exact-SHA job logs"
+    },
+    {
+      "phase": "08-journal-block-editor",
+      "from": "implemented",
+      "to": "blocked",
+      "reason": "Missing actual jobs evidence and user-flow E2E; Notion full parity and on-host HTTPS require further acceptance"
     }
   ]
 }

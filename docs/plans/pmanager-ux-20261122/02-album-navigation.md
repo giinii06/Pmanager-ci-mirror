@@ -11,4 +11,6 @@
 - No missing evidence can count as a passed gate.
 
 ## Status
-Not started. No implementation or passing tests claimed.
+Code attempted and committed at `0106e248436fef493deba85095e7c8ce25c8426b`; **blocked/unverified**. Gallery album page navigation with left/right and Shuffle, excluding current; pure-function tests authored.
+
+No local unit/typecheck/build/visual E2E runs; GitLab dispatch is not provider job success. See `review.md` for actual provider statuses and risks.

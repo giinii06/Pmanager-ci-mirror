@@ -11,4 +11,6 @@
 - No missing evidence can count as a passed gate.
 
 ## Status
-Not started. No implementation or passing tests claimed.
+Code attempted and committed at `438afdebea5583b932c06f048d9057195c2baaec`; **blocked/unverified**. Opaque-ID photo/video routes, viewer route hydration, canonical sharing links and History synchronization; code-only. Follow-up reserved tag URL fix and wrong-kind handling committed.
+
+No local unit/typecheck/build/visual E2E runs; GitLab dispatch is not provider job success. See `review.md` for actual provider statuses and risks.

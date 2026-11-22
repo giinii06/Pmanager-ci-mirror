@@ -11,4 +11,6 @@
 - No missing evidence can count as a passed gate.
 
 ## Status
-Not started. No implementation or passing tests claimed.
+Code attempted and committed at `8ab06544a39051302b6ca5b7af9d4070e6ee9c45`; **blocked/unverified**. Palette token replacements across major photo/video/related/review/transcript chrome; exact visual parity and accessibility checks NOT run.
+
+No local unit/typecheck/build/visual E2E runs; GitLab dispatch is not provider job success. See `review.md` for actual provider statuses and risks.

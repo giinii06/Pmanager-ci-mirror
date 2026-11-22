@@ -11,4 +11,6 @@ Notion-style block editing, page/database views, rich text, images (secure uploa
 - No missing evidence can count as a passed gate.
 
 ## Status
-Not started. No implementation or passing tests claimed.
+Code attempted and committed at `7d681bb1c5ea7d471f2f38f8b053206ab76b815d`; **blocked/unverified**. Block document format, migration v30, private image upload/reading with ownership controls, table/board/calendar/gallery, status/tags/date/favorites/icons, rich block types/drag ordering, legacy conversion. NOT full Notion functionality; tests authored, not run.
+
+No local unit/typecheck/build/visual E2E runs; GitLab dispatch is not provider job success. See `review.md` for actual provider statuses and risks.

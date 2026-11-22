@@ -11,4 +11,6 @@
 - No missing evidence can count as a passed gate.
 
 ## Status
-Not started. No implementation or passing tests claimed.
+Code attempted and committed at `47f9c466a41673687681846822be2fd215e48a10`; **blocked/unverified**. UI, dialog, client methods and HTTP routes removed; old DB table remains inert to avoid destructive data loss. Legacy API negative tests authored.
+
+No local unit/typecheck/build/visual E2E runs; GitLab dispatch is not provider job success. See `review.md` for actual provider statuses and risks.
