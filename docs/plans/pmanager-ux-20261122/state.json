@@ -1,0 +1,59 @@
+{
+  "gate_version": "2.2",
+  "target": {
+    "project": "blond11qq/Pmanager",
+    "base_sha": "8d714bd31639bd5b7d01118f82ede67dd6d50b89",
+    "branch": "feature/media-random-history-journal-https-20261122"
+  },
+  "phases": [
+    {
+      "id": "01-random-sorting",
+      "state": "not_started",
+      "verified_sha": null,
+      "evidence": []
+    },
+    {
+      "id": "02-album-navigation",
+      "state": "not_started",
+      "verified_sha": null,
+      "evidence": []
+    },
+    {
+      "id": "03-media-history",
+      "state": "not_started",
+      "verified_sha": null,
+      "evidence": []
+    },
+    {
+      "id": "04-backup-retention",
+      "state": "not_started",
+      "verified_sha": null,
+      "evidence": []
+    },
+    {
+      "id": "05-remove-video-bookmarks",
+      "state": "not_started",
+      "verified_sha": null,
+      "evidence": []
+    },
+    {
+      "id": "06-https",
+      "state": "not_started",
+      "verified_sha": null,
+      "evidence": []
+    },
+    {
+      "id": "07-theme-parity",
+      "state": "not_started",
+      "verified_sha": null,
+      "evidence": []
+    },
+    {
+      "id": "08-journal-block-editor",
+      "state": "not_started",
+      "verified_sha": null,
+      "evidence": []
+    }
+  ],
+  "history": []
+}
