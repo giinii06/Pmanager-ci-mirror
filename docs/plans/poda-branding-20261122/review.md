@@ -18,7 +18,7 @@
 2. **PASS — static review:** Relative Vite `public` file served at absolute `/poda-icon.png`; expected to work for root and deep links.
 3. **RISK (unverified):** Without runtime E2E a browser could show cached old favicon after deploy; clear favicon cache/check in fresh profile. Existing user storage and cookies must not be cleared as part of rebranding.
 4. **RISK (unverified):** 160×160 optimized PNG is intended for small tab and navigation icons; verify browser visual contrast on all themes, including dark.
-5. **RISK (unverified):** GitHub Actions callback or GitLab dispatch success alone is not proof of build/test execution. Required jobs, checked-out SHA and logs need explicit inspection.
+5. **RISK (unverified):** GitLab received a GitHub Actions success callback at code SHA `25b468d6a6a4ef3b486b25336a6e4e4ad46a5de8` (run 44990318103); this callback is not proof of the actual build/test commands or checked-out SHA. Required jobs, checked-out SHA and logs need explicit inspection.
 
 ## Verdict
 **Implemented, unverified.** No known Critical or Important source-level finding from this self-review. No local/remote executed test or E2E proof available at review time. Keep Draft MR unmerged and application undeployed.

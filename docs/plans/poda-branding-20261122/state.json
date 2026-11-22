@@ -19,9 +19,10 @@
         "pipeline_id": 3098983803,
         "sha": "25b468d6a6a4ef3b486b25336a6e4e4ad46a5de8",
         "dispatch": "success",
-        "provider_result": "running_at_last_observation",
+        "provider_result": "success_callback",
         "jobs_verified": false,
-        "e2e_verified": false
+        "e2e_verified": false,
+        "github_run_url": "https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44990318103"
       },
       "review_report": "docs/plans/poda-branding-20261122/review.md",
       "candidate_code_sha": "25b468d6a6a4ef3b486b25336a6e4e4ad46a5de8",

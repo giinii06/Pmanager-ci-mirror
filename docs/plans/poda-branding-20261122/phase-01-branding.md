@@ -28,5 +28,5 @@
 - The approved PNG's 4747-byte repository blob SHA-256 matches the locally converted logo (`392c0589127bedfb5a8e036ceeb60217d141027f77772ef2fa798b01d75079b4`).
 - Static code self-check: favicon link maps to `public/poda-icon.png`; logo component used in splash/sidebar/auth; localStorage theme key untouched.
 - Authored `apps/web/src/branding.test.ts`. Bun RED/GREEN tests, typecheck, build and browser E2E: **not executed**, so no pass claim.
-- GitLab bridge pipeline 3098983803 for exact code SHA reports GitHub Actions dispatch success; provider `github-actions/ci-hub-request` was **running** at observation, actual jobs and checkout SHA **not verified**.
+- GitLab bridge pipeline 3098983803 for exact code SHA reports GitHub Actions dispatch success; provider `github-actions/ci-hub-request` subsequently reported **success** for the exact candidate code SHA (https://github.com/giinii06/Pmanager-ci-mirror/actions/runs/44990318103), but actual jobs, command logs and checkout SHA were **not independently verified**.
 - State: **implemented; blocked from verified/completed** by missing job and user-flow E2E proof. No merge or deploy.
