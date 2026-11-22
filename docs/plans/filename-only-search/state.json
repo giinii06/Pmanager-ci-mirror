@@ -1,0 +1,26 @@
+{
+  "gate_version": "2.2",
+  "plan": "filename-only-search",
+  "base_sha": "59cfa5bf8b81db80e59122bd986cf905158bafbc",
+  "branch": "refactor/filename-only-search",
+  "phases": [
+    {
+      "id": "01",
+      "name": "filename-only-search",
+      "state": "not_started",
+      "implemented": false,
+      "tested": false,
+      "verified": false,
+      "completed": false,
+      "verified_sha": null,
+      "ci_evidence": null,
+      "reviews": null,
+      "history": [
+        {
+          "state": "not_started",
+          "reason": "Plan committed prior to implementation"
+        }
+      ]
+    }
+  ]
+}
