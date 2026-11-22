@@ -4,10 +4,10 @@ export type AssetKind = 'image' | 'video'
 
 export type JobKind = 'scan_library' | 'thumbnail' | 'preview' | 'hls' | 'process_archive' | 'maintenance'
 
-export const VIDEO_SORTS = ['rate', 'views', 'latest', 'name', 'watch_time', 'votes'] as const
+export const VIDEO_SORTS = ['rate', 'random', 'views', 'latest', 'name', 'watch_time', 'votes'] as const
 export type VideoSort = (typeof VIDEO_SORTS)[number]
 
-export const FOLDER_SORTS = ['views', 'votes', 'name', 'date'] as const
+export const FOLDER_SORTS = ['random', 'views', 'votes', 'name', 'date'] as const
 export type FolderSort = (typeof FOLDER_SORTS)[number]
 
 export type JobState = 'queued' | 'running' | 'paused' | 'cancelled' | 'done' | 'failed'

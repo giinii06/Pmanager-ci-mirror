@@ -142,6 +142,8 @@ function buildWhere(
 function buildOrderExpression(sort: VideoSort, seed: number): { expr: string; params: Params } {
   const safeSeed = Math.abs(Math.trunc(seed)) % 2147483647
   switch (sort) {
+    case 'random':
+      return { expr: `${SEEDED_ORDER_SQL} ASC, a.id ASC`, params: [safeSeed, safeSeed] }
     case 'rate':
       return {
         expr: `CASE WHEN a.view_count > 0 AND a.watch_time_ms > 0 THEN 0 ELSE 1 END ASC,

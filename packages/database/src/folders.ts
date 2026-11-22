@@ -74,6 +74,8 @@ const FOLDER_CTE = `
 
 function folderOrderSql(sort?: FolderSort): string {
   switch (sort) {
+    case 'random':
+      return 'RANDOM()'
     case 'views':
       return 'fb.viewCount DESC, fb.name COLLATE NOCASE ASC, fb.id ASC'
     case 'votes':

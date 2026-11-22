@@ -285,6 +285,18 @@ describe('API overhaul routes', () => {
       expect((res.json() as { items: Array<{ id: string }> }).items.map((i) => i.id)).toEqual(expected)
     }
 
+    const seededRandom = async () => {
+      const response = await h.app.inject({
+        method: 'GET',
+        url: '/api/assets?kind=video&sort=random&seed=12345',
+        headers: h.headers,
+      })
+      expect(response.statusCode).toBe(200)
+      return (response.json() as { items: Array<{ id: string }> }).items.map((item) => item.id)
+    }
+    const firstRandom = await seededRandom()
+    expect(await seededRandom()).toEqual(firstRandom)
+    expect([...firstRandom].sort()).toEqual(['vid0001', 'vid0002'])
     await assertOrder('views', ['vid0002', 'vid0001'])
     await assertOrder('watch_time', ['vid0001', 'vid0002'])
     await assertOrder('votes', ['vid0002', 'vid0001'])
@@ -516,6 +528,13 @@ describe('API overhaul routes', () => {
       expect((res.json() as Array<{ id: string }>).map((f) => f.id)).toEqual(expected)
     }
 
+    const randomizedFolders = await h.app.inject({
+      method: 'GET',
+      url: '/api/folders?libraryId=libp&sort=random',
+      headers: h.headers,
+    })
+    expect(randomizedFolders.statusCode).toBe(200)
+    expect((randomizedFolders.json() as Array<{ id: string }>).map((f) => f.id).sort()).toEqual(['fp1', 'fp2'])
     await assertFolderOrder('votes', ['fp1', 'fp2'])
     await assertFolderOrder('name', ['fp2', 'fp1'])
     await assertFolderOrder('date', ['fp2', 'fp1'])

@@ -29,6 +29,7 @@ import { AssetGallery } from '../components/AssetGallery'
 import { AlbumDeleteDialog } from '../components/AlbumDeleteDialog'
 
 const FOLDER_SORTS: Array<{ value: FolderSort; label: string }> = [
+  { value: 'random', label: '랜덤순' },
   { value: 'views', label: '조회수순' },
   { value: 'votes', label: 'Vote순' },
   { value: 'name', label: '이름순' },
@@ -100,7 +101,7 @@ export function FoldersPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
-  const [sort, setSort] = useState<FolderSort>('date')
+  const [sort, setSort] = useState<FolderSort>('random')
   const [deletingFolder, setDeletingFolder] = useState<FolderDTO | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const { attach: attachHeader, height: headerHeight } = useMeasuredElement<HTMLDivElement>()

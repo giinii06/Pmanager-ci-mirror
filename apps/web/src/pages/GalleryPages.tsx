@@ -18,6 +18,7 @@ import { LoadingBlock } from '../components/ui/Spinner'
 
 const SORT_OPTIONS: Array<{ value: VideoSort; label: string }> = [
   { value: 'rate', label: 'Rate순' },
+  { value: 'random', label: '랜덤순' },
   { value: 'views', label: '조회수순' },
   { value: 'latest', label: '최신순' },
   { value: 'name', label: '이름순' },
@@ -61,7 +62,7 @@ function createSessionSeed(): number {
 export function VideosPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const [sort, setSort] = useState<VideoSort>('latest')
+  const [sort, setSort] = useState<VideoSort>('random')
   const sessionSeed = useRef(createSessionSeed())
   const sharedId = params.get('v')
   const openedFor = useRef<string | null>(null)
@@ -84,7 +85,7 @@ export function VideosPage() {
             filter: {
               kind: 'video',
               sort,
-              ...(sort === 'rate' ? { seed: sessionSeed.current } : {}),
+              ...((sort === 'rate' || sort === 'random') ? { seed: sessionSeed.current } : {}),
             },
           })
         }
@@ -97,7 +98,7 @@ export function VideosPage() {
   const filters = {
     kind: 'video' as const,
     sort,
-    ...(sort === 'rate' ? { seed: sessionSeed.current } : {}),
+    ...((sort === 'rate' || sort === 'random') ? { seed: sessionSeed.current } : {}),
   }
 
   return (
@@ -142,7 +143,7 @@ function TagsPage({ kind }: { kind: AssetKind }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useUi((state) => state.toast)
-  const [sort, setSort] = useState<VideoSort>('latest')
+  const [sort, setSort] = useState<VideoSort>('random')
   const sessionSeed = useRef(createSessionSeed())
   const [newTagName, setNewTagName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -194,7 +195,7 @@ function TagsPage({ kind }: { kind: AssetKind }) {
             kind,
             tagId,
             sort,
-            ...(sort === 'rate' ? { seed: sessionSeed.current } : {}),
+            ...((sort === 'rate' || sort === 'random') ? { seed: sessionSeed.current } : {}),
           }}
           breadcrumb={
             <div className="pt-4">
@@ -209,7 +210,7 @@ function TagsPage({ kind }: { kind: AssetKind }) {
           }
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              {!isPhoto ? <SortBar sort={sort} onChange={setSort} /> : null}
+              <SortBar sort={sort} onChange={setSort} />
             </div>
           }
           emptyTitle={`이 태그의 ${mediaLabel}이 없습니다`}
