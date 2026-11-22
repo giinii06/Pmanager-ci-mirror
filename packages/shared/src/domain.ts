@@ -95,6 +95,7 @@ export interface JournalEntryDTO {
   title: string
   body: string
   properties?: JournalProperties
+  coverImageId?: string | null
   createdAt: string
   updatedAt: string
 }

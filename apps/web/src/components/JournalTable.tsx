@@ -41,13 +41,22 @@ export function JournalTable({ entries, creating, onCreate }: JournalTableProps)
         <table className="w-full table-fixed border-collapse text-left">
           <thead>
             <tr className="border-b border-line bg-panel-2/65 text-[12.5px] font-normal text-muted">
-              <th scope="col" className="w-[60%] border-r border-line px-4 py-3.5 font-medium md:w-[46%]">
+              <th scope="col" className="w-[60%] border-r border-line px-4 py-3.5 font-medium md:w-[28%]">
                 <span className="inline-flex items-center gap-2"><FileText size={14} aria-hidden="true" /> 이름</span>
               </th>
-              <th scope="col" className="hidden border-r border-line px-4 py-3.5 font-medium md:table-cell md:w-[25%]">
+              <th scope="col" className="hidden w-[14%] border-r border-line px-3 py-3.5 font-medium md:table-cell">
+                상태
+              </th>
+              <th scope="col" className="hidden w-[14%] border-r border-line px-3 py-3.5 font-medium md:table-cell">
+                날짜
+              </th>
+              <th scope="col" className="hidden w-[18%] border-r border-line px-3 py-3.5 font-medium lg:table-cell">
+                태그
+              </th>
+              <th scope="col" className="hidden w-[13%] border-r border-line px-3 py-3.5 font-medium lg:table-cell">
                 <span className="inline-flex items-center gap-2"><CalendarClock size={14} aria-hidden="true" /> 수정 일시</span>
               </th>
-              <th scope="col" className="w-[40%] px-4 py-3.5 font-medium md:w-[29%]">
+              <th scope="col" className="w-[40%] px-4 py-3.5 font-medium md:w-[13%]">
                 <span className="inline-flex items-center gap-2"><CalendarDays size={14} aria-hidden="true" /> 생성 일시</span>
               </th>
             </tr>
@@ -65,7 +74,7 @@ export function JournalTable({ entries, creating, onCreate }: JournalTableProps)
                         className="flex min-w-0 flex-1 items-center gap-3 py-4.5 text-[14px] font-semibold text-ink hover:underline sm:text-[16px]"
                         title={title}
                       >
-                        <FileText size={18} className="shrink-0 text-faint" aria-hidden="true" />
+                        <span className="shrink-0 text-[17px]" aria-hidden="true">{entry.properties?.icon || <FileText size={18} className="text-faint" />}</span>
                         <span className="truncate">{title}</span>
                       </Link>
                       <Link
@@ -77,7 +86,18 @@ export function JournalTable({ entries, creating, onCreate }: JournalTableProps)
                       </Link>
                     </div>
                   </td>
-                  <td className="hidden border-r border-line px-4 py-4 text-[13px] text-muted md:table-cell">
+                  <td className="hidden border-r border-line px-3 py-4 text-[12px] text-muted md:table-cell">
+                    <span className="rounded-md bg-accent/15 px-2 py-1 text-accent">
+                      {entry.properties?.status === 'Done' ? '완료' : entry.properties?.status === 'In progress' ? '진행 중' : '미시작'}
+                    </span>
+                  </td>
+                  <td className="hidden border-r border-line px-3 py-4 text-[12px] text-muted md:table-cell">
+                    {entry.properties?.dueDate ?? '—'}
+                  </td>
+                  <td className="hidden border-r border-line px-3 py-4 text-[11px] text-muted lg:table-cell">
+                    <span className="line-clamp-2">{entry.properties?.tags.join(', ') || '—'}</span>
+                  </td>
+                  <td className="hidden border-r border-line px-3 py-4 text-[12px] text-muted lg:table-cell">
                     <time dateTime={entry.updatedAt}>{journalTableDate(entry.updatedAt)}</time>
                   </td>
                   <td className="px-4 py-4 text-[12px] text-muted sm:text-[13px]">
@@ -90,7 +110,7 @@ export function JournalTable({ entries, creating, onCreate }: JournalTableProps)
             })}
             {entries.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-4 py-14 text-center text-[14px] text-muted">
+                <td colSpan={6} className="px-4 py-14 text-center text-[14px] text-muted">
                   아직 작성한 일지가 없습니다. 새 페이지를 추가해 보세요.
                 </td>
               </tr>
@@ -98,7 +118,7 @@ export function JournalTable({ entries, creating, onCreate }: JournalTableProps)
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={3}>
+              <td colSpan={6}>
                 <button
                   type="button"
                   onClick={onCreate}

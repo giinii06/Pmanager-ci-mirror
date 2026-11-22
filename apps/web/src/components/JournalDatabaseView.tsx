@@ -32,13 +32,22 @@ function title(entry: JournalEntrySummaryDTO): string {
 function PageCard({ entry }: { entry: JournalEntrySummaryDTO }) {
   const p = propsOf(entry)
   return (
-    <Link to={href(entry)} className="block rounded-xl border border-line bg-panel p-4 shadow-[var(--ui-elevation)] transition-colors hover:bg-panel-2">
+    <Link to={href(entry)} className="block overflow-hidden rounded-xl border border-line bg-panel shadow-[var(--ui-elevation)] transition-colors hover:bg-panel-2">
+      {entry.coverImageId ? (
+        <img
+          src={'/api/journal/' + encodeURIComponent(entry.id) + '/images/' + encodeURIComponent(entry.coverImageId)}
+          alt={title(entry) + ' 표지 이미지'} loading="lazy"
+          className="aspect-video w-full bg-panel-2 object-cover"
+        />
+      ) : null}
+      <div className="p-4">
       <div className="truncate text-[14px] font-semibold text-ink">{p.icon || '📄'} {title(entry)}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
         <span className="rounded bg-accent/15 px-2 py-0.5 text-accent">{STATUS_LABEL[p.status]}</span>
         {p.dueDate ? <span>{p.dueDate}</span> : null}
         {p.favorite ? <span>★</span> : null}
         {p.tags.map((tag) => <span key={tag} className="rounded bg-raised px-1.5 py-0.5">{tag}</span>)}
+      </div>
       </div>
     </Link>
   )

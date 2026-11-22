@@ -13,7 +13,7 @@ import {
   type JournalEntryRecord,
   type JournalEntrySummary,
 } from '@mediavault/database'
-import { journalDocumentProperties, type JournalEntryDTO, type JournalEntrySummaryDTO } from '@mediavault/shared'
+import { parseJournalDocument, type JournalEntryDTO, type JournalEntrySummaryDTO } from '@mediavault/shared'
 import type { AppContext } from '../context'
 import { parseInput } from '../validate'
 
@@ -42,10 +42,12 @@ const patchBody = z.object({
 })
 
 function summary(record: JournalEntrySummary): JournalEntrySummaryDTO {
+  const document = parseJournalDocument(record.body)
   return {
     id: record.id,
     title: record.title,
-    properties: journalDocumentProperties(record.body),
+    properties: document.properties,
+    coverImageId: document.blocks.find((block) => block.type === 'image' && block.imageId)?.imageId ?? null,
     createdAt: new Date(record.createdAt).toISOString(),
     updatedAt: new Date(record.updatedAt).toISOString(),
   }
