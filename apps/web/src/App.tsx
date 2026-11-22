@@ -15,7 +15,7 @@ import { Spinner } from './components/ui/Spinner'
 import { Button } from './components/ui/Button'
 import { LoginPage, SetupPage } from './pages/AuthPages'
 import { FolderPage, FoldersPage } from './pages/FolderPages'
-import { VideoTagsPage, VideosPage } from './pages/GalleryPages'
+import { PhotoTagsPage, VideoTagsPage, VideosPage } from './pages/GalleryPages'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { SearchPage } from './pages/SearchPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -81,6 +81,8 @@ export function App() {
           <Route path="videos" element={<VideosPage />} />
           <Route path="videos/tags" element={<VideoTagsPage />} />
           <Route path="videos/tags/:tagId" element={<VideoTagsPage />} />
+          <Route path="photos/tags" element={<PhotoTagsPage />} />
+          <Route path="photos/tags/:tagId" element={<PhotoTagsPage />} />
           <Route path="folders" element={<Navigate to="/" replace />} />
           <Route path="folders/:folderId" element={<FolderPage />} />
           <Route path="search" element={<SearchRoute />} />

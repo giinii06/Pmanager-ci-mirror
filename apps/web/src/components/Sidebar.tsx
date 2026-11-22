@@ -72,7 +72,7 @@ export function Sidebar() {
 
   const pathname = location.pathname
   const activeJobs = (jobs.data?.counts.queued ?? 0) + (jobs.data?.counts.running ?? 0)
-  const inPhotos = pathname === '/' || pathname.startsWith('/folders')
+  const inPhotos = pathname === '/' || pathname.startsWith('/folders') || pathname.startsWith('/photos')
   const inVideos = pathname.startsWith('/videos')
   const inJournal = pathname.startsWith('/journal')
   const journal = useQuery({
@@ -140,6 +140,17 @@ export function Sidebar() {
         <GroupLabel collapsed={collapsed}>라이브러리</GroupLabel>
         <div className="space-y-1">
           <MainLink to="/" label="사진" icon={<Images size={19} />} active={inPhotos} collapsed={collapsed} count={stats.data?.images} end />
+          <NavLink
+            to="/photos/tags"
+            title="사진 태그"
+            className={({ isActive }) => cn(
+              'ml-10 flex min-h-9 items-center gap-2 rounded-xl px-3 text-[12.5px] transition-colors',
+              collapsed && 'md:hidden',
+              isActive ? 'bg-panel-2 font-semibold text-ink' : 'text-muted hover:bg-raised/60 hover:text-ink',
+            )}
+          >
+            <Tag size={14} /> 사진 태그로 모아보기
+          </NavLink>
           <MainLink to="/videos" label="동영상" icon={<Film size={19} />} active={inVideos} collapsed={collapsed} count={stats.data?.videos} />
           <NavLink
             to="/videos/tags"

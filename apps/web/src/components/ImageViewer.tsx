@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
 import type { AssetDTO, FolderDTO } from '@mediavault/shared'
 import {
@@ -9,6 +9,8 @@ import {
   Download,
   Image as ImageIcon,
   Info,
+  Plus,
+  Tag,
   Maximize2,
   Minimize2,
   X,
@@ -22,6 +24,7 @@ import { formatBytes, formatCount, formatDate } from '../lib/format'
 import { useMeasuredElement } from '../lib/hooks'
 import { buildCoverActions, fitPage, groupViewerItems, pageAt, VIEWER_GAP } from '../lib/viewerPages'
 import { useUi } from '../store/ui'
+import { useViewer } from '../store/viewer'
 import { ImageSlot } from './ImageSlot'
 import { useImageFullscreen } from './useImageFullscreen'
 import { IconButton } from './ui/IconButton'
@@ -51,6 +54,29 @@ export function ImageViewer({
   const [showInfo, setShowInfo] = useState(false)
   const [fullRes, setFullRes] = useState(false)
   const [pinnedCovers, setPinnedCovers] = useState<Record<string, string>>({})
+  const [tagInput, setTagInput] = useState('')
+  const tagsQuery = useQuery({
+    queryKey: ['tags', 'image'],
+    queryFn: () => api.tags('image'),
+  })
+  const updateImageTag = (updated: AssetDTO) => {
+    patchAssetInCaches(queryClient, updated)
+    useViewer.getState().patchAsset(updated)
+    void queryClient.invalidateQueries({ queryKey: ['tags', 'image'] })
+  }
+  const attachTag = useMutation({
+    mutationFn: (payload: { tagId?: string; name?: string }) => api.attachTag(asset.id, payload),
+    onSuccess: ({ asset: updated }) => {
+      updateImageTag(updated)
+      setTagInput('')
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : '사진 태그를 추가하지 못했습니다.', 'error'),
+  })
+  const detachTag = useMutation({
+    mutationFn: (tagId: string) => api.detachTag(asset.id, tagId),
+    onSuccess: ({ asset: updated }) => updateImageTag(updated),
+    onError: () => toast('사진 태그를 제거하지 못했습니다.', 'error'),
+  })
   const stage = useMeasuredElement<HTMLDivElement>()
   const { mode, active: fullscreenActive, toggle: toggleFullscreen, exit: exitFullscreen } =
     useImageFullscreen(stage.ref)
@@ -113,6 +139,7 @@ export function ImageViewer({
   useEffect(() => {
     setShowInfo(false)
     setFullRes(false)
+    setTagInput('')
   }, [asset.id])
 
   useEffect(() => {
@@ -379,6 +406,69 @@ export function ImageViewer({
                   <dd className="mt-0.5 break-all text-muted">{asset.relativePath}</dd>
                 </div>
               </dl>
+              <div className="mt-6 border-t border-white/10 pt-5">
+                <h4 className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                  <Tag size={14} /> 사진 태그
+                </h4>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {asset.tags.map((tag) => (
+                    <span key={tag.id} className="inline-flex items-center gap-1 rounded-full border border-line bg-panel-2 px-2.5 py-1 text-[12px] text-ink">
+                      {tag.name}
+                      <button
+                        type="button"
+                        aria-label={`${tag.name} 사진 태그 제거`}
+                        onClick={() => detachTag.mutate(tag.id)}
+                        disabled={detachTag.isPending}
+                        className="rounded-full p-0.5 text-muted hover:text-ink"
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                  {asset.tags.length === 0 ? (
+                    <span className="text-[12px] text-faint">태그 없음</span>
+                  ) : null}
+                </div>
+                <form
+                  className="mt-3 flex items-center gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    if (tagInput.trim()) attachTag.mutate({ name: tagInput.trim() })
+                  }}
+                >
+                  <input
+                    value={tagInput}
+                    onChange={(event) => setTagInput(event.target.value)}
+                    placeholder="새 사진 태그"
+                    aria-label="새 사진 태그 이름"
+                    className="h-9 w-full min-w-0 rounded-lg border border-line bg-panel px-2.5 text-[12px] text-ink"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!tagInput.trim() || attachTag.isPending}
+                    aria-label="사진 태그 추가"
+                    className="inline-flex h-9 items-center gap-1 rounded-lg bg-accent px-3 text-[12px] font-medium text-white disabled:opacity-50"
+                  >
+                    <Plus size={13} /> 추가
+                  </button>
+                </form>
+                <select
+                  aria-label="기존 사진 태그 선택"
+                  value=""
+                  disabled={attachTag.isPending}
+                  onChange={(event) => {
+                    if (event.target.value) attachTag.mutate({ tagId: event.target.value })
+                  }}
+                  className="mt-2 h-9 w-full rounded-lg border border-line bg-panel px-2.5 text-[12px] text-ink"
+                >
+                  <option value="">기존 사진 태그 선택...</option>
+                  {(tagsQuery.data?.tags ?? [])
+                    .filter((tag) => !asset.tags.some((attached) => attached.id === tag.id))
+                    .map((tag) => (
+                      <option key={tag.id} value={tag.id}>{tag.name}</option>
+                    ))}
+                </select>
+              </div>
             </motion.aside>
           ) : null}
         </AnimatePresence>

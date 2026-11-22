@@ -100,7 +100,7 @@ export function WatchPage({
   const copyTimer = useRef<number | null>(null)
   const descriptionRef = useRef<HTMLDivElement>(null)
 
-  const tagsQuery = useQuery({ queryKey: ['tags'], queryFn: api.tags })
+  const tagsQuery = useQuery({ queryKey: ['tags', 'video'], queryFn: () => api.tags('video') })
   const related = useQuery({
     queryKey: ['related', asset.id],
     queryFn: () => api.related(asset.id, 8),
@@ -126,7 +126,7 @@ export function WatchPage({
     mutationFn: (payload: { tagId?: string; name?: string }) => api.attachTag(asset.id, payload),
     onSuccess: ({ asset: updated }) => {
       patchAssetInCaches(queryClient, updated)
-      queryClient.invalidateQueries({ queryKey: ['tags'] })
+      queryClient.invalidateQueries({ queryKey: ['tags', 'video'] })
       setTagInput('')
     },
     onError: (err) =>

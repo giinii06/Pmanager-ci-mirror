@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Eye, FolderPlus, Images, ThumbsUp } from 'lucide-react'
+import { Eye, FolderPlus, Images, Tag, ThumbsUp } from 'lucide-react'
 import type { FolderDTO, FolderSort } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { invalidateVoteCaches } from '../lib/cachePatch'
@@ -167,7 +167,10 @@ export function FoldersPage() {
           title="사진"
           meta={loading ? '불러오는 중' : `${formatCount(collections.length)}개 폴더`}
           actions={
-            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="폴더 정렬">
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="사진 폴더 도구">
+              <Link to="/photos/tags">
+                <Button size="sm"><Tag size={13} /> 사진 태그별 보기</Button>
+              </Link>
               {FOLDER_SORTS.map((option) => (
                 <button
                   key={option.value}

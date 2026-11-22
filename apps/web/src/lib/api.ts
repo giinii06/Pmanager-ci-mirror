@@ -244,18 +244,20 @@ export const api = {
   journalMentions: (q: string) =>
     request<{ items: JournalMentionDTO[] }>(`/api/journal/mentions?q=${encodeURIComponent(q)}`),
 
-  tags: () => request<{ tags: TagSummaryDTO[] }>('/api/tags'),
-  createTag: (name: string) =>
-    request<{ tag: TagDTO }>('/api/tags', {
+  tags: (kind: 'image' | 'video' = 'video') =>
+    request<{ tags: TagSummaryDTO[] }>(`/api/tags?kind=${kind}`),
+  createTag: (name: string, kind: 'image' | 'video' = 'video') =>
+    request<{ tag: TagDTO }>(`/api/tags?kind=${kind}`, {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
-  renameTag: (id: string, name: string) =>
-    request<{ tag: TagDTO }>(`/api/tags/${id}`, {
+  renameTag: (id: string, name: string, kind: 'image' | 'video' = 'video') =>
+    request<{ tag: TagDTO }>(`/api/tags/${id}?kind=${kind}`, {
       method: 'PATCH',
       body: JSON.stringify({ name }),
     }),
-  deleteTag: (id: string) => request<void>(`/api/tags/${id}`, { method: 'DELETE' }),
+  deleteTag: (id: string, kind: 'image' | 'video' = 'video') =>
+    request<void>(`/api/tags/${id}?kind=${kind}`, { method: 'DELETE' }),
   attachTag: (assetId: string, body: { tagId?: string; name?: string }) =>
     request<{ asset: AssetDTO }>(`/api/assets/${assetId}/tags`, {
       method: 'POST',

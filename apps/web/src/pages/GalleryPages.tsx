@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, Film, Folder as FolderIcon, Pencil, Plus, Tag, Trash2, X } from 'lucide-react'
-import { POSTER_SCHEME, type VideoSort } from '@mediavault/shared'
+import { POSTER_SCHEME, type AssetKind, type VideoSort } from '@mediavault/shared'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { formatCount } from '../lib/format'
@@ -126,6 +126,18 @@ export function VideosPage() {
 }
 
 export function VideoTagsPage() {
+  return <TagsPage kind="video" />
+}
+
+export function PhotoTagsPage() {
+  return <TagsPage kind="image" />
+}
+
+function TagsPage({ kind }: { kind: AssetKind }) {
+  const isPhoto = kind === 'image'
+  const basePath = isPhoto ? '/photos/tags' : '/videos/tags'
+  const backPath = isPhoto ? '/' : '/videos'
+  const mediaLabel = isPhoto ? '사진' : '동영상'
   const { tagId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -136,23 +148,23 @@ export function VideoTagsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
 
-  const tagsQuery = useQuery({ queryKey: ['tags'], queryFn: api.tags })
+  const tagsQuery = useQuery({ queryKey: ['tags', kind], queryFn: () => api.tags(kind) })
 
   const createTag = useMutation({
-    mutationFn: (name: string) => api.createTag(name),
+    mutationFn: (name: string) => api.createTag(name, kind),
     onSuccess: () => {
       setNewTagName('')
-      queryClient.invalidateQueries({ queryKey: ['tags'] })
+      queryClient.invalidateQueries({ queryKey: ['tags', kind] })
       toast('태그를 생성했습니다.', 'success')
     },
     onError: (err) => toast(err instanceof Error ? err.message : '태그를 만들지 못했습니다.', 'error'),
   })
 
   const renameTag = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => api.renameTag(id, name),
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.renameTag(id, name, kind),
     onSuccess: () => {
       setEditingId(null)
-      queryClient.invalidateQueries({ queryKey: ['tags'] })
+      queryClient.invalidateQueries({ queryKey: ['tags', kind] })
       queryClient.invalidateQueries({ queryKey: ['assets'] })
       toast('태그 이름을 변경했습니다.', 'success')
     },
@@ -160,11 +172,11 @@ export function VideoTagsPage() {
   })
 
   const deleteTag = useMutation({
-    mutationFn: (id: string) => api.deleteTag(id),
+    mutationFn: (id: string) => api.deleteTag(id, kind),
     onSuccess: (_data, deletedId) => {
-      queryClient.invalidateQueries({ queryKey: ['tags'] })
+      queryClient.invalidateQueries({ queryKey: ['tags', kind] })
       queryClient.invalidateQueries({ queryKey: ['assets'] })
-      if (tagId === deletedId) navigate('/videos/tags')
+      if (tagId === deletedId) navigate(basePath)
       toast('태그를 삭제했습니다.')
     },
     onError: (err) => toast(err instanceof Error ? err.message : '태그를 삭제하지 못했습니다.', 'error'),
@@ -177,9 +189,9 @@ export function VideoTagsPage() {
     return (
       <>
         <AssetGallery
-          title={selectedTag ? `# ${selectedTag.name}` : '태그 동영상'}
+          title={selectedTag ? `# ${selectedTag.name}` : `태그 ${mediaLabel}`}
           filters={{
-            kind: 'video',
+            kind,
             tagId,
             sort,
             ...(sort === 'rate' ? { seed: sessionSeed.current } : {}),
@@ -187,7 +199,7 @@ export function VideoTagsPage() {
           breadcrumb={
             <div className="pt-4">
               <Link
-                to="/videos/tags"
+                to={basePath}
                 className="inline-flex items-center gap-1.5 text-[12.5px] text-muted transition-colors hover:text-ink"
               >
                 <ArrowLeft size={14} />
@@ -197,13 +209,13 @@ export function VideoTagsPage() {
           }
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              <SortBar sort={sort} onChange={setSort} />
+              {!isPhoto ? <SortBar sort={sort} onChange={setSort} /> : null}
             </div>
           }
-          emptyTitle="이 태그의 동영상이 없습니다"
-          emptyBody="동영상 상세 화면에서 이 태그를 지정하면 여기에 표시됩니다."
+          emptyTitle={`이 태그의 ${mediaLabel}이 없습니다`}
+          emptyBody={`${mediaLabel} 상세 화면에서 이 태그를 지정하면 여기에 표시됩니다.`}
           emptyIcon={<Tag size={20} />}
-          emptyAction={<Button onClick={() => navigate('/videos')}>전체 동영상</Button>}
+          emptyAction={<Button onClick={() => navigate(backPath)}>전체 {mediaLabel}</Button>}
         />
       </>
     )
@@ -217,8 +229,8 @@ export function VideoTagsPage() {
         title="태그별 보기"
         meta={`${formatCount(populatedTags.length)}개 태그 폴더 · 전체 ${formatCount(tags.length)}개 태그`}
         actions={
-          <Link to="/videos">
-            <Button size="sm">전체 동영상 보기</Button>
+          <Link to={backPath}>
+            <Button size="sm">전체 {mediaLabel} 보기</Button>
           </Link>
         }
       />
@@ -317,22 +329,22 @@ export function VideoTagsPage() {
       ) : populatedTags.length === 0 ? (
         <EmptyState
           title="표시할 태그 폴더가 없습니다"
-          body="동영상 재생 화면에서 태그를 지정하면 태그별 폴더 카드가 여기에 생성됩니다."
+          body={`${mediaLabel} 상세 화면에서 태그를 지정하면 태그별 폴더 카드가 여기에 생성됩니다.`}
           icon={<Tag size={20} />}
-          action={<Button onClick={() => navigate('/videos')}>전체 동영상으로 이동</Button>}
+          action={<Button onClick={() => navigate(backPath)}>전체 {mediaLabel}으로 이동</Button>}
         />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
           {populatedTags.map((tag) => (
             <Link
               key={tag.id}
-              to={`/videos/tags/${tag.id}`}
+              to={`${basePath}/${tag.id}`}
               className="group overflow-hidden rounded-panel border border-line bg-panel transition-colors duration-150 hover:border-line-strong"
             >
               <div className="relative aspect-[16/10] overflow-hidden bg-panel-2">
                 {tag.coverAssetId ? (
                   <Thumb
-                    src={`/api/assets/${tag.coverAssetId}/thumbnail?size=640&pv=${tag.coverPosterVersion ?? 1}&p=${POSTER_SCHEME}`}
+                    src={`/api/assets/${tag.coverAssetId}/thumbnail?size=640&pv=${tag.coverPosterVersion ?? 1}${isPhoto ? '' : `&p=${POSTER_SCHEME}`}`}
                     alt={tag.name}
                     className="h-full w-full"
                     imageClassName="transition-transform duration-500 ease-out group-hover:scale-[1.03]"
@@ -348,7 +360,7 @@ export function VideoTagsPage() {
                 <Tag size={14} className="shrink-0 text-accent" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium text-ink">{tag.name}</p>
-                  <p className="text-[11.5px] text-muted">{formatCount(tag.assetCount)}개 동영상</p>
+                  <p className="text-[11.5px] text-muted">{formatCount(tag.assetCount)}개 {mediaLabel}</p>
                 </div>
               </div>
             </Link>
