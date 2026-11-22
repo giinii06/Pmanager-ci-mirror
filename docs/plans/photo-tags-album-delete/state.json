@@ -5,27 +5,58 @@
   "phases": [
     {
       "id": "01",
-      "state": "not_started"
+      "state": "implementation_committed",
+      "implemented": true,
+      "tested": false,
+      "committed": true,
+      "sha": "a75d11ea224c051f803eb91720041dec6b48a9a8"
     },
     {
       "id": "02",
-      "state": "not_started"
+      "state": "implementation_committed",
+      "implemented": true,
+      "tested": false,
+      "committed": true,
+      "sha": "8fb7d89ebc4b790fadac3669ceeb8febab416caa"
     },
     {
       "id": "03",
-      "state": "not_started"
+      "state": "implementation_committed",
+      "implemented": true,
+      "tested": false,
+      "committed": true,
+      "sha": "da3e22a1b929ec4d8180d3a40dae4aeb3e5bd4cb"
     },
     {
       "id": "04",
-      "state": "not_started"
+      "state": "verification_blocked",
+      "implemented": false,
+      "tested": false,
+      "committed": false
     }
   ],
-  "history": [],
+  "history": [
+    {
+      "event": "plan_committed",
+      "sha": "8a8f139a7794136f91a855100c23e358f464fa46"
+    },
+    {
+      "event": "ci_dispatch_only",
+      "head_sha": "296061250ebd8643c5ef357e03ed5094ec069f1a",
+      "gitlab_pipeline_id": 3098804081,
+      "bridge_status": "success",
+      "actual_jobs": 0,
+      "downstream_pipeline_id": 3098804108,
+      "downstream_status": "skipped",
+      "verified": false
+    }
+  ],
   "ci": {
     "provider": "github_actions_bridge",
-    "dispatch": "unknown",
-    "provider_result": "unknown",
+    "dispatch": "success_bridge_only",
+    "provider_result": "unverified",
     "jobs_verified": false,
     "e2e_verified": false
-  }
+  },
+  "notes": "Production behavior NOT proven. Do not merge/deploy until a real matching-SHA test/build run succeeds."
 }

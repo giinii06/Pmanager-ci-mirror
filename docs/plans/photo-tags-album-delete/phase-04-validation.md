@@ -1,6 +1,6 @@
 # Phase 04 — Integration and review
 
-**State:** not_started.
+**State:** blocked: no runnable exact-SHA provider jobs; GitLab bridge success alone is not verification.
 - Check migration on a pre-V28 database; tag namespace isolation through create/list/asset viewer and both browse pages.
 - Verify album confirm→durable enqueue→immediate hiding→serial worker execution→completion/failure, including after tab close and transient network error.
 - Verify no unrelated asset bytes or child folders modified. Check accessible keyboard labels, button nesting, failure toasts.

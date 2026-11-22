@@ -18,5 +18,10 @@
 ## Boundaries
 Album here means the indexed photo grouping represented by a disk folder, not an independent virtual collection. Original photo files are permanently deleted through existing safeguarded file mutations; the directory itself is not recursively removed. No repository merge, deployment or CI runner/mirror changes.
 
-## Evidence status
-Initial plan committed before code. No tests have run; CI proof and runtime UI smoke are pending. Tests are never claimed passed by a successful dispatch callback.
+## Evidence status (2026-11-22)
+- Implementation committed across photo tag schema/API, photo tag routes/viewer, and album queued deletion UI/API/DB.
+- Tests are **authored, not executed**. No Bun runtime or independently verified test executor is available in this session; code quality and runtime behavior remain unverified.
+- GitLab pipeline [3098804081](https://gitlab.com/blond11qq/Pmanager/-/pipelines/3098804081) on 29606125 is marked success, **but has zero actual jobs**; its downstream `ci-hub-smoke` pipeline 3098804108 is **skipped**. This is dispatch evidence only; it is NOT a passing GitHub Actions or test result.
+- No real-world files were deleted; only code and migrations committed. No merge, deployment, runner or mirror changes.
+- The remaining gate is an exact-source-SHA GitHub Actions `release:check` or equivalent real test run, plus UI smoke.
+
