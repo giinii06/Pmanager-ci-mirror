@@ -23,7 +23,6 @@ import type {
   TranslationJobDTO,
   TranslationSummaryDTO,
   UserDTO,
-  VideoBookmarkDTO,
   WorkItemDTO,
   WorkQueueDTO,
   WorkerHeartbeatDTO,
@@ -54,7 +53,6 @@ import type {
   TranslationRecord,
   TranslationWithSegments,
   UserRecord,
-  VideoBookmarkRecord,
   WorkerHeartbeatRecord,
   WorkItemRecord,
   WorkQueueRecord,
@@ -535,16 +533,3 @@ function toDuplicateGroupMemberDTO(member: DuplicateGroupMemberRecord): Duplicat
   }
 }
 
-export function toVideoBookmarkDTO(bookmark: VideoBookmarkRecord): VideoBookmarkDTO {
-  return {
-    id: bookmark.id,
-    assetId: bookmark.assetId,
-    positionMs: bookmark.positionMs,
-    title: bookmark.title,
-    note: bookmark.note,
-    fileVersion: bookmark.fileVersion,
-    stale: bookmark.stale,
-    createdAt: new Date(bookmark.createdAt).toISOString(),
-    updatedAt: new Date(bookmark.updatedAt).toISOString(),
-  }
-}

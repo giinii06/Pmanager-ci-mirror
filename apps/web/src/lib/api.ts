@@ -51,7 +51,6 @@ import type {
   TranslationStatusDTO,
   TranslationSummaryDTO,
   UserDTO,
-  VideoBookmarkDTO,
   VoteActivityStatsDTO,
   WorkQueueDTO,
 } from '@mediavault/shared'
@@ -415,19 +414,6 @@ export const api = {
       embeddings: number
       scenes: number
     }>('/api/index/run', { method: 'POST' }),
-
-  bookmarks: (assetId: string) =>
-    request<{ bookmarks: VideoBookmarkDTO[] }>(`/api/assets/${assetId}/bookmarks`),
-  createBookmark: (assetId: string, body: { positionMs: number; title?: string; note?: string }) =>
-    request<VideoBookmarkDTO>(`/api/assets/${assetId}/bookmarks`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  updateBookmark: (
-    id: string,
-    body: { positionMs?: number; title?: string | null; note?: string | null },
-  ) => request<VideoBookmarkDTO>(`/api/bookmarks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  deleteBookmark: (id: string) => request<void>(`/api/bookmarks/${id}`, { method: 'DELETE' }),
 
   transcriptionStatus: (id: string) =>
     request<TranscriptionStatusDTO>(`/api/assets/${id}/transcription/status`),

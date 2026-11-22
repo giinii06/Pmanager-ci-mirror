@@ -8,7 +8,6 @@ import { registerDiagnosticsRoutes } from './routes/diagnostics'
 import { registerDuplicateRoutes } from './routes/duplicates'
 import { registerFileOperationRoutes } from './routes/file-operations'
 import { registerAuthRoutes } from './routes/auth'
-import { registerBookmarkRoutes } from './routes/bookmarks'
 import { registerJournalRoutes } from './routes/journal'
 import { registerFsRoutes } from './routes/fs'
 import { registerIndexRoutes } from './routes/index-run'
@@ -172,7 +171,6 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   registerPlaybackRoutes(app, ctx)
   registerFileOperationRoutes(app, ctx)
   registerDuplicateRoutes(app, ctx)
-  registerBookmarkRoutes(app, ctx)
   registerJournalRoutes(app, ctx)
   registerTagRoutes(app, ctx)
   registerMediaRoutes(app, ctx)

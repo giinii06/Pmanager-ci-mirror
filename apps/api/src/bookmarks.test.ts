@@ -10,7 +10,6 @@ import {
   upsertFolder,
   type Db,
 } from '@mediavault/database'
-import type { VideoBookmarkDTO } from '@mediavault/shared'
 import { buildApp } from './app'
 import { SESSION_COOKIE, createSession } from './auth'
 import type { ApiConfig } from './config'
@@ -138,180 +137,19 @@ async function createHarness() {
   return { app, db, headers, guest }
 }
 
-type Harness = Awaited<ReturnType<typeof createHarness>>
-
-async function createBookmark(harness: Harness, payload: Record<string, unknown>): Promise<VideoBookmarkDTO> {
-  const response = await harness.app.inject({
-    method: 'POST',
-    url: '/api/assets/vid001/bookmarks',
-    headers: harness.headers,
-    payload,
-  })
-  expect(response.statusCode).toBe(201)
-  return response.json() as VideoBookmarkDTO
-}
-
-async function listBookmarks(harness: Harness): Promise<VideoBookmarkDTO[]> {
-  const response = await harness.app.inject({
-    method: 'GET',
-    url: '/api/assets/vid001/bookmarks',
-    headers: harness.headers,
-  })
-  expect(response.statusCode).toBe(200)
-  return (response.json() as { bookmarks: VideoBookmarkDTO[] }).bookmarks
-}
-
-describe('bookmark API', () => {
-  test('every route requires a session', async () => {
+describe('retired bookmark routes', () => {
+  test('legacy bookmark API methods are no longer registered', async () => {
     const harness = await createHarness()
-    for (const [method, url] of [
-      ['GET', '/api/assets/vid001/bookmarks'],
-      ['POST', '/api/assets/vid001/bookmarks'],
-      ['PATCH', '/api/bookmarks/abc'],
-      ['DELETE', '/api/bookmarks/abc'],
-    ] as const) {
-      const response = await harness.app.inject({
-        method,
-        url,
-        payload: method === 'POST' ? { positionMs: 0 } : method === 'PATCH' ? { title: 'x' } : undefined,
-      })
-      expect(response.statusCode).toBe(401)
-    }
-  })
-
-  test('a mark is created, listed, edited and deleted', async () => {
-    const harness = await createHarness()
-    const created = await createBookmark(harness, { positionMs: 15_000, title: 'Opening', note: 'the good part' })
-    expect(created).toMatchObject({
-      assetId: 'vid001',
-      positionMs: 15_000,
-      title: 'Opening',
-      note: 'the good part',
-      fileVersion: 1,
-      stale: false,
-    })
-    expect(Number.isNaN(Date.parse(created.createdAt))).toBe(false)
-
-    await createBookmark(harness, { positionMs: 3_000 })
-    expect((await listBookmarks(harness)).map((bookmark) => bookmark.positionMs)).toEqual([3_000, 15_000])
-
-    const patched = await harness.app.inject({
-      method: 'PATCH',
-      url: `/api/bookmarks/${created.id}`,
-      headers: harness.headers,
-      payload: { positionMs: 40_000, note: null },
-    })
-    expect(patched.statusCode).toBe(200)
-    expect(patched.json() as VideoBookmarkDTO).toMatchObject({ positionMs: 40_000, title: 'Opening', note: null })
-
-    const removed = await harness.app.inject({
-      method: 'DELETE',
-      url: `/api/bookmarks/${created.id}`,
-      headers: harness.headers,
-    })
-    expect(removed.statusCode).toBe(204)
-    expect((await listBookmarks(harness)).map((bookmark) => bookmark.positionMs)).toEqual([3_000])
-  })
-
-  test('a mark reports stale after the file version moves', async () => {
-    const harness = await createHarness()
-    const created = await createBookmark(harness, { positionMs: 1_000 })
-    harness.db.query<null, [string]>('UPDATE assets SET file_version = file_version + 1 WHERE id = ?').run('vid001')
-
-    const listed = (await listBookmarks(harness))[0]!
-    expect(listed.stale).toBe(true)
-    expect(listed.fileVersion).toBe(created.fileVersion)
-
-    const patched = await harness.app.inject({
-      method: 'PATCH',
-      url: `/api/bookmarks/${created.id}`,
-      headers: harness.headers,
-      payload: { title: 'Renamed' },
-    })
-    expect((patched.json() as VideoBookmarkDTO).stale).toBe(true)
-  })
-
-  test('a position past the end of the video is a 422 carrying the duration', async () => {
-    const harness = await createHarness()
-    for (const positionMs of [61_500, 120_000]) {
-      const response = await harness.app.inject({
-        method: 'POST',
-        url: '/api/assets/vid001/bookmarks',
-        headers: harness.headers,
-        payload: { positionMs },
-      })
-      expect(response.statusCode).toBe(422)
-      expect(response.json() as { error: string; details: { durationMs: number } }).toMatchObject({
-        error: 'out_of_range',
-        details: { durationMs: 60_000 },
-      })
-    }
-
-    const created = await createBookmark(harness, { positionMs: 1_000 })
-    const patched = await harness.app.inject({
-      method: 'PATCH',
-      url: `/api/bookmarks/${created.id}`,
-      headers: harness.headers,
-      payload: { positionMs: 90_000 },
-    })
-    expect(patched.statusCode).toBe(422)
-    expect((await listBookmarks(harness))[0]?.positionMs).toBe(1_000)
-  })
-
-  test('a malformed body is a 400', async () => {
-    const harness = await createHarness()
-    const created = await createBookmark(harness, { positionMs: 1_000 })
-    for (const [url, method, payload] of [
-      ['/api/assets/vid001/bookmarks', 'POST', {}],
-      ['/api/assets/vid001/bookmarks', 'POST', { positionMs: -1 }],
-      ['/api/assets/vid001/bookmarks', 'POST', { positionMs: 1.5 }],
-      ['/api/assets/vid001/bookmarks', 'POST', { positionMs: 'soon' }],
-      ['/api/assets/vid001/bookmarks', 'POST', { positionMs: 0, title: 'x'.repeat(121) }],
-      ['/api/assets/vid001/bookmarks', 'POST', { positionMs: 0, note: 'x'.repeat(2001) }],
-      [`/api/bookmarks/${created.id}`, 'PATCH', {}],
-      [`/api/bookmarks/${created.id}`, 'PATCH', { positionMs: -5 }],
-      [`/api/bookmarks/${created.id}`, 'PATCH', { title: 'x'.repeat(121) }],
-    ] as const) {
-      const response = await harness.app.inject({ method, url, headers: harness.headers, payload })
-      expect(response.statusCode).toBe(400)
-      expect((response.json() as { error: string }).error).toBe('invalid_request')
-    }
-    expect(await listBookmarks(harness)).toHaveLength(1)
-  })
-
-  test('another user cannot read, edit or delete the mark, and a missing asset is a 404', async () => {
-    const harness = await createHarness()
-    const created = await createBookmark(harness, { positionMs: 1_000, title: 'Mine' })
-
-    const guestList = await harness.app.inject({
-      method: 'GET',
-      url: '/api/assets/vid001/bookmarks',
-      headers: harness.guest,
-    })
-    expect((guestList.json() as { bookmarks: VideoBookmarkDTO[] }).bookmarks).toEqual([])
-
     for (const [method, url, payload] of [
-      ['PATCH', `/api/bookmarks/${created.id}`, { title: 'Stolen' }],
-      ['DELETE', `/api/bookmarks/${created.id}`, undefined],
+      ['GET', '/api/assets/vid001/bookmarks', undefined],
+      ['POST', '/api/assets/vid001/bookmarks', { positionMs: 1500 }],
+      ['PATCH', '/api/bookmarks/abc', { title: 'old' }],
+      ['DELETE', '/api/bookmarks/abc', undefined],
     ] as const) {
-      const response = await harness.app.inject({ method, url, headers: harness.guest, payload })
-      expect(response.statusCode).toBe(404)
+      const result = await harness.app.inject({ method, url, headers: harness.headers, payload })
+      expect(result.statusCode).toBe(404)
     }
-    expect((await listBookmarks(harness))[0]).toMatchObject({ title: 'Mine', positionMs: 1_000 })
-
-    const missing = await harness.app.inject({
-      method: 'GET',
-      url: '/api/assets/doesnotexist/bookmarks',
-      headers: harness.headers,
-    })
-    expect(missing.statusCode).toBe(404)
-    const missingCreate = await harness.app.inject({
-      method: 'POST',
-      url: '/api/assets/doesnotexist/bookmarks',
-      headers: harness.headers,
-      payload: { positionMs: 0 },
-    })
-    expect(missingCreate.statusCode).toBe(404)
-    expect((missingCreate.json() as { error: string }).error).toBe('asset_not_found')
+    await harness.app.close()
+    harness.db.close()
   })
 })

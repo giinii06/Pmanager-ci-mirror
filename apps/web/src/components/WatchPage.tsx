@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
-  Bookmark,
   Camera,
   Captions,
   ChevronLeft,
@@ -33,7 +32,6 @@ import {
 import { randomToken } from '../lib/random'
 import { assetUrl } from '../lib/mediaRoutes'
 import { useUi } from '../store/ui'
-import { BookmarkDialog } from './BookmarkDialog'
 import { PosterDialog } from './PosterDialog'
 import { Dialog } from './ui/Dialog'
 import { Button } from './ui/Button'
@@ -96,7 +94,6 @@ export function WatchPage({
   const [copied, setCopied] = useState(false)
   const [tagInput, setTagInput] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [bookmarkOpen, setBookmarkOpen] = useState(false)
   const [posterOpen, setPosterOpen] = useState(false)
   const copyTimer = useRef<number | null>(null)
   const descriptionRef = useRef<HTMLDivElement>(null)
@@ -183,7 +180,6 @@ export function WatchPage({
 
   useEffect(() => {
     setDeleteOpen(false)
-    setBookmarkOpen(false)
     setTagInput('')
   }, [asset.id])
 
@@ -372,15 +368,6 @@ export function WatchPage({
                 정보
               </button>
 
-              <button
-                type="button"
-                onClick={() => setBookmarkOpen(true)}
-                title="현재 위치에 타임스탬프를 남깁니다."
-                className={PILL}
-              >
-                <Bookmark size={16} />
-                북마크
-              </button>
 
               <button
                 type="button"
@@ -539,12 +526,6 @@ export function WatchPage({
         </p>
       </Dialog>
 
-      <BookmarkDialog
-        open={bookmarkOpen}
-        onClose={() => setBookmarkOpen(false)}
-        asset={asset}
-        videoRef={videoRef}
-      />
 
       <PosterDialog
         open={posterOpen}
