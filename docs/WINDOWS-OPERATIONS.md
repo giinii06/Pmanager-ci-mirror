@@ -9,9 +9,9 @@
   1. 전역 뮤텍스(`Global\MediaVaultSupervisor`)로 중복 실행 방지.
   2. `wsl.exe`로 `docker` 및 `ssh` systemd 서비스 기동과 Docker 데몬 응답(`docker info`)을 확인.
   3. Windows에서 실제 존재하는 `C`/`D`/`E` 드라이브만 선별해 WSL `/mnt/{c,d,e}` DrvFS 마운트를 최대 90초 대기합니다. 준비되지 않으면 오류를 기록하고 그대로 진행하며, 기동 여부는 이후 단계의 preflight 검사가 결정합니다.
-  4. `LAN IPv4` 검증 후 `netsh interface portproxy` (`8080 -> 127.0.0.1:8080`, `22 -> 127.0.0.1:2222`) 등록 및 주기적 갱신.
+  4. `LAN IPv4` 검증 후 `netsh interface portproxy` (`443 -> 127.0.0.1:443`, `22 -> 127.0.0.1:2222`) 및 기존 HTTP 8080 매핑 제거 등록 및 주기적 갱신.
   5. 전체 `.env*` 및 `compose*.yaml` 플래그로 `docker compose up -d --remove-orphans` 실행 (`Invoke-WslBash`는 PowerShell 5.1 `NativeCommandError` 억제를 위해 호출 범위 내 `$ErrorActionPreference = "Continue"` 적용).
-  6. 15초마다 `http://127.0.0.1:8080/health/ready`를 검사하며 연속 3회 실패 시 `api`와 `nginx`를 재시작합니다. 이후 대기 시간은 실패 횟수에 15초를 곱해 최대 120초까지 늘어납니다.
+  6. 15초마다 Docker 내부에서 nginx `/health/ready`를 검사하며 연속 3회 실패 시 `api`, `nginx`, `caddy`를 재시작합니다. 이후 대기 시간은 실패 횟수에 15초를 곱해 최대 120초까지 늘어납니다.
   7. 로그는 `C:\ProgramData\MediaVault\logs\supervisor.log`에 10 MB 단위로 순환 저장하며, 현재 파일과 `.1`~`.5` 백업까지 최대 6개를 유지합니다.
 
 ## 2. 최초 설치 (관리자 PowerShell 필요 · UAC)
@@ -53,3 +53,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\install-service.ps1 -
 | `backup-db.ps1` | 컨테이너 내 `VACUUM INTO` + `PRAGMA integrity_check = ok` 검증 + 실패 시 임시 파일 정리 트랩 후 호스트로 백업 복사 |
 
 `scripts/windows/*.ps1`를 수정한 뒤에는 관리자 PowerShell에서 `install-service.ps1`을 다시 실행해야 합니다. 예약 작업은 저장소의 파일이 아니라 스테이징된 복사본(`C:\ProgramData\MediaVault\bin\`)을 실행하므로, 재설치하지 않으면 변경 사항이 반영되지 않습니다.
+
+운영 웹 접속은 HTTPS 443만 지원합니다. 기존 HTTP 8080 방화벽 규칙은 재설치 시 제거됩니다. `.env`의 `MEDIAVAULT_TLS_HOST`를 실제 접속 주소로 설정하고 기기에서 인증서를 신뢰하도록 구성하세요. Windows 감독 스크립트는 기본 HTTPS 포트 443을 사용합니다. [HTTPS 안내](HTTPS.md) 참조.

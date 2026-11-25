@@ -111,7 +111,10 @@ if (-not $SkipPowerConfig) {
     Write-MvLog "Configured AC power plan to disable sleep and hibernation."
 }
 
-& New-NetFirewallRule -DisplayName "MediaVault Web 8080" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow -ErrorAction SilentlyContinue | Out-Null
+Get-NetFirewallRule -DisplayName "MediaVault Web 8080" -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction Stop
+if (-not (Get-NetFirewallRule -DisplayName "MediaVault HTTPS 443" -ErrorAction SilentlyContinue)) {
+    New-NetFirewallRule -DisplayName "MediaVault HTTPS 443" -Direction Inbound -LocalPort 443 -Protocol TCP -Action Allow -ErrorAction Stop | Out-Null
+}
 & New-NetFirewallRule -DisplayName "MediaVault WSL SSH 22" -Direction Inbound -LocalPort 22 -Protocol TCP -Action Allow -ErrorAction SilentlyContinue | Out-Null
 
 if ($EnableWindowsOpenSSH) {

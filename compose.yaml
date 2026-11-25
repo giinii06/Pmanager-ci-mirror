@@ -10,7 +10,7 @@ services:
       TZ: ${TZ:-Asia/Seoul}
       MEDIA_ACCEL: nginx
       AUTH_SECRET: ${AUTH_SECRET:-}
-      COOKIE_SECURE: ${COOKIE_SECURE:-1}
+      COOKIE_SECURE: "1"
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
       SCAN_INTERVAL_MINUTES: ${SCAN_INTERVAL_MINUTES:-15}
@@ -85,7 +85,6 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "${MEDIAVAULT_HTTPS_BIND:-0.0.0.0}:${MEDIAVAULT_HTTP_PORT:-80}:80"
       - "${MEDIAVAULT_HTTPS_BIND:-0.0.0.0}:${MEDIAVAULT_HTTPS_PORT:-443}:443"
     environment:
       MEDIAVAULT_TLS_HOST: ${MEDIAVAULT_TLS_HOST:-localhost}
@@ -99,8 +98,6 @@ services:
   nginx:
     image: nginx:alpine
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:${MEDIAVAULT_PORT:-8080}:8080"
     volumes:
       - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - type: bind

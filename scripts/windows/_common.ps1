@@ -104,3 +104,10 @@ function Wait-MvTaskState {
         Start-Sleep -Milliseconds 500
     }
 }
+
+function Get-MvInternalHealth {
+    param([Parameter(Mandatory = $true)][ValidateSet("live", "ready")][string]$Endpoint)
+    $res = Invoke-WslBash -Command "cd $($script:RepoDir) && docker compose $($script:ComposeArgs) exec -T caddy wget -q -T 5 -O - http://nginx:8080/health/$Endpoint"
+    if ($res.ExitCode -ne 0) { throw "Internal health probe failed ($Endpoint): $($res.Output)" }
+    return ($res.Output | ConvertFrom-Json -ErrorAction Stop)
+}

@@ -22,9 +22,9 @@
 
 ```
 브라우저
-  │  127.0.0.1:8080
+  │  HTTPS :443
   ▼
-nginx (edge) ── /            ──▶ web    React SPA (정적)
+Caddy (TLS) → nginx (private) ── /            ──▶ web    React SPA (정적)
   │          ── /api/        ──▶ api    Fastify + SQLite + Sharp
   │          ── /internal/*  ──▶ /media, /cache  (X-Accel-Redirect, 외부 차단)
   ▼
@@ -33,7 +33,8 @@ worker  스캔 · 썸네일 · 프리뷰 · HLS (ffmpeg)
 
 | 컨테이너 | 역할 | 볼륨 |
 | --- | --- | --- |
-| `nginx` | 유일한 진입점, 인증된 미디어 전송 | `/media:ro`, `/cache:ro` |
+| `nginx` | 내부 인증 미디어 전송 | `/media:ro`, `/cache:ro` |
+| `caddy` | 유일한 브라우저 진입점, HTTPS | 인증서 볼륨 |
 | `web` | Vite 빌드 결과를 서빙 | — |
 | `api` | REST API, 세션, 썸네일·영구 삭제 | `/media`, `/data`, `/cache` |
 | `worker` | 스캔·아카이브 추출·변환 작업 큐 소비 | `/media`, `/data`, `/cache` |
@@ -58,10 +59,7 @@ docker compose up -d --build
 **설정 → 라이브러리 추가**에서 `Photos`, `Videos` 같은 하위 폴더를 등록한다.
 등록하면 스캔이 큐에 들어가고, 끝나면 갤러리에 나타난다.
 
-> nginx 진단 포트가 이미 사용 중이면 `.env`의 `MEDIAVAULT_PORT`를 바꾼다. Compose는 항상
-> `127.0.0.1`에만 바인딩한다. Windows 호스트에서 LAN으로 접속하려면
-> `scripts/windows`의 감독 스크립트가 등록하는 `netsh portproxy`가 필요하고,
-> 그때 방화벽 규칙도 함께 만들어진다.
+> 운영 Compose는 HTTPS만 공개합니다. Windows LAN 접속은 감독 스크립트의 TCP 443 포트프록시를 사용합니다. 기존 HTTP 8080과 80은 노출하지 않습니다. 인증서 신뢰 및 기존 서비스 재설치는 [HTTPS 운영 안내](docs/HTTPS.md)를 따릅니다.
 
 ### GPU (선택)
 
@@ -177,9 +175,9 @@ GitLab 플러그인에서 이 프로젝트의 브랜치 또는 태그를 지정�
 | 변수 | 기본값 | 설명 |
 | --- | --- | --- |
 | `MEDIA_ROOT` | `./sample-media` | 원본 루트. 컨테이너에는 `/media`로 읽기 전용 마운트 |
-| `MEDIAVAULT_PORT` | `8080` | 호스트에 공개할 포트 (127.0.0.1 전용) |
+| `MEDIAVAULT_HTTPS_PORT` | `443` | Caddy HTTPS 호스트 포트 (Windows 감독 스크립트는 443 사용) |
 | `AUTH_SECRET` | 자동 생성 | 비우면 `/data/secret.key`에 32바이트 시크릿 생성 |
-| `COOKIE_SECURE` | `0` | HTTPS 뒤에 둘 때 `1` |
+| `COOKIE_SECURE` | `1` (운영 Compose 강제) | 개발 모드에서만 HTTP 허용 |
 | `HWACCEL` | 비움 | `nvenc`면 GPU 인코딩 시도 |
 
 개발 모드 추가 변수: `PORT`, `HOST`, `DATA_DIR`, `CACHE_DIR`, `WORKER_POLL_MS`.
@@ -239,8 +237,8 @@ DB 백업은 `POST /api/backups`(설정 화면의 백업 버튼) 또는 `scripts
 
 | 증상 | 확인 |
 | --- | --- |
-| `port is already allocated` | `MEDIAVAULT_PORT` 변경 |
+| `port is already allocated` | TCP 443 충돌 확인 (Docker 전용 설치는 `MEDIAVAULT_HTTPS_PORT` 조정 가능) |
 | 갤러리가 비어 있음 | 설정에서 라이브러리 등록 후 스캔했는지, `docker compose logs worker` |
 | 영상이 계속 로딩 | HLS 변환 중일 수 있음. `docker compose logs -f worker` |
 | 썸네일 404 | 원본 경로가 `/media` 아래인지, 파일 확장자가 지원되는지 |
-| 로그인 후 바로 로그아웃 | HTTPS가 아니면 `COOKIE_SECURE=0` 유지 |
+| 로그인 후 바로 로그아웃 | 신뢰되는 HTTPS 인증서 및 정확한 접속 호스트 확인 |

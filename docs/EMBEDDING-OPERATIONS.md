@@ -109,8 +109,8 @@ MV_USERNAME=<계정> MV_PASSWORD=<비밀번호> bun run scripts/backfill-embeddi
 ## 6. 동작 확인
 
 ```bash
-# Compose 스택은 nginx를 통해 8080, macOS 경로는 API가 8788에 직접 열린다.
-BASE=http://127.0.0.1:8080
+# 브라우저/API 사용자 요청은 Caddy HTTPS로 접속한다. 인증서를 신뢰해야 한다.
+BASE=https://localhost # 실제 TLS 호스트에 맞게 변경
 
 curl -X POST $BASE/api/assets/<assetId>/embedding \
   -H 'content-type: application/json' -b 'mv_session=<token>' -d '{}'

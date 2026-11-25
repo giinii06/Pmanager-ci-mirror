@@ -26,7 +26,7 @@ Host media-server
 ssh media-server 'cd ~/Pmanager && docker compose ps'
 
 # 헬스 및 DB 무결성 확인
-curl -fsS http://192.168.0.27:8080/health/ready
+curl -fsS https://192.168.0.27/health/ready # 인증서의 주소와 일치하고 CA를 신뢰해야 함
 
 # 컨테이너 실시간 로그 확인
 ssh media-server 'cd ~/Pmanager && docker logs -f --tail=100 mediavault-worker-1'
