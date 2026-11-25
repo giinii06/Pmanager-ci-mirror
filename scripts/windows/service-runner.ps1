@@ -77,8 +77,13 @@ function Start-ComposeStack {
 function Ensure-PortProxy {
     try {
         $existing = & netsh interface portproxy show v4tov4 2>&1 | Out-String
-        foreach ($line in ($existing -split "`r?`n")) {
-            if ($line -match '^\s*(\d+\.\d+\.\d+\.\d+)\s+8080\s+127\.0\.0\.1\s+8080\s* -AddressFamily IPv4 |
+        foreach ($line in ($existing -split "\r?\n")) {
+            if ($line -match '^\s*(\d+\.\d+\.\d+\.\d+)\s+8080\s+127\.0\.0\.1\s+8080\s*$') {
+                & netsh interface portproxy delete v4tov4 listenport=8080 listenaddress=$($Matches[1]) | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw "Unable to remove legacy HTTP portproxy." }
+            }
+        }
+        $ipObj = Get-NetIPAddress -AddressFamily IPv4 |
             Where-Object { $_.InterfaceAlias -notlike "*Loopback*" -and $_.IPAddress -like "192.168.*" } |
             Select-Object -First 1
         $lan = if ($ipObj) { $ipObj.IPAddress } else { $null }
