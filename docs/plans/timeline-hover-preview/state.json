@@ -1,0 +1,13 @@
+{
+  "gate_version": "2.2",
+  "phase": "01",
+  "status": "in_progress",
+  "history": [
+    {
+      "from": "not_started",
+      "to": "in_progress",
+      "reason": "User approved feature and waived verification"
+    }
+  ],
+  "verification": "waived by user; not executed"
+}
