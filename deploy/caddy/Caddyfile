@@ -3,6 +3,10 @@
 # Localhost/LAN IPs use Caddy's internal CA and require explicit trust on each client.
 {
     auto_https disable_redirects
+    # Browsers omit SNI for IP-literal hosts (RFC 6066), and a handshake
+    # without a matching SNI fails before any HTTP is served. Treat those
+    # handshakes as if they named the site so LAN IP access works.
+    default_sni {$MEDIAVAULT_TLS_HOST:localhost}
 }
 
 https://{$MEDIAVAULT_TLS_HOST:localhost} {

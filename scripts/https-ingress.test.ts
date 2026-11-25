@@ -11,6 +11,9 @@ test("production publishes only HTTPS and forces Secure cookies", () => {
   expect(compose).toContain('COOKIE_SECURE: "1"');
   expect(read("deploy/caddy/Caddyfile")).toContain("https://{$MEDIAVAULT_TLS_HOST:localhost}");
   expect(read("deploy/caddy/Caddyfile")).toContain("auto_https disable_redirects");
+  // Browsers send no SNI for IP-literal hosts, so the site certificate must
+  // also answer SNI-less handshakes.
+  expect(read("deploy/caddy/Caddyfile")).toContain("default_sni {$MEDIAVAULT_TLS_HOST:localhost}");
 });
 
 test("Windows removes old HTTP forwarding and never recreates it", () => {
