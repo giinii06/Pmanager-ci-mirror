@@ -1,13 +1,20 @@
 {
   "gate_version": "2.2",
   "phase": "01",
-  "status": "in_progress",
+  "status": "implemented",
   "history": [
     {
       "from": "not_started",
       "to": "in_progress",
       "reason": "User approved feature and waived verification"
+    },
+    {
+      "from": "in_progress",
+      "to": "implemented",
+      "reason": "Integrated source changes committed; runtime and CI not checked"
     }
   ],
-  "verification": "waived by user; not executed"
+  "verification": "waived by user; not executed",
+  "review": "not executed",
+  "completion": "unverified"
 }

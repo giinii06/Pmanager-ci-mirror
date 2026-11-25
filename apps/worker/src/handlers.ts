@@ -27,6 +27,7 @@ import {
   generateHlsGeneration,
   generateImageThumbnails,
   generateVideoThumbnails,
+  generateTimelinePreview,
   resolveInside,
   waitForArchiveStability,
 } from '@mediavault/media'
@@ -383,6 +384,18 @@ export async function executeJob(
         }
       }
       return true
+    }
+
+    const payload = job.payload ? JSON.parse(job.payload) as { timelinePreviewPage?: unknown; fileVersion?: unknown } : null
+    if (payload && 'timelinePreviewPage' in payload) {
+      if (info.kind !== 'video' || payload.fileVersion !== info.fileVersion ||
+          typeof payload.timelinePreviewPage !== 'number') return
+      await generateTimelinePreview(
+        source, config.cacheDir, info.id, info.fileVersion, info.durationMs,
+        payload.timelinePreviewPage, { canPublish, signal: execCtx.signal },
+      )
+      throwIfAborted(execCtx.signal)
+      return
     }
 
     if (info.kind === 'image') {

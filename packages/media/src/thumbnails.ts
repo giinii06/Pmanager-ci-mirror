@@ -9,8 +9,15 @@ import {
   PREVIEW_SIZE,
   THUMBNAIL_QUALITY,
   THUMBNAIL_SIZES,
+  TIMELINE_PREVIEW_INTERVAL_SECONDS,
+  TIMELINE_PREVIEW_WIDTH,
+  TIMELINE_PREVIEW_HEIGHT,
+  TIMELINE_PREVIEW_COLUMNS,
+  TIMELINE_PREVIEW_ROWS,
+  TIMELINE_PREVIEW_PAGE_SECONDS,
+  timelinePreviewPageCount,
 } from '@mediavault/shared'
-import { ensureDir, posterPath, previewPath, thumbnailPath } from './paths'
+import { ensureDir, posterPath, previewPath, thumbnailPath, timelinePreviewPath } from './paths'
 
 const run = promisify(execFile)
 
@@ -269,6 +276,52 @@ export async function extractCustomVideoPoster(
   } catch (error) {
     for (const { tmp } of staged) await unlink(tmp).catch(() => undefined)
     throw error
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+export async function generateTimelinePreview(
+  src: string,
+  cacheDir: string,
+  assetId: string,
+  version: number,
+  durationMs: number | null,
+  page: number,
+  options: WriteAtomicOptions & { signal?: AbortSignal } = {},
+): Promise<void> {
+  if (durationMs === null || !Number.isSafeInteger(page) || page < 0 ||
+      page >= timelinePreviewPageCount(durationMs)) return
+  const target = timelinePreviewPath(cacheDir, assetId, version, page)
+  if (await fileExists(target)) return
+
+  const start = page * TIMELINE_PREVIEW_PAGE_SECONDS
+  const length = Math.min(TIMELINE_PREVIEW_PAGE_SECONDS, durationMs / 1000 - start)
+  const frames = Math.ceil(length / TIMELINE_PREVIEW_INTERVAL_SECONDS)
+  const width = TIMELINE_PREVIEW_WIDTH
+  const height = TIMELINE_PREVIEW_HEIGHT
+  const filter = [
+    'setpts=PTS-STARTPTS',
+    `tpad=stop_mode=clone:stop_duration=${TIMELINE_PREVIEW_INTERVAL_SECONDS}`,
+    `fps=1/${TIMELINE_PREVIEW_INTERVAL_SECONDS}:start_time=0:round=up`,
+    `trim=end_frame=${frames}`,
+    `scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2`,
+    `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
+    'setsar=1',
+    `tile=${TIMELINE_PREVIEW_COLUMNS}x${TIMELINE_PREVIEW_ROWS}`,
+  ].join(',')
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'mediavault-timeline-'))
+  try {
+    const sheet = path.join(dir, 'sheet.png')
+    await writeAtomic(target, async (tmp) => {
+      await run('ffmpeg', [
+        '-v', 'error', '-nostdin', '-y', '-threads', '2',
+        '-ss', String(start), '-t', String(length), '-i', src,
+        '-map', '0:V:0', '-an', '-sn', '-dn', '-filter_threads', '2',
+        '-vf', filter, '-frames:v', '1', '-c:v', 'png', '-threads', '1', sheet,
+      ], { signal: options.signal, timeout: 300_000 })
+      await sharp(sheet).webp({ quality: 72 }).toFile(tmp)
+    }, options)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

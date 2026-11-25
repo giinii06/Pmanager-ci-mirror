@@ -46,6 +46,11 @@ export function posterPath(
   )
 }
 
+export function timelinePreviewPath(cacheDir: string, assetId: string, version: number, page: number): string {
+  if (!Number.isSafeInteger(page) || page < 0) throw new Error('invalid timeline preview page')
+  return path.join(cacheDir, 'thumbs', assertAssetId(assetId), `v${version}`, `timeline-v1-${page}.webp`)
+}
+
 export function previewPath(cacheDir: string, assetId: string, version: number): string {
   return path.join(cacheDir, 'previews', assertAssetId(assetId), `v${version}`, '1600.webp')
 }

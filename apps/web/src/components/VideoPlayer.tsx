@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
 import { ChevronLeft, ChevronRight, Expand, Shrink, Maximize, Minimize, Pause, Play, Volume2, VolumeX } from 'lucide-react'
@@ -17,6 +17,7 @@ import {
   storedCaptionScale,
 } from './CaptionSizeMenu'
 import { Spinner } from './ui/Spinner'
+import { TimelineHoverPreview } from './TimelineHoverPreview'
 import { SubtitleMenu, languageName, trackLabel } from './SubtitleMenu'
 
 type HlsState = 'idle' | 'preparing' | 'ready' | 'error' | 'offline'
@@ -72,6 +73,7 @@ export function VideoPlayer({
   const [playbackPaused, setPlaybackPaused] = useState(true)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [timelineHover, setTimelineHover] = useState<{ assetKey: string; fraction: number; barWidth: number } | null>(null)
   const [bufferedEnd, setBufferedEnd] = useState(0)
   const [muted, setMuted] = useState(false)
   const [volume, setVolume] = useState(1)
@@ -676,7 +678,9 @@ export function VideoPlayer({
   // A translation track is served with the spoken line above it.
   const dual = activeTrack?.source === 'translation'
   const preparing = useHls && hlsState !== 'ready'
-  const showBar = !preparing && (controlsVisible || playbackPaused)
+  const assetKey = `${asset.id}:${asset.fileVersion}`
+  const activeHover = timelineHover?.assetKey === assetKey && duration > 0 ? timelineHover : null
+  const showBar = !preparing && (controlsVisible || playbackPaused || activeHover !== null)
   const playedPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0
   const bufferedPct = duration > 0 ? Math.min(100, (bufferedEnd / duration) * 100) : 0
 
@@ -691,6 +695,18 @@ export function VideoPlayer({
     const video = videoRef.current
     if (!video) return
     video.muted = !video.muted
+  }
+
+  const updateTimelineHover = (event: PointerEvent<HTMLDivElement>) => {
+    if (duration <= 0 || !Number.isFinite(duration)) return
+    if (event.pointerType === 'touch' && event.type === 'pointermove' && event.buttons === 0) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    if (rect.width <= 0) return
+    setTimelineHover({
+      assetKey,
+      fraction: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+      barWidth: rect.width,
+    })
   }
 
   const handleSeek = (nextSec: number) => {
@@ -798,7 +814,24 @@ export function VideoPlayer({
             showBar ? 'opacity-100' : 'pointer-events-none opacity-0',
           )}
         >
-          <div className="relative flex h-4 items-center">
+          <div
+            className="relative flex h-4 items-center"
+            onPointerMove={updateTimelineHover}
+            onPointerDown={updateTimelineHover}
+            onPointerLeave={() => setTimelineHover(null)}
+            onPointerCancel={() => setTimelineHover(null)}
+            onPointerUp={(event) => { if (event.pointerType !== 'mouse') setTimelineHover(null) }}
+            onLostPointerCapture={() => setTimelineHover(null)}
+          >
+            {activeHover && showBar ? (
+              <TimelineHoverPreview
+                key={assetKey}
+                asset={asset}
+                seconds={activeHover.fraction * duration}
+                fraction={activeHover.fraction}
+                barWidth={activeHover.barWidth}
+              />
+            ) : null}
             <div className="relative h-1 w-full overflow-hidden rounded-full bg-white/20">
               <div
                 className="absolute inset-y-0 left-0 bg-white/35"

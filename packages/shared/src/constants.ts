@@ -41,3 +41,21 @@ export const MAX_THUMBNAIL_RETRIES = 8
 export function isThumbnailSize(value: number): value is ThumbnailSize {
   return value === 320 || value === 640
 }
+
+export const TIMELINE_PREVIEW_INTERVAL_SECONDS = 5
+export const TIMELINE_PREVIEW_WIDTH = 160
+export const TIMELINE_PREVIEW_HEIGHT = 90
+export const TIMELINE_PREVIEW_COLUMNS = 5
+export const TIMELINE_PREVIEW_ROWS = 5
+export const TIMELINE_PREVIEW_FRAMES = TIMELINE_PREVIEW_COLUMNS * TIMELINE_PREVIEW_ROWS
+export const TIMELINE_PREVIEW_PAGE_SECONDS = TIMELINE_PREVIEW_INTERVAL_SECONDS * TIMELINE_PREVIEW_FRAMES
+
+export function timelinePreviewPageCount(durationMs: number | null): number {
+  return durationMs !== null && Number.isFinite(durationMs) && durationMs > 0
+    ? Math.ceil(durationMs / (TIMELINE_PREVIEW_PAGE_SECONDS * 1000))
+    : 0
+}
+
+export function timelinePreviewJobKey(assetId: string, fileVersion: number, page: number): string {
+  return `timeline-preview-v1:${assetId}:${fileVersion}:${page}`
+}

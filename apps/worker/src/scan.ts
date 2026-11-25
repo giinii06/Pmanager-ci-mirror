@@ -1,4 +1,4 @@
-import type { Dirent, Stats } from 'node:fs'
+import { existsSync, type Dirent, type Stats } from 'node:fs'
 import { lstat, readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -34,9 +34,11 @@ import {
   type NewAsset,
   type ScanAssetRow,
 } from '@mediavault/database'
-import { probeImage, probeVideo, resolveInside } from '@mediavault/media'
+import { probeImage, probeVideo, resolveInside, timelinePreviewPath } from '@mediavault/media'
 import {
   PRIORITY,
+  timelinePreviewJobKey,
+  timelinePreviewPageCount,
   classifyFile,
   extensionOf,
   isBlockedSystemRelativePath,
@@ -835,6 +837,31 @@ export async function scanLibrary(
         updatedAt: completedAt,
       })
     }).immediate()
+
+    // Optional preview backfill includes unchanged videos from previous installs.
+    // The scan remains successful if this disposable cache work cannot be queued.
+    try {
+      const videos = db.query<{ id: string; fileVersion: number; durationMs: number }, [string]>(
+        `SELECT id, file_version AS fileVersion, duration_ms AS durationMs
+         FROM assets WHERE library_id = ? AND kind = 'video' AND deleted_at IS NULL AND duration_ms > 0`,
+      ).all(libraryId)
+      db.transaction(() => {
+        for (const video of videos) {
+          for (let page = 0; page < timelinePreviewPageCount(video.durationMs); page++) {
+            if (existsSync(timelinePreviewPath(config.cacheDir, video.id, video.fileVersion, page))) continue
+            enqueueJob(db, {
+              dedupeKey: timelinePreviewJobKey(video.id, video.fileVersion, page),
+              kind: 'thumbnail',
+              priority: PRIORITY.optional,
+              assetId: video.id,
+              payload: { timelinePreviewPage: page, fileVersion: video.fileVersion },
+            }, Date.now())
+          }
+        }
+      }).immediate()
+    } catch (error) {
+      console.warn(`[scan] timeline preview backfill could not be queued: ${(error as Error).message}`)
+    }
 
     console.info(
       JSON.stringify({

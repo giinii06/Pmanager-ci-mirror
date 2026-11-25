@@ -17,7 +17,7 @@ import {
   type HlsGenerationRecord,
   type LibraryRecord,
 } from '@mediavault/database'
-import { PRIORITY, type HlsStatusDTO } from '@mediavault/shared'
+import { PRIORITY, timelinePreviewJobKey, timelinePreviewPageCount, type HlsStatusDTO } from '@mediavault/shared'
 import {
   cacheRelativePath,
   ensureImageThumbnail,
@@ -29,6 +29,7 @@ import {
   posterPath,
   resolveInside,
   thumbnailPath,
+  timelinePreviewPath,
 } from '@mediavault/media'
 import type { AppContext } from '../context'
 import { accelPathFor, sendFile } from '../http'
@@ -47,6 +48,8 @@ const hlsGenerationParams = z.object({
   generationId: z.string().regex(/^[a-z0-9]{6,32}$/),
   file: z.string().min(1).max(64),
 })
+const timelineParams = idParams.extend({ page: z.coerce.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) })
+const timelineQuery = z.object({ v: z.coerce.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) })
 const streamQuery = z.object({ v: z.string().optional(), download: z.enum(['0', '1']).optional() })
 
 function resolveMedia(
@@ -244,6 +247,57 @@ export function registerMediaRoutes(app: FastifyInstance, ctx: AppContext): void
       : undefined
     await sendFile(request, reply, target, 'image/webp', {
       cacheControl: 'public, max-age=31536000, immutable',
+      ...(accel ? { accelPath: accel } : {}),
+    })
+  })
+
+  app.get('/api/assets/:id/timeline-preview/:page', async (request, reply) => {
+    const params = parseInput(timelineParams, request.params, reply)
+    if (!params) return
+    const query = parseInput(timelineQuery, request.query, reply)
+    if (!query) return
+
+    const info = getAssetFileInfo(ctx.db, params.id)
+    if (!info || info.deletedAt !== null || info.kind !== 'video' ||
+        info.fileVersion !== query.v || params.page >= timelinePreviewPageCount(info.durationMs)) {
+      reply.header('Cache-Control', 'no-store')
+      notFound(reply)
+      return
+    }
+
+    const target = timelinePreviewPath(ctx.config.cacheDir, info.id, info.fileVersion, params.page)
+    if (!(await fileExists(target))) {
+      const health = getLibraryHealth(ctx.db, info.libraryId)
+      if (!resolveMedia(ctx, info) || health?.state !== 'ONLINE') {
+        reply.header('Cache-Control', 'no-store').code(503).send({ error: 'source_offline' })
+        return
+      }
+      const dedupeKey = timelinePreviewJobKey(info.id, info.fileVersion, params.page)
+      const previous = ctx.db.query<{ state: string; updatedAt: number }, [string]>(
+        'SELECT state, updated_at AS updatedAt FROM jobs WHERE dedupe_key = ? ORDER BY id DESC LIMIT 1',
+      ).get(dedupeKey)
+      if (previous?.state === 'failed' && Date.now() - previous.updatedAt < 60_000) {
+        reply.header('Cache-Control', 'no-store').code(503).send({ error: 'preview_failed' })
+        return
+      }
+      enqueueJob(ctx.db, {
+        dedupeKey,
+        kind: 'thumbnail',
+        priority: PRIORITY.now,
+        assetId: info.id,
+        payload: { timelinePreviewPage: params.page, fileVersion: info.fileVersion },
+        requestId: request.id,
+      }, Date.now())
+      reply.header('Retry-After', '3').header('Cache-Control', 'no-store')
+        .code(202).send({ state: 'preparing' })
+      return
+    }
+
+    const accel = ctx.config.accel
+      ? accelPathFor('/internal/cache', cacheRelativePath(ctx.config.cacheDir, target))
+      : undefined
+    await sendFile(request, reply, target, 'image/webp', {
+      cacheControl: 'private, max-age=31536000, immutable',
       ...(accel ? { accelPath: accel } : {}),
     })
   })
